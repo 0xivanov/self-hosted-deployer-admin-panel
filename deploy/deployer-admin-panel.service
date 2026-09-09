@@ -1,5 +1,5 @@
 [Unit]
-Description=Deployer Admin Panel (HTTPS, read-only)
+Description=Deployer Admin Panel (HTTPS, deployments enabled)
 Wants=network-online.target
 After=network-online.target deployer-server.service
 StartLimitIntervalSec=0
@@ -8,7 +8,7 @@ StartLimitIntervalSec=0
 Type=simple
 User=deployer-admin
 Group=deployer-admin
-ExecStart=/opt/deployer-admin-panel/admin-panel --deployer /opt/deployer-admin-panel/deployer --config /etc/deployer-admin-panel/config.json --public-url https://admin.0xivanov.dev --tls-cert /etc/deployer-admin-panel/tls.crt --tls-key /etc/deployer-admin-panel/tls.key --auth-file /etc/deployer-admin-panel/auth.json
+ExecStart=/opt/deployer-admin-panel/admin-panel --deployer /opt/deployer-admin-panel/deployer --config /etc/deployer-admin-panel/config.json --public-url https://admin.0xivanov.dev --tls-cert /etc/deployer-admin-panel/tls.crt --tls-key /etc/deployer-admin-panel/tls.key --auth-file /etc/deployer-admin-panel/auth.json --allow-writes
 Restart=on-failure
 RestartSec=15
 TimeoutStopSec=15

@@ -69,7 +69,7 @@ Tests cover cross-origin and rebinding rejection, missing sessions, read-only mo
 
 ## VPS deployment
 
-The service is available at `https://admin.0xivanov.dev` in **read-only** mode. Cloudflare DNS points directly to the VPS. The existing Traefik ingress serves a trusted Let’s Encrypt certificate managed and renewed by cert-manager. The original IP URL has been superseded.
+The service is available at `https://admin.0xivanov.dev` with **deployments and session rollback enabled**. Cloudflare DNS points directly to the VPS. The existing Traefik ingress serves a trusted Let’s Encrypt certificate managed and renewed by cert-manager. The original IP URL has been superseded.
 
 Remote mode listens on all IPv4 interfaces at the selected port and requires all of:
 
@@ -77,7 +77,7 @@ Remote mode listens on all IPv4 interfaces at the selected port and requires all
 admin-panel --public-url https://admin.0xivanov.dev \
   --tls-cert /etc/deployer-admin-panel/tls.crt \
   --tls-key /etc/deployer-admin-panel/tls.key \
-  --auth-file /etc/deployer-admin-panel/auth.json \
+  --auth-file /etc/deployer-admin-panel/auth.json --allow-writes \
   --config /etc/deployer-admin-panel/config.json \
   --deployer /opt/deployer-admin-panel/deployer
 ```
@@ -92,7 +92,7 @@ sudo journalctl -u deployer-admin-panel -n 30 --no-pager
 sudo systemctl disable --now deployer-admin-panel # removes remote access
 ```
 
-This deployment does not modify the existing control-plane binary or application workloads. It retains an administrator credential on the VPS for CLI reads; read-only enforcement is in the panel, not a reduced-privilege backend token.
+This deployment does not modify the existing control-plane binary or application workloads. It retains an administrator credential on the VPS for CLI operations. The deployed systemd unit explicitly enables writes with `--allow-writes`; remove that flag and restart the panel to return to read-only mode. The default for other installations remains read-only.
 
 ### Domain routing
 
