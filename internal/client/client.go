@@ -232,3 +232,19 @@ func (c *CLI) DeployApp(ctx context.Context, data string) (v DeployResult, e err
 	e = c.withYAML(ctx, data, "deploy", &v)
 	return
 }
+
+// ChangeNode uses the existing CLI lifecycle and its backend audit trail.
+func (c *CLI) ChangeNode(ctx context.Context, id, action string) error {
+	var result any
+	switch action {
+	case "remove":
+		if err := c.read(ctx, &result, "nodes", "drain", id); err != nil {
+			return err
+		}
+		return c.read(ctx, &result, "nodes", "remove", "--yes", id)
+	case "purge":
+		return c.read(ctx, &result, "nodes", "purge", "--yes", id)
+	default:
+		return errors.New("unsupported node action")
+	}
+}

@@ -175,6 +175,10 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		respond(w, map[string]any{"environment": s.options.Environment, "endpoint": s.options.Endpoint, "apps": apps, "nodes": nodes, "read_only": !s.options.AllowWrites, "demo": s.options.Demo})
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/api/nodes/") && r.Method == "POST" {
+		s.changeNode(w, r)
+		return
+	}
 	if r.URL.Path == "/api/deploy" && r.Method == "POST" {
 		var input struct {
 			YAML string `json:"yaml"`
@@ -347,4 +351,60 @@ func Address(port int) (string, error) {
 		return "", fmt.Errorf("port must be between 1 and 65535")
 	}
 	return fmt.Sprintf("127.0.0.1:%d", port), nil
+}
+
+func (s *Server) changeNode(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/nodes/"), "/")
+	if len(parts) != 2 || (parts[1] != "remove" && parts[1] != "purge") {
+		failure(w, 404, "Not found")
+		return
+	}
+	var input struct {
+		Confirmation string `json:"confirmation"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	nodes, err := s.backend.ListNodes(r.Context())
+	if err != nil {
+		failure(w, 502, err.Error())
+		return
+	}
+	var node *cli.NodeInfo
+	for i := range nodes {
+		if nodes[i].ID == parts[0] {
+			node = &nodes[i]
+			break
+		}
+	}
+	if node == nil {
+		failure(w, 404, "Node not found; refresh the inventory")
+		return
+	}
+	if input.Confirmation != node.Name {
+		failure(w, 400, "Type the exact node name to confirm")
+		return
+	}
+	if parts[1] == "purge" && node.Status != "removed" && node.Status != "pending" {
+		failure(w, 409, "Remove the node before permanently deleting its record")
+		return
+	}
+	if parts[1] == "remove" && (node.Status == "removed" || node.Status == "pending") {
+		failure(w, 409, "Use Delete permanently for pending or removed records")
+		return
+	}
+	manager, ok := s.backend.(interface {
+		ChangeNode(context.Context, string, string) error
+	})
+	if !ok {
+		failure(w, 501, "Node management is unavailable")
+		return
+	}
+	if err := manager.ChangeNode(r.Context(), node.ID, parts[1]); err != nil {
+		failure(w, 502, err.Error())
+		return
+	}
+	respond(w, map[string]any{"node_id": node.ID, "action": parts[1], "success": true})
 }

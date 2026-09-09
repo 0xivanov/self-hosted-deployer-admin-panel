@@ -16,6 +16,7 @@ type Demo struct {
 	apps     map[string]cli.AppInfo
 	history  map[string][]cli.DeploymentInfo
 	sequence int
+	nodes    []cli.NodeInfo
 }
 
 func NewDemo() *Demo {
@@ -36,7 +37,12 @@ func (d *Demo) ListApps(context.Context) ([]cli.AppInfo, error) {
 	return apps, nil
 }
 func (d *Demo) ListNodes(context.Context) ([]cli.NodeInfo, error) {
-	return []cli.NodeInfo{{ID: "demo-control", Name: "demo-control", Status: "online", Arch: "linux/amd64", KubernetesStatus: "ready", VPNStatus: "connected", Schedulable: true}, {ID: "demo-worker", Name: "demo-worker", Status: "online", Arch: "linux/arm64", KubernetesStatus: "ready", VPNStatus: "connected", Schedulable: true}}, nil
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.nodes == nil {
+		d.nodes = []cli.NodeInfo{{ID: "demo-control", Name: "demo-control", Status: "online", Arch: "linux/amd64", KubernetesStatus: "ready", VPNStatus: "connected", Schedulable: true}, {ID: "demo-worker", Name: "demo-worker", Status: "online", Arch: "linux/arm64", KubernetesStatus: "ready", VPNStatus: "connected", Schedulable: true}}
+	}
+	return append([]cli.NodeInfo{}, d.nodes...), nil
 }
 func (d *Demo) InspectApp(_ context.Context, name string) (cli.AppInspectResult, error) {
 	d.mu.Lock()
@@ -80,4 +86,23 @@ func (d *Demo) DeployApp(_ context.Context, data string) (cli.DeployResult, erro
 		d.history[cfg.Name()] = d.history[cfg.Name()][:20]
 	}
 	return cli.DeployResult{App: app, Deployment: deployment}, nil
+}
+
+func (d *Demo) ChangeNode(_ context.Context, id, action string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for i := range d.nodes {
+		if d.nodes[i].ID == id {
+			if action == "remove" {
+				d.nodes[i].Status = "removed"
+				d.nodes[i].Schedulable = false
+			} else if action == "purge" {
+				d.nodes = append(d.nodes[:i], d.nodes[i+1:]...)
+			} else {
+				return fmt.Errorf("unsupported action")
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("node not found")
 }

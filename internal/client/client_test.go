@@ -75,3 +75,32 @@ func TestBoundedOutput(t *testing.T) {
 		t.Fatal("unbounded output")
 	}
 }
+
+func TestNodeRemovalStopsWhenDrainFails(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "fake-cli")
+	log := filepath.Join(dir, "calls")
+	t.Setenv("PANEL_NODE_TEST_LOG", log)
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$PANEL_NODE_TEST_LOG\"\ncase \"$*\" in *'nodes drain'*) exit 1;; esac\nprintf '{}'\n"
+	if err := os.WriteFile(exe, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	c := &CLI{executable: exe, config: filepath.Join(dir, "config")}
+	if err := c.ChangeNode(context.Background(), "worker-id", "remove"); err == nil {
+		t.Fatal("drain failure ignored")
+	}
+	calls, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(calls), "nodes remove") {
+		t.Fatal("removed after failed drain")
+	}
+	if err := c.ChangeNode(context.Background(), "worker-id", "purge"); err != nil {
+		t.Fatal(err)
+	}
+	calls, _ = os.ReadFile(log)
+	if !strings.Contains(string(calls), "nodes purge --yes worker-id") {
+		t.Fatal("purge not dispatched")
+	}
+}

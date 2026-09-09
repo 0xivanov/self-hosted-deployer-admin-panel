@@ -43,7 +43,7 @@
           </div>
         </section>
 
-        <section id="servers-view" class="view-panel" hidden><div class="section-heading"><div><h2>Servers</h2><p class="muted">Connected nodes available to the control plane.</p></div></div><div class="card"><div class="card-header"><div><h3>Node inventory</h3><p class="muted">Health and scheduling state for each server.</p></div><span class="count-pill" id="node-count">0</span></div><div class="table-wrap"><table><thead><tr><th>Server</th><th>Status</th><th>Hostname</th><th>Platform</th><th>Last seen</th></tr></thead><tbody id="servers-table"></tbody></table></div></div></section>
+        <section id="servers-view" class="view-panel" hidden><div class="section-heading"><div><h2>Servers</h2><p class="muted">Connected nodes available to the control plane.</p></div></div><div class="card"><div class="card-header"><div><h3>Node inventory</h3><p class="muted">Health and scheduling state for each server.</p></div><label><input type="checkbox" id="show-removed"> Show removed</label><span class="count-pill" id="node-count">0</span></div><div class="table-wrap"><table><thead><tr><th>Server</th><th>Status</th><th>Hostname</th><th>Platform</th><th>Last seen</th><th>Actions</th></tr></thead><tbody id="servers-table"></tbody></table></div></div></section>
 
         <section id="detail-view" class="view-panel" hidden>
           <button class="back-link" id="back-button" type="button">← Back to applications</button>
@@ -57,7 +57,7 @@
     </main>
   </div>
 
-  <div class="modal-backdrop" id="modal-backdrop" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button class="modal-close" id="modal-close" type="button" aria-label="Close">×</button><p class="eyebrow" id="modal-eyebrow">Confirm action</p><h2 id="modal-title">Confirm deployment</h2><p class="modal-copy" id="modal-copy"></p><label class="yaml-label" id="yaml-editor-label" for="yaml-editor">Deployment YAML</label><textarea id="yaml-editor" spellcheck="false" hidden></textarea><p id="modal-error" class="error-alert alert" role="alert" hidden></p><div class="modal-actions"><button class="button button-secondary" id="modal-cancel" type="button">Cancel</button><button class="button button-primary" id="modal-confirm" type="button">Confirm</button></div></div></div>
+  <div class="modal-backdrop" id="modal-backdrop" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button class="modal-close" id="modal-close" type="button" aria-label="Close">×</button><p class="eyebrow" id="modal-eyebrow">Confirm action</p><h2 id="modal-title">Confirm deployment</h2><p class="modal-copy" id="modal-copy"></p><label class="yaml-label" id="yaml-editor-label" for="yaml-editor">Deployment YAML</label><label id="node-confirm-label" hidden>Type the node name to confirm<input id="node-confirm" autocomplete="off"></label><textarea id="yaml-editor" spellcheck="false" hidden></textarea><p id="modal-error" class="error-alert alert" role="alert" hidden></p><div class="modal-actions"><button class="button button-secondary" id="modal-cancel" type="button">Cancel</button><button class="button button-primary" id="modal-confirm" type="button">Confirm</button></div></div></div>
   <script src="/app.js" defer></script>
 </body>
 </html>

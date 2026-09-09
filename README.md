@@ -39,7 +39,8 @@ go run ./cmd/admin-panel --context customer-a --allow-writes
 ## Features
 
 - App inventory, desired replica counts, runtime details and warnings.
-- Worker inventory and connectivity state. This lists Deployer worker records, not every Kubernetes control-plane node.
+- Worker inventory with removed records hidden by default, a Show removed filter, drain-and-remove, and permanent deletion of pending/removed records.
+- Worker connectivity state. This lists Deployer worker records, not every Kubernetes control-plane node.
 - Deployment configuration and history.
 - Last 200 log lines per Pod, loaded on demand.
 - YAML deployment/update with backend preflight and an explicit environment confirmation.
@@ -107,3 +108,11 @@ sudo k3s kubectl create secret generic admin-panel-origin-ca -n deployer-admin \
 The public certificate renews automatically through the existing `deployer-letsencrypt` ClusterIssuer. The separate self-signed origin certificate expires September 9, 2027; replace it and update the origin CA Secret before expiry. Replacing that certificate requires restarting the panel. Cloudflare API credentials are used locally to create DNS only, and are not installed on the VPS or committed here. The DNS record is DNS-only, not Cloudflare-proxied.
 
 To revert the domain transition, restore `/opt/deployer-admin-panel/admin-panel.previous` and `/etc/deployer-admin-panel/service.previous`, reload systemd and restart the panel, then remove only the admin ingress resources and DNS record. This restores the previous IP URL and certificate warning.
+
+## Node lifecycle
+
+In **Servers**, removed records are hidden by default. Select **Show removed** to see retained records and choose **Delete permanently** to free their names and IPs. Pending records can also be deleted. Active records offer **Remove**, which first calls the backend drain operation and stops if it fails, then revokes the node identity and removes the Kubernetes node. Both actions require entering the exact node name and an authenticated write-enabled panel session. Removal can interrupt workloads; a failed drain may leave the node cordoned. Requests have a 30-second deadline; use the CLI for longer drains and inspect the node before retrying. These controls do not uninstall the agent software from the host.
+
+## User accounts
+
+The panel currently has one operator login from its private auth file. There is no signup, invitation flow, separate user database, or per-user/customer permissions. Customer onboarding in the original POC is manual and uses dedicated environments. Adding multi-user access requires account authentication and authorization, not additional copies of the shared administrator credential.

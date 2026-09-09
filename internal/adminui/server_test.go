@@ -210,3 +210,33 @@ func TestRemoteDefaultHTTPSPort(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
+func TestNodeLifecycleGuards(t *testing.T) {
+	s, d := panel(t, true)
+	for _, tc := range []struct {
+		path, body string
+		want       int
+	}{
+		{"/api/nodes/demo-worker/purge", `{"confirmation":"demo-worker"}`, 409},
+		{"/api/nodes/demo-worker/remove", `{"confirmation":"wrong"}`, 400},
+		{"/api/nodes/--help/remove", `{"confirmation":"--help"}`, 404},
+	} {
+		if w := request(s, "POST", tc.path, tc.body); w.Code != tc.want {
+			t.Fatalf("%s: %d", tc.path, w.Code)
+		}
+	}
+	s.options.AllowWrites = false
+	if w := request(s, "POST", "/api/nodes/demo-worker/remove", `{"confirmation":"demo-worker"}`); w.Code != 403 {
+		t.Fatal(w.Code)
+	}
+	s.options.AllowWrites = true
+	for _, action := range []string{"remove", "purge"} {
+		if w := request(s, "POST", "/api/nodes/demo-worker/"+action, `{"confirmation":"demo-worker"}`); w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	nodes, _ := d.ListNodes(context.Background())
+	if len(nodes) != 1 || nodes[0].ID != "demo-control" {
+		t.Fatal(nodes)
+	}
+}
