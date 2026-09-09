@@ -1,6 +1,17 @@
-# Customer accounts, project hosting, and payments
+# Customer accounts, project hosting, payments, and domain resale
 
 Date: 2026-09-09. Status: proposed implementation plan. No production changes, purchases, or charges are authorized by this document alone.
+
+## Active project goal
+
+Deliver these four capabilities as one customer hosting MVP:
+
+1. Domain purchasing and resale through the panel.
+2. Multi-user login, workspaces and permissions.
+3. Hosting payments and customer website sales.
+4. Upload and deploy HTML/CSS/JavaScript sites and Node.js single-page applications.
+
+Preserve the existing VPS/Pi deployments. A visual website builder is excluded. The goal is complete only after implementation, tenant-isolation checks, recovery tests and pilot qualification. Actual purchases require provider setup and transaction authorization; a development goal is not blanket permission to spend money.
 
 ## Agreed product scope
 
@@ -181,3 +192,35 @@ Before public hosting: brand/content-domain choice, pilot users, resource limits
 Before real payments: actual business country and Stripe/Connect activation, supported merchant countries and product types, plan currency/prices, fee policy, grace/retention/refund terms, and support contact. Use test credentials during development and private configuration for live credentials.
 
 Immediate next implementation: P0, then a focused P1 change for the portal DB, owner bootstrap, sessions, workspace ownership and permission middleware. Add upload/static publishing only after two-workspace isolation is demonstrated.
+
+## Added workstream: domain purchasing and resale
+
+This is part of the active MVP goal, not just support for attaching an existing domain. Registrar selection and effort estimation remain open. The earlier 42–69 day estimate excludes this added workstream and must be revised after provider discovery.
+
+### Registrar integration and ownership
+
+- Evaluate registrar/reseller APIs for availability search, registration, sandbox access, supported TLDs, wholesale and renewal prices, deposits/minimums, renewals, transfers and customer registrant support. Confirm resale rights and terms before selection. DNS-record API access alone is not the registrar purchase integration.
+- Use a provider adapter; implement one registrar first. Start with a limited standard-price TLD set. Exclude premium domains and complex eligibility requirements until explicitly supported.
+- The customer is the registrant where the provider permits the resale model. Record registrant consent and provider-required contact data privately; document verification, privacy services and transfer-out rights. Operator purchases for a customer must explicitly identify that workspace.
+- Workspace owners and authorized platform administrators can purchase/manage domains. Developers may configure approved DNS/site attachments but cannot spend money or transfer domains. Verify ownership on every registrar operation.
+
+### Purchase and billing flow
+
+- Search availability, obtain a short-lived server-side quote, show the full initial price, term, renewal price, fees/taxes and auto-renew choice, and require explicit purchase confirmation.
+- Recheck availability and price before charging/registering. Use idempotent domain orders and reconcile unknown registrar/payment outcomes before retrying. Never charge or register twice after a timeout.
+- Define a payment/registration state machine. Where supported, authorize payment before registration and capture on success. Otherwise document the compensation/refund flow. Failed registration must not silently consume a customer's payment; successful registration followed by failed capture requires an operator reconciliation case.
+- Keep domain orders/renewals distinct from hosting subscriptions and merchant website sales. Hosting cancellation must not cancel or transfer a customer's domain.
+- Link successful purchases to the workspace and provide DNS setup, site attachment and HTTPS status. Do not overwrite existing records without reviewing their purpose.
+
+### Renewals and lifecycle
+
+- Show expiry, renewal price, auto-renew state, transfer lock and verification status. Provide manual renewal and explicit auto-renew consent, with notifications before expiry and on payment/registrar failures.
+- Schedule renewals ahead of expiry, reconcile provider state regularly, and alert operators about failures. Handle provider-specific grace/redemption periods without promising recovery outside provider rules.
+- Support registrant verification and domain transfer-out with reauthentication, ownership checks and audit records. Account closure must resolve retained domains and pending renewals explicitly.
+- Provide operator views for domain orders, renewal failures, refunds, registrar balance and margins. Alert before a reseller deposit is exhausted; funding the registrar account is a separate approved expenditure.
+
+### Delivery order and acceptance
+
+Implement registrar discovery alongside P0. Build purchasing after workspace authorization and platform payments are available, then connect it to website publishing. Include renewal/transfer handling before selling live domains. Use a provider sandbox or deterministic fake registrar for tests, then an explicitly approved low-cost pilot purchase.
+
+Acceptance: a customer can buy and attach an available domain; unavailable/stale quotes cannot overcharge; duplicate callbacks/timeouts cannot duplicate purchases; failed registration is compensated; renewal and expiry notifications work; another workspace cannot access registrant details or modify/transfer the domain; hosting cancellation preserves domain ownership; transfer-out is possible. The four-item goal cannot be marked complete without this workstream.
