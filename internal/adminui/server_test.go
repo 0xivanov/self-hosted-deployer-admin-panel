@@ -193,3 +193,20 @@ func TestRemoteAuthentication(t *testing.T) {
 		t.Fatal("accepted weak credential")
 	}
 }
+
+func TestRemoteDefaultHTTPSPort(t *testing.T) {
+	opts := Options{Host: "admin.example.com", PublicURL: "https://admin.example.com", Identity: "local-demo", Username: "admin", Password: strings.Repeat("x", 32)}
+	s, err := New(NewDemo(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("GET", opts.PublicURL+"/api/overview", nil)
+	r.SetBasicAuth(opts.Username, opts.Password)
+	r.Header.Set("Origin", opts.PublicURL)
+	r.Header.Set("X-Deployer-UI", s.token)
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}

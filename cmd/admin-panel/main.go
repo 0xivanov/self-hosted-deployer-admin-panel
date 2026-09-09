@@ -48,8 +48,8 @@ func run() error {
 	displayURL := "http://" + address
 	if *publicURL != "" {
 		u, e := url.Parse(*publicURL)
-		if e != nil || u.Scheme != "https" || u.Hostname() == "" || u.Port() != fmt.Sprint(*port) {
-			return errors.New("public URL must use HTTPS and include the selected port")
+		if e != nil || u.Scheme != "https" || u.Hostname() == "" {
+			return errors.New("public URL must use HTTPS and include a hostname")
 		}
 		if *cert == "" || *key == "" || *authFile == "" {
 			return errors.New("remote access requires --tls-cert, --tls-key and --auth-file")

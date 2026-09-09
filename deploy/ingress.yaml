@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: deployer-admin
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-panel
+  namespace: deployer-admin
+  annotations:
+    traefik.ingress.kubernetes.io/service.serversscheme: https
+    traefik.ingress.kubernetes.io/service.serverstransport: deployer-admin-admin-panel@kubernetescrd
+spec:
+  ports:
+    - name: https
+      port: 8787
+      targetPort: 8787
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: admin-panel-vps
+  namespace: deployer-admin
+  labels:
+    kubernetes.io/service-name: admin-panel
+    endpointslice.kubernetes.io/managed-by: admin-panel-operator
+addressType: IPv4
+ports:
+  - name: https
+    protocol: TCP
+    port: 8787
+endpoints:
+  - addresses: ["10.8.0.1"]
+    conditions:
+      ready: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: admin-panel
+  namespace: deployer-admin
+spec:
+  serverName: "159.195.146.26"
+  rootCAsSecrets:
+    - admin-panel-origin-ca
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: admin-panel
+  namespace: deployer-admin
+  annotations:
+    cert-manager.io/cluster-issuer: deployer-letsencrypt
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: admin.0xivanov.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-panel
+                port:
+                  number: 8787
+  tls:
+    - hosts: [admin.0xivanov.dev]
+      secretName: admin-panel-public-tls

@@ -67,14 +67,14 @@ node --check internal/adminui/static/app.js  # optional JS syntax check
 
 Tests cover cross-origin and rebinding rejection, missing sessions, read-only mode, identity mismatch, update/rollback, external-change conflicts, failed deploys, request/output bounds and frozen private CLI configuration. Browser verification exercised demo details/logs/update/rollback and the live read-only inventory, status and log endpoints. No live deployment was changed by these panel checks.
 
-## VPS deployment without a domain
+## VPS deployment
 
-The current service is available at `https://159.195.146.26:8787` in **read-only** mode. It uses a self-signed certificate with the IP address in its SAN, so browsers show a trust warning. Verify its SHA-256 fingerprint against the private connection notes before accepting it. A domain and trusted certificate can replace this later.
+The service is available at `https://admin.0xivanov.dev` in **read-only** mode. Cloudflare DNS points directly to the VPS. The existing Traefik ingress serves a trusted Let’s Encrypt certificate managed and renewed by cert-manager. The original IP URL has been superseded.
 
 Remote mode listens on all IPv4 interfaces at the selected port and requires all of:
 
 ```sh
-admin-panel --public-url https://159.195.146.26:8787 \
+admin-panel --public-url https://admin.0xivanov.dev \
   --tls-cert /etc/deployer-admin-panel/tls.crt \
   --tls-key /etc/deployer-admin-panel/tls.key \
   --auth-file /etc/deployer-admin-panel/auth.json \
@@ -82,7 +82,7 @@ admin-panel --public-url https://159.195.146.26:8787 \
   --deployer /opt/deployer-admin-panel/deployer
 ```
 
-The private auth JSON contains `username` and `password`. Use a randomly generated password of at least 24 characters; it is distinct from the control-plane token. Authentication protects the HTML, assets and APIs; the browser session header and exact origin checks still apply. TLS terminates in the Go service, not a proxy. Password rotation requires a service restart. HTTP Basic authentication has no application logout; close the browser session to clear cached credentials.
+The private auth JSON contains `username` and `password`. Use a randomly generated password of at least 24 characters; it is distinct from the control-plane token. Authentication protects the HTML, assets and APIs; the browser session header and exact origin checks still apply. The public URL defines the exact browser origin independently of the listener port. Traefik preserves that Host header and uses HTTPS to reach the Go listener. The Go service requires actual TLS and does not trust forwarded headers as proof of HTTPS. Password rotation requires a service restart. HTTP Basic authentication has no application logout; close the browser session to clear cached credentials.
 
 See [the systemd unit](deploy/deployer-admin-panel.service). Install the binaries under `/opt/deployer-admin-panel`, private credentials and TLS files under `/etc/deployer-admin-panel`, owned by the dedicated `deployer-admin` user. The service uses systemd sandboxing and starts on boot. Config and key files must be mode `0600`. Back up an existing binary before replacing it, restart only `deployer-admin-panel`, and verify both the unauthenticated 401 response and authenticated app inventory.
 
@@ -93,3 +93,17 @@ sudo systemctl disable --now deployer-admin-panel # removes remote access
 ```
 
 This deployment does not modify the existing control-plane binary or application workloads. It retains an administrator credential on the VPS for CLI reads; read-only enforcement is in the panel, not a reduced-privilege backend token.
+
+### Domain routing
+
+[The ingress manifest](deploy/ingress.yaml) creates resources only in `deployer-admin`. It routes `admin.0xivanov.dev:443` to the VPS service on `10.8.0.1:8787`. The origin certificate is verified against the `admin-panel-origin-ca` Secret with `serverName: 159.195.146.26`; TLS verification is not disabled. Bootstrap the Secret from the origin's **public certificate**, never its private key:
+
+```sh
+sudo k3s kubectl apply -f deploy/ingress.yaml
+sudo k3s kubectl create secret generic admin-panel-origin-ca -n deployer-admin \
+  --from-file=tls.ca=/etc/deployer-admin-panel/tls.crt --dry-run=client -o yaml | sudo k3s kubectl apply -f -
+```
+
+The public certificate renews automatically through the existing `deployer-letsencrypt` ClusterIssuer. The separate self-signed origin certificate expires September 9, 2027; replace it and update the origin CA Secret before expiry. Replacing that certificate requires restarting the panel. Cloudflare API credentials are used locally to create DNS only, and are not installed on the VPS or committed here. The DNS record is DNS-only, not Cloudflare-proxied.
+
+To revert the domain transition, restore `/opt/deployer-admin-panel/admin-panel.previous` and `/etc/deployer-admin-panel/service.previous`, reload systemd and restart the panel, then remove only the admin ingress resources and DNS record. This restores the previous IP URL and certificate warning.
