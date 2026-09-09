@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="deployer-ui-token" content="{{.Token}}">
+  <title>Deployer Console</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><span class="brand-mark">D</span><span>Deployer</span><span class="brand-badge">CONSOLE</span></div>
+      <div class="sidebar-label">Workspace</div>
+      <nav class="nav" aria-label="Primary navigation">
+        <button class="nav-item is-active" type="button" data-view="applications"><span class="nav-icon">▦</span><span>Applications</span></button>
+        <button class="nav-item" type="button" data-view="servers"><span class="nav-icon">⌘</span><span>Servers</span></button>
+      </nav>
+      <div class="sidebar-footer"><span class="status-dot is-live"></span><span id="connection-label">Connecting…</span></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="mobile-menu" id="menu-button" type="button" aria-label="Open navigation">☰</button>
+        <div class="breadcrumbs"><span>Workspace</span><span class="crumb-separator">/</span><strong id="breadcrumb-view">Applications</strong></div>
+        <div class="topbar-actions"><button class="icon-button" id="refresh-button" type="button" aria-label="Refresh data">↻</button><span class="user-avatar">AD</span></div>
+      </header>
+
+      <div class="page-wrap">
+        <section class="page-heading">
+          <div><p class="eyebrow">Environment</p><h1 id="environment-name">Loading environment…</h1><p class="muted" id="endpoint-name">Connecting to control plane</p></div>
+          <div class="connection-chip"><span class="status-dot is-live"></span><span id="connection-state">Connecting</span></div>
+        </section>
+        <div class="alert mode-banner" id="mode-banner" role="status">Loading environment…</div>
+        <div class="alert error-alert" id="global-error" role="alert" hidden></div>
+
+        <section id="applications-view" class="view-panel">
+          <div class="section-heading"><div><h2>Applications</h2><p class="muted">Deployments and runtime health across this environment.</p></div><button class="button button-primary" id="new-deployment-button" type="button">＋ New deployment</button></div>
+          <div class="stats-grid" id="application-stats" aria-label="Application summary"></div>
+          <div class="content-grid">
+            <section class="card application-card"><div class="card-header"><div><h3>Application inventory</h3><p class="muted">Select an application to inspect status and history.</p></div><span class="count-pill" id="app-count">0</span></div><div class="table-wrap"><table><thead><tr><th>Application</th><th>Status</th><th>Image</th><th>Replicas</th><th>Updated</th></tr></thead><tbody id="applications-table"><tr><td colspan="5"><div class="loading-state"><span class="spinner"></span>Loading applications…</div></td></tr></tbody></table></div></section>
+            <aside class="card activity-card"><div class="card-header"><div><h3>Recent activity</h3><p class="muted">Most recently updated applications</p></div><span class="activity-pulse"></span></div><div id="activity-list" class="activity-list"><div class="empty-state">No recent activity</div></div></aside>
+          </div>
+        </section>
+
+        <section id="servers-view" class="view-panel" hidden><div class="section-heading"><div><h2>Servers</h2><p class="muted">Connected nodes available to the control plane.</p></div></div><div class="card"><div class="card-header"><div><h3>Node inventory</h3><p class="muted">Health and scheduling state for each server.</p></div><span class="count-pill" id="node-count">0</span></div><div class="table-wrap"><table><thead><tr><th>Server</th><th>Status</th><th>Hostname</th><th>Platform</th><th>Last seen</th></tr></thead><tbody id="servers-table"></tbody></table></div></div></section>
+
+        <section id="detail-view" class="view-panel" hidden>
+          <button class="back-link" id="back-button" type="button">← Back to applications</button>
+          <div class="detail-heading"><div><p class="eyebrow">Application</p><h2 id="detail-name">Application</h2><p class="muted" id="detail-image"></p></div><span class="status-badge" id="detail-status">Unknown</span></div>
+          <div class="stats-grid detail-stats" id="detail-stats"></div>
+          <div class="detail-grid"><section class="card"><div class="card-header"><div><h3>Configuration</h3><p class="muted">Review or update the deployment manifest.</p></div><button class="button button-secondary" id="edit-config-button" type="button">Edit YAML</button></div><pre class="config-preview" id="config-preview">Loading configuration…</pre></section><section class="card"><div class="card-header"><div><h3>Runtime status</h3><p class="muted">Current health and routing.</p></div></div><div id="runtime-summary" class="runtime-summary"></div></section></div>
+          <section class="card logs-card"><div class="card-header"><div><h3>Logs</h3><p class="muted">Recent output from the running application.</p></div><button class="button button-quiet" id="refresh-logs-button" type="button">Refresh logs</button></div><pre class="logs" id="logs-output">Loading logs…</pre></section>
+          <section class="card history-card"><div class="card-header"><div><h3>Deployment history</h3><p class="muted">Restore is available after an update in this UI session.</p></div><button id="rollback-button" class="button button-secondary" type="button" hidden>Restore previous configuration</button></div><div class="table-wrap"><table><thead><tr><th>Deployment</th><th>Status</th><th>Created</th><th>Failure reason</th><th></th></tr></thead><tbody id="history-table"></tbody></table></div></section>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modal-backdrop" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button class="modal-close" id="modal-close" type="button" aria-label="Close">×</button><p class="eyebrow" id="modal-eyebrow">Confirm action</p><h2 id="modal-title">Confirm deployment</h2><p class="modal-copy" id="modal-copy"></p><label class="yaml-label" id="yaml-editor-label" for="yaml-editor">Deployment YAML</label><textarea id="yaml-editor" spellcheck="false" hidden></textarea><p id="modal-error" class="error-alert alert" role="alert" hidden></p><div class="modal-actions"><button class="button button-secondary" id="modal-cancel" type="button">Cancel</button><button class="button button-primary" id="modal-confirm" type="button">Confirm</button></div></div></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
