@@ -1,6 +1,6 @@
 # Deployer Admin Panel
 
-A local browser console for operator-managed Self-Hosted Deployer environments. The Go server serves an embedded frontend and delegates live operations to the existing authenticated `deployer` CLI. No frontend build, Node runtime, new public API or server deployment is required.
+A browser console for operator-managed Self-Hosted Deployer environments. The Go server serves an embedded frontend and delegates live operations to the existing authenticated `deployer` CLI. No frontend build or Node runtime is required. Local mode needs no server deployment.
 
 ## Start a demo
 
@@ -48,13 +48,13 @@ go run ./cmd/admin-panel --context customer-a --allow-writes
 
 ## Scope and safeguards
 
-The server binds only to `127.0.0.1`. It is a local operator console, not a public multi-user portal. Do not expose it through a tunnel or reverse proxy. Live control-plane connections require HTTPS; the browser never receives the administrator token. The selected endpoint and credentials are copied into a private temporary context, pinned to the observed server identity and removed on graceful shutdown. Changing another CLI context cannot silently retarget an open panel. Abrupt termination may leave a private `deployer-admin-*` temporary directory for manual cleanup.
+By default the server binds only to `127.0.0.1`. Remote mode explicitly requires HTTPS and a separate panel password. This is a single-operator console, not a multi-user portal. Do not expose local mode through a tunnel or reverse proxy. Live control-plane connections require HTTPS; the browser never receives the administrator token. The selected endpoint and credentials are copied into a private temporary context, pinned to the observed server identity and removed on graceful shutdown. Changing another CLI context cannot silently retarget an open panel. Abrupt termination may leave a private `deployer-admin-*` temporary directory for manual cleanup.
 
 API requests require a per-process random session header. Host/origin checks, no cross-origin access, no-store responses and a restrictive Content Security Policy protect the local browser boundary. Requests and log output are bounded. Live requests still use the backend's authentication and mutation audit controls.
 
 Rollback restores application configuration, not database contents, volumes or historical container artifacts. Only updates made during the current panel process create rollback snapshots. Historical deployment rows do not contain the old YAML. A changed desired configuration blocks a stale restore; an external update concurrent with the final deploy cannot be made atomic because the current backend API has no revision precondition. Image tags may change upstream; use image digests when exact artifact restoration matters. A successful deploy response means the backend accepted/applied the configuration, not that rollout readiness has been verified. Refresh the runtime details afterward.
 
-There is no customer self-service, billing, secret editor, node provisioning, persistent rollback archive or production authentication portal in this initial UI.
+There is no customer self-service, billing, secret editor, node provisioning, persistent rollback archive or multi-user authentication portal in this initial UI.
 
 ## Build and validate
 
@@ -66,3 +66,30 @@ node --check internal/adminui/static/app.js  # optional JS syntax check
 ```
 
 Tests cover cross-origin and rebinding rejection, missing sessions, read-only mode, identity mismatch, update/rollback, external-change conflicts, failed deploys, request/output bounds and frozen private CLI configuration. Browser verification exercised demo details/logs/update/rollback and the live read-only inventory, status and log endpoints. No live deployment was changed by these panel checks.
+
+## VPS deployment without a domain
+
+The current service is available at `https://159.195.146.26:8787` in **read-only** mode. It uses a self-signed certificate with the IP address in its SAN, so browsers show a trust warning. Verify its SHA-256 fingerprint against the private connection notes before accepting it. A domain and trusted certificate can replace this later.
+
+Remote mode listens on all IPv4 interfaces at the selected port and requires all of:
+
+```sh
+admin-panel --public-url https://159.195.146.26:8787 \
+  --tls-cert /etc/deployer-admin-panel/tls.crt \
+  --tls-key /etc/deployer-admin-panel/tls.key \
+  --auth-file /etc/deployer-admin-panel/auth.json \
+  --config /etc/deployer-admin-panel/config.json \
+  --deployer /opt/deployer-admin-panel/deployer
+```
+
+The private auth JSON contains `username` and `password`. Use a randomly generated password of at least 24 characters; it is distinct from the control-plane token. Authentication protects the HTML, assets and APIs; the browser session header and exact origin checks still apply. TLS terminates in the Go service, not a proxy. Password rotation requires a service restart. HTTP Basic authentication has no application logout; close the browser session to clear cached credentials.
+
+See [the systemd unit](deploy/deployer-admin-panel.service). Install the binaries under `/opt/deployer-admin-panel`, private credentials and TLS files under `/etc/deployer-admin-panel`, owned by the dedicated `deployer-admin` user. The service uses systemd sandboxing and starts on boot. Config and key files must be mode `0600`. Back up an existing binary before replacing it, restart only `deployer-admin-panel`, and verify both the unauthenticated 401 response and authenticated app inventory.
+
+```sh
+sudo systemctl status deployer-admin-panel
+sudo journalctl -u deployer-admin-panel -n 30 --no-pager
+sudo systemctl disable --now deployer-admin-panel # removes remote access
+```
+
+This deployment does not modify the existing control-plane binary or application workloads. It retains an administrator credential on the VPS for CLI reads; read-only enforcement is in the panel, not a reduced-privilege backend token.

@@ -1,9 +1,10 @@
-// Package adminui provides a loopback-only browser client for the existing RPC API.
+// Package adminui provides a browser client with local or authenticated HTTPS access.
 package adminui
 
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +40,7 @@ type Backend interface {
 type Options struct {
 	Host, Environment, Endpoint, Identity string
 	AllowWrites, Demo                     bool
+	PublicURL, Username, Password         string
 }
 
 type snapshot struct{ ID, YAML, After string }
@@ -51,8 +54,19 @@ type Server struct {
 }
 
 func New(backend Backend, options Options) (*Server, error) {
-	if !strings.HasPrefix(options.Host, "127.0.0.1:") || options.Identity == "" {
-		return nil, errors.New("UI requires a loopback address and a bound server identity")
+	if options.Identity == "" {
+		return nil, errors.New("UI requires a bound server identity")
+	}
+	if options.PublicURL != "" {
+		u, err := url.Parse(options.PublicURL)
+		if err != nil || u.Scheme != "https" || u.Host != options.Host || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || u.ForceQuery {
+			return nil, errors.New("public URL must be an HTTPS origin matching the configured host")
+		}
+		if options.Username == "" || len(options.Password) < 24 {
+			return nil, errors.New("public UI requires a username and password of at least 24 characters")
+		}
+	} else if !strings.HasPrefix(options.Host, "127.0.0.1:") {
+		return nil, errors.New("local UI requires a loopback address")
 	}
 	nonce := make([]byte, 32)
 	if _, err := rand.Read(nonce); err != nil {
@@ -71,9 +85,27 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 	origin := "http://" + s.options.Host
+	if s.options.PublicURL != "" {
+		origin = s.options.PublicURL
+	}
 	if r.Host != s.options.Host || (r.Header.Get("Origin") != "" && r.Header.Get("Origin") != origin) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-		failure(w, http.StatusForbidden, "Open the UI using its printed local address")
+		failure(w, http.StatusForbidden, "Open the UI using its configured address")
 		return
+	}
+	if s.options.PublicURL != "" {
+		if r.TLS == nil {
+			failure(w, 403, "HTTPS required")
+			return
+		}
+		user, password, ok := r.BasicAuth()
+		gotUser, wantUser := sha256.Sum256([]byte(user)), sha256.Sum256([]byte(s.options.Username))
+		gotPassword, wantPassword := sha256.Sum256([]byte(password)), sha256.Sum256([]byte(s.options.Password))
+		authenticated := subtle.ConstantTimeCompare(gotUser[:], wantUser[:]) & subtle.ConstantTimeCompare(gotPassword[:], wantPassword[:])
+		if !ok || authenticated != 1 {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Deployer Admin", charset="UTF-8"`)
+			failure(w, 401, "Authentication required")
+			return
+		}
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/") {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Deployer-UI")), []byte(s.token)) != 1 {

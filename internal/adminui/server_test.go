@@ -2,6 +2,7 @@ package adminui
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"net/http/httptest"
 	"strings"
@@ -137,5 +138,58 @@ func TestStaticAndJSONValidation(t *testing.T) {
 	}
 	if w := request(s, "GET", "/api/apps/--token", ""); w.Code != 400 {
 		t.Fatal("CLI flag accepted as app name")
+	}
+}
+
+func TestRemoteAuthentication(t *testing.T) {
+	opts := Options{Host: "192.0.2.1:8787", PublicURL: "https://192.0.2.1:8787", Identity: "local-demo", Username: "admin", Password: strings.Repeat("x", 32)}
+	s, err := New(NewDemo(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, path, origin, password string
+		secure                       bool
+		want                         int
+	}{
+		{"anonymous index", "/", "", "", true, 401},
+		{"anonymous API", "/api/overview", "", "", true, 401},
+		{"wrong password", "/", "", "wrong", true, 401},
+		{"plaintext", "/", "", opts.Password, false, 403},
+		{"authenticated index", "/", "", opts.Password, true, 200},
+		{"authenticated API", "/api/overview", opts.PublicURL, opts.Password, true, 200},
+		{"foreign origin", "/api/overview", "https://evil.test", opts.Password, true, 403},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", opts.PublicURL+tc.path, nil)
+			r.TLS = nil
+			if tc.secure {
+				r.TLS = &tls.ConnectionState{}
+			}
+			if tc.password != "" {
+				r.SetBasicAuth(opts.Username, tc.password)
+			}
+			r.Header.Set("Origin", tc.origin)
+			r.Header.Set("X-Deployer-UI", s.token)
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+			if w.Code != tc.want {
+				t.Fatalf("got %d want %d", w.Code, tc.want)
+			}
+			if tc.want == 401 && strings.Contains(w.Body.String(), s.token) {
+				t.Fatal("session leaked")
+			}
+		})
+	}
+	for _, origin := range []string{"http://192.0.2.1:8787", "https://other.test:8787", opts.PublicURL + "/path", opts.PublicURL + "?"} {
+		invalid := opts
+		invalid.PublicURL = origin
+		if _, err := New(NewDemo(), invalid); err == nil {
+			t.Fatalf("accepted %s", origin)
+		}
+	}
+	opts.Password = "weak"
+	if _, err := New(NewDemo(), opts); err == nil {
+		t.Fatal("accepted weak credential")
 	}
 }

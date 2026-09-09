@@ -1,0 +1,30 @@
+[Unit]
+Description=Deployer Admin Panel (HTTPS, read-only)
+Wants=network-online.target
+After=network-online.target deployer-server.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=deployer-admin
+Group=deployer-admin
+ExecStart=/opt/deployer-admin-panel/admin-panel --deployer /opt/deployer-admin-panel/deployer --config /etc/deployer-admin-panel/config.json --public-url https://159.195.146.26:8787 --tls-cert /etc/deployer-admin-panel/tls.crt --tls-key /etc/deployer-admin-panel/tls.key --auth-file /etc/deployer-admin-panel/auth.json
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+MemoryMax=384M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
