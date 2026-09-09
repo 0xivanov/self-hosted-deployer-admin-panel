@@ -1,153 +1,183 @@
-# Customer accounts, website publishing, and billing
+# Customer accounts, project hosting, and payments
 
-Date: 2026-09-09. Status: proposed plan, not implemented. This document does not authorize production changes or purchases.
+Date: 2026-09-09. Status: proposed implementation plan. No production changes, purchases, or charges are authorized by this document alone.
 
-## Recommended first product
+## Agreed product scope
 
-A customer signs up, verifies their email, creates a workspace, chooses a website template, edits text and images, previews it, purchases a hosting plan, and publishes. They can update the site, restore an earlier publication, attach a domain, invite a collaborator, and manage their subscription.
+Customers register, create a workspace, upload an **HTML/static project or Node.js project**, configure it, and publish it with HTTPS. They can redeploy a new version, inspect build/runtime logs, restore a prior release, connect a domain, manage collaborators, and pay for hosting.
 
-Start with an opinionated template/section editor for portfolios and small-business websites. Target three good templates and a small, accessible set of sections. A complete Wix-style canvas is a substantially larger product. One-click WordPress is another viable product but has a different runtime and maintenance burden.
+Two payment flows are included:
 
-Working assumptions, pending the owner's preferences:
+1. Customers pay the platform for hosting subscriptions.
+2. Visitors pay customers for products/services sold through their hosted sites.
 
-- Hosting subscriptions are the first payment flow. Sales by customers through their websites are a later, separate payment flow.
-- Invite-only pilot first, then public registration after isolation and abuse checks pass.
-- Website content is data rendered by platform-owned templates. Customers cannot upload executable code, arbitrary containers, scripts, PHP, or arbitrary YAML in the first release.
-- The existing operator console remains at admin.0xivanov.dev. A customer portal gets a separate origin, provisionally app.0xivanov.dev. Published sites and previews use a separate registrable domain, chosen before launch, rather than sharing the admin domain's cookie boundary.
-- Existing applications and both Pi workers remain the legacy environment. This plan adds a product above the hosting POC; it does not claim that the POC already provides customer tenancy.
+There is **no drag-and-drop editor or template builder** in this plan. WordPress/PHP hosting is also outside the first release. Initial delivery uses ZIP uploads; Git integration follows once the upload/build pipeline is qualified.
 
-## What already exists and what must change
+## Current code and gaps
 
-| Existing component | Reuse | Gap |
+| Component | Reuse | Missing |
 | --- | --- | --- |
-| Go admin panel and static frontend | UI conventions, operational diagnostics | One Basic Auth login, no users, sessions, ownership, or durable portal DB |
-| CLI-backed panel API | Keep for operators | Holds a global environment credential; not an authorization boundary for customers |
-| Deployer server and agents | Managed application lifecycle, readiness, hosting profiles, domains | Admin/agent authentication, not customer resource permissions |
-| Backblaze backups and monitoring | Operational patterns | New portal data, website revisions, payment records, and restore tests need coverage |
-| Named CLI environments | Dedicated customer runtimes for later WordPress | Central website product and asynchronous provisioning are not implemented |
+| Admin-panel Go service and frontend | UI conventions, operational views | Users, sessions, workspace ownership, upload/build flows, durable jobs and billing |
+| CLI-backed panel | Existing operator app/node controls | Uses an environment-wide administrator credential; cannot be exposed to customers |
+| Deployer server and agents | Deployment lifecycle, preflight, readiness, logs, domains, hosting profiles | User authorization, source builds, central customer/environment mapping |
+| Named CLI environments | Separate customer runtimes | Portal-side orchestration and provisioning queue |
+| B2 backups and monitoring | Existing operational patterns | Portal DB, source artifacts, immutable releases, billing reconciliation and restore coverage |
 
-Repository evidence: admin-panel `internal/adminui/server.go`, `internal/client/client.go`, `cmd/admin-panel/main.go`; deployer `internal/server/auth.go`, `internal/server/app.go`, `internal/ingress/`, and `docs/hosting-poc-plan.md`. The original POC explicitly excluded customer RBAC, public dashboards, shared-cluster tenancy, and automated billing.
+Evidence: admin-panel `internal/adminui/server.go`, `internal/client/client.go`, `cmd/admin-panel/main.go`; deployer `internal/server/auth.go`, `internal/server/app.go`, `internal/ingress/`, and `docs/hosting-poc-plan.md`. Existing authentication distinguishes administrators and agents. The earlier hosting POC explicitly excluded public signup, customer RBAC, shared-cluster tenancy and automated billing.
 
-## Architecture and boundaries
+This is a new customer product built on the operational POC, not a small login-form extension.
 
-Keep development in the admin-panel repository, adding independently runnable customer-portal and publisher services. Keep the deployer repository responsible for runtime deployment and any new narrow runtime capabilities. Do not duplicate its application reconciliation engine.
+## Proposed architecture
 
-1. **Operator console:** platform administration and node management. Bootstrap the current owner as a platform administrator using a local command, never public signup. Migrate its browser authentication only after the new authentication path works; retain an SSH-only recovery procedure.
-2. **Customer portal:** account, workspace, editor, domain, billing, and publication APIs. Runs under a separate service account, without the operator's CLI config, Kubernetes credentials, or node-management routes.
-3. **Publisher worker:** consumes validated jobs from a durable queue. Receives tenant/site/revision IDs, not commands, paths, arbitrary image names, or YAML. Resolves ownership and entitlement again, generates an immutable static artifact, and atomically switches the published revision. Retry-safe and restart-safe.
-4. **Website serving runtime:** platform-owned static serving software, read-only access to published artifacts, no portal cookies or control-plane credentials. Draft previews have unguessable expiring access URLs on the separate content domain and are not indexable.
-5. **Storage:** separate portal SQLite database for the initial single-instance service, with transactions, foreign keys, migration checks, and a DB-backed job queue. Use a separate private B2 bucket for website assets and revisions; never reuse the backup bucket or its credentials. Public delivery goes through the serving runtime with tenant/site-scoped lookup. Restore tests must cover both DB and referenced artifacts. Move to PostgreSQL before adding concurrent portal replicas if measurements require it.
-6. **Runtime placement:** first tests use local/disposable infrastructure. Before unrelated customers publish, provision a small separate website-serving VPS or another approved isolated serving environment. A shared server is acceptable here only for platform-generated static files without customer code execution. This is a new, restricted static-serving design, not permission to schedule arbitrary customer apps on the legacy cluster. WordPress uses separate customer VMs initially.
+Keep the existing operator console at `admin.0xivanov.dev`. Add a separately runnable customer portal in the admin-panel repository, provisionally `app.0xivanov.dev`. It must run under a separate service identity with no access to the operator CLI configuration or Kubernetes credentials. Keep deployer runtime changes in the deployer repository and reuse its reconciliation engine.
 
-A namespace label or hidden UI button is not sufficient authorization. Customers must never obtain the current full administrator credential. If a future customer feature must call the deployer API directly, implement and test scoped identities and resource ownership in the deployer server before exposing that feature. Do not rely on an `app_name` prefix or customer-supplied tenant ID.
+- **Portal API:** users, workspaces, projects, uploads, environment settings, domains, deployments and billing. Every operation checks membership and ownership server-side.
+- **Portal database:** separate SQLite database for the first single-instance pilot, with transactions, foreign keys, additive migrations, unique constraints and a persistent job/outbox queue. Move to PostgreSQL before scaling to concurrent portal replicas if needed. Do not retrofit these tables into the live deployer DB.
+- **Private artifact storage:** separate B2 bucket and credentials for source archives, build artifacts and retained releases. Do not reuse the offsite backup bucket. Upload URLs are short-lived and bound to an authorized workspace, object key and size limit.
+- **Build executor:** disposable isolated build VM per job, or a qualified equivalent VM boundary. Neither `npm ci`, install hooks, nor user build commands run on the Mac, portal host, control-plane VPS, or either Pi in production. Builders have no infrastructure or payment credentials; artifact access is short-lived and restricted to that job. Block metadata, private networks, control-plane addresses and unrelated storage; limit public package-download access, time, CPU, memory, disk, process count and output.
+- **Runtime publisher:** resolves approved workspace/environment mappings and translates project configuration into deployment requests. Users supply no arbitrary server URL, CLI arguments, Kubernetes manifests, or runtime credentials. A small privileged worker owns environment credentials separately from the public portal. Validate each job again and bind it to the expected server identity.
+- **Customer runtime:** initially one separate VM/environment per Node.js workspace. Customer code is untrusted; ordinary containers on a shared legacy host are not the isolation boundary. Do not join customer runtimes to the legacy WireGuard network. Dedicated environments cost more, so Node.js pricing must cover them. Shared untrusted compute is a later project requiring a qualified sandbox/microVM design.
+- **Static runtime:** static files may share a dedicated platform-owned serving tier because they are not executed server-side. It gets read-only artifact access, no portal cookies or administrator secrets. Use a separate registrable content domain for customer sites and previews. Do not serve arbitrary customer HTML under the admin origin.
 
-## Roles and ownership
+Operator node controls remain operator-only. Customers see their projects and assigned resources, never the fleet. Future direct customer deployer RPC access requires scoped identities and server-side resource authorization before release; UI hiding and app-name prefixes are insufficient.
 
-| Role | Allowed actions |
+## Supported upload contract
+
+| Project | Initial support |
 | --- | --- |
-| Platform administrator | Manage platform, nodes, plans, customer suspension and support audit |
-| Workspace owner | Manage that workspace, members, sites, domains and billing |
-| Editor | Edit, preview and publish that workspace's sites; no billing or membership changes |
-| Viewer | Read workspace and site status; no edits, publication or billing changes |
+| HTML/CSS/JS | ZIP containing a configured document root and `index.html`; immutable static publishing; optional SPA fallback |
+| Frontend source project | Node build with a configured static output directory such as `dist`; use the isolated builder, then static serving |
+| Node.js HTTP server | `package.json`, npm lockfile, supported LTS runtime, optional build command, start command, health path, and `PORT` binding on `0.0.0.0` |
 
-Membership is explicit and checked server-side on every request, upload, artifact fetch, background job, billing portal session and domain operation. Signup always creates an ordinary owner of a new workspace, never a platform administrator. No customer can list infrastructure nodes or inspect another workspace's logs, files, identifiers, invoices, or configuration. Prevent removal of the final workspace owner. Support access must be explicit and audited; do not add silent impersonation for the MVP.
+Select and pin a supported Node LTS version during implementation, document the supported matrix and patch policy, and reject unsupported versions. The initial package manager is npm with a lockfile; pnpm/yarn can follow. SSR frameworks work only when they meet the documented server contract. Do not promise universal framework autodetection. [Node's production release guidance](https://nodejs.org/en/about/previous-releases).
 
-Suggested portal tables: users, sessions, verification_tokens, password_reset_tokens, workspaces, memberships, invitations, sites, site_revisions, assets, domains, publication_jobs, plans, subscriptions, billing_events, audit_events. Use opaque IDs, unique normalized emails and domain claims, workspace foreign keys, hashed single-use tokens, revision numbers, and uniqueness constraints for idempotency. Do not store payment-card details.
+Uploads must reject path traversal, absolute paths, symlinks/hard links, duplicate normalized paths, archive bombs, excessive file counts, encrypted archives and oversized decompressed data. Ignore uploaded `node_modules`; reject `.git` and detected credential files such as `.env` with an actionable message. Secret detection is best-effort, not proof an archive contains no secrets. Do not expose original ZIPs publicly. [OWASP upload guidance](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html).
 
-## Implementation phases and acceptance criteria
+Node.js MVP workloads are stateless. The filesystem is ephemeral; use approved external databases and object storage. Provide an environment-variable/secret UI with write-only secret values, encryption at rest and deployment-scoped injection. Runtime secrets are never available during builds. Build-time private credentials, persistent volumes, cron jobs, background workers, shell/SSH access and custom Dockerfiles are deferred. Document supported request timeouts, body limits and WebSocket behavior before launch.
 
-### Phase 0: contracts and compatibility baseline, 2–3 engineering days
+## Accounts, roles and data model
 
-- Record current API responses, auth behavior, deployments and migration baseline.
-- Define roles, resource ownership, template schema, job state machine, publication pointer, plan limits and API contracts.
-- Add feature flags: customer accounts, signup, publishing, billing, and WordPress. Defaults preserve the existing console.
-- Establish synthetic two-customer fixtures and test payment data. No live customer or credential fixtures.
+| Role | Permissions |
+| --- | --- |
+| Platform administrator | Fleet, plans, support, environment assignment, suspension, audited platform actions |
+| Workspace owner | Own projects, membership, secrets, domains, deployments and billing |
+| Developer | Own-workspace project configuration, uploads, secrets, deploy and logs; no billing/membership changes |
+| Viewer | Own-workspace non-secret project state and deployment status; no mutations |
 
-Exit: reviewed permission matrix and schema, tests for legacy paths, and a concrete deployment/rollback runbook.
+Do not expose runtime/build logs to viewers by default because customer applications may log sensitive data. Decide any broader read-only role explicitly. Prevent removal of the last owner. Signup creates a normal workspace owner, never a platform administrator. Bootstrap the existing owner via a local administrative command and provide an SSH-only recovery procedure.
 
-### Phase 1: account system and authorization, 6–10 days
+Tables: users, sessions, verification/reset tokens, workspaces, memberships, invitations, environments, projects, uploads, builds, releases, deployment_jobs, environment_secrets, domains, plans, subscriptions, billing_events, connected_accounts, products, orders, payment_events and audit_events. Use opaque IDs, tenant foreign keys, unique domain claims, revision numbers and idempotency constraints. Separate merchant sales records from hosting subscription records. Never store card data.
 
-- Email/password signup, verification, login, logout, forgot/reset password, invitations and profile page. Invite-only mode initially.
-- Use established cryptographic libraries and Argon2id password hashing. Use opaque server-side sessions in Secure, HttpOnly, host-only cookies with appropriate SameSite policy. Rotate sessions at authentication; revoke on password reset, account disable and membership changes. Add CSRF protection for all cookie-authenticated mutations.
-- Persist single-use, expiring hashed verification/reset tokens. Generic account-recovery responses, bounded password lengths, login/reset throttling, and audit events without secrets. Rate-limit before expensive hashing.
-- Add MFA for platform administrators before public launch; recovery codes are hashed and single use. Customer MFA can follow the pilot.
-- Add workspace membership middleware and role-aware navigation. Never infer permissions solely from frontend state.
-- Configure transactional email separately from operational alerts. Existing delivery of monitoring mail does not prove verification/reset email deliverability.
-- Add independent portal backups and a tested admin recovery command. No shared Basic Auth credential as a public fallback.
+## Delivery phases
 
-Exit: two users cannot access each other's resources by changing IDs, URLs, API bodies or asset paths; logout/reset/revocation work; SMTP failure does not create an activated account or lose retryable mail.
+### P0. Contracts and compatibility, 2–3 engineering days
 
-### Phase 2: template editor and reliable publishing, 8–14 days
+- Freeze upload/runtime contracts, ownership matrix, job states, supported Node version and deployment mapping.
+- Record current API behavior and sanitized legacy manifests. Add two-customer fixtures and a disposable runtime test environment.
+- Feature flags for customer accounts, public signup, upload/build, publishing, hosting billing and merchant payments. Preserve existing defaults.
 
-- Site wizard: name, template, theme, pages, logo, and platform URL.
-- Three responsive templates with sections such as hero, services, gallery, about, and contact details. Edit text/images, add/remove/reorder approved sections, set colors/fonts, and preview mobile/desktop. Contact links first; form submission and spam handling are a separate feature.
-- Autosaved drafts with optimistic concurrency, basic SEO title/description, favicon and social preview image. Preview does not change the live site.
-- Validate uploaded file type, size and pixel dimensions; reject active content and sanitize rich text. Ignore arbitrary external asset-fetch instructions. No user build scripts or package installation.
-- Publish jobs: queued, rendering, publishing, ready, failed. Record stable job IDs and timestamps. Retry without duplicate sites; check membership and subscription again before publication. Only mark ready after a public probe succeeds.
-- Store immutable revision artifacts and a durable current-publication pointer. Failed jobs retain the prior working revision. Restore means selecting a retained site revision, not the current operator panel's process-local snapshot.
-- Default platform address plus domain wizard with ownership verification, unique claims, DNS instructions, automatic HTTPS and renewal alerts. Removal must release ownership safely and prevent dangling-domain takeover.
-- Enforce site, page, asset-storage, upload and publication-rate quotas. Explain limits in the UI and enforce them transactionally on the server.
+**Exit:** concrete schema/API review, isolation boundary and rollback runbook. No live node or application changes.
 
-Exit: a nontechnical pilot user publishes a small site without YAML, updates it, restores a prior version, and attaches a verified domain. Another workspace cannot read unpublished content or alter routing. Restart during publishing leaves a recoverable job and a working prior site.
+### P1. Multi-user authentication and authorization, 6–10 days
 
-### Phase 3: hosting subscriptions, 5–8 days
+- Signup/invitations, email verification, login/logout, forgot/reset password, profile and workspace membership.
+- Argon2id password hashes with maintained libraries; bounded input and rate limits before expensive hashing. Opaque server-side sessions, Secure/HttpOnly host-only cookies, rotation, revocation, CSRF protection and generic recovery responses.
+- Expiring single-use hashed verification/reset tokens; retryable transactional email outbox. Existing monitoring emails do not prove account-email delivery.
+- Account disable, session revocation, audit records and platform-admin MFA/recovery. Customer MFA can follow the pilot.
+- Permission checks on every resource, download, secret, log, background job and billing-portal request. Separate operator and customer routes and processes.
+- Independent portal DB backup/restore. Keep existing operator login until owner bootstrap and recovery have been tested, then retire the shared browser credential without adding a public bypass.
 
-- Start with one paid monthly plan and explicit limits. Offer unpublished drafts before payment; optional pilot entitlement is an audited operator action. Final price needs measured hosting, backups, email, payment-fee and support costs, not an invented margin.
-- Stripe-hosted Checkout for subscription purchase and Stripe Customer Portal for invoices, payment-method updates and cancellation. Server chooses allowed prices and workspace/customer mappings; never trust a browser-supplied amount or Stripe customer ID.
-- Verify webhook signatures against the raw request body. Persist/deduplicate events before acknowledgment; handle retries and out-of-order delivery, and reconcile periodically with Stripe. Use idempotency keys for Checkout creation and provisioning. The browser success redirect does not grant access.
-- Model billing status independently from deployment status and derive entitlements explicitly. Allow one active hosting subscription per workspace for the MVP.
-- Proposed policy for approval: 7-day failed-payment grace period; notify owner and block new publications after grace. At cancellation period end, suspend public serving while preserving access to billing/export. Retain site data for 30 days before the separately scheduled deletion workflow. Provider outages or missed webhooks must not immediately delete sites.
-- Test incomplete payments, authentication-required payments, renewals, declines, duplicates, out-of-order events, cancellation at period end, refund/dispute handling and recovery after missed events.
-- Publish pricing, cancellation/refund terms, privacy and retention information before charging real customers. Merchant account activation, tax/invoice configuration and support contact are launch prerequisites, not solved by installing an SDK.
+**Exit:** Alice cannot read or mutate Bob's projects by altering IDs, upload keys, job IDs or API bodies. Password reset/logout/disable invalidate sessions; customer signup cannot create platform admins. [Password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [sessions](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
 
-Exit: test-mode signup → Checkout → webhook → entitlement → publication works, and a customer can manage billing without seeing another workspace's account. No real charge is made during implementation tests.
+### P2. Static upload and publication, 5–8 days
 
-### Phase 4: paid pilot qualification, 5–8 days
+- Project wizard: HTML or Node type, upload ZIP, source validation, project settings and preview/status page.
+- Implement HTML uploads first: isolated extraction, durable release artifacts, platform HTTPS URL and redeploy with a new ZIP.
+- Domain ownership verification, unique claims, DNS instructions, certificate issuance/renewal and safe domain release. Customer content uses a separate domain and host-only portal cookies.
+- Persistent jobs and immutable releases. Recheck authorization/quota before each state transition. Publish atomically; readiness failure keeps the prior live release. Restoring an old release uses its immutable artifact, not the current panel's in-memory snapshot.
+- Bound storage, number of sites/files, upload rate, release retention and request volume. Tenant-specific asset resolution and preview access. Customer-side JS is allowed only on the isolated content origin.
 
-- Invite three pilot customers; keep public signup disabled until tenant-isolation and abuse checks pass.
-- Test malicious content, unauthorized object access, upload traversal, preview isolation, quota races, domain ownership, job retries and billing state transitions.
-- Validate the separate serving environment's capacity, costs, asset limits and recovery. Add basic abuse reporting, administrative suspension, and resource alerts. Avoid unlimited hosting plans.
-- Restore the portal DB plus site assets to a disposable environment. Confirm subscriptions reconcile correctly without charging again or publishing stale content.
-- Upgrade and roll back the portal with existing sites still serving. Monitor login errors, failed publications, queue backlog, certificate renewal, webhook lag and backup freshness.
-- Remove the obsolete shared browser login once the owner account and SSH recovery are verified. Keep legacy deployer CLI and agent authentication unchanged.
+**Exit:** customer uploads a static site, sees it live, redeploys, restores a prior version and connects a verified domain without YAML. Failed jobs and portal restarts do not break the existing site.
 
-Exit: all three pilots complete account creation, publishing, billing and recovery exercises; no changes to existing application specs, node identities or storage; recorded go/no-go review for opening signup.
+### P3. Node.js builds and dedicated runtimes, 10–16 days
 
-Estimated core effort: **26–43 engineering days**, roughly **5–9 full-time engineering weeks**, plus external account/DNS/email setup and pilot feedback. These are planning ranges, not delivery promises. First demoable accounts and drafts come earlier; payment-enabled public launch requires all gates. Review the estimate after Phase 0.
+- Add npm install/build/start settings, runtime choice, health path, environment secrets and build/runtime log views.
+- Provision/assign a dedicated runtime environment through an operator-approved workflow first. Later automate provider purchasing separately; no automatic VPS purchases during implementation.
+- Build in disposable VMs with no inherited tokens or private networking. Enforce time/resource/network quotas, artifact integrity and cleanup. Cover install hooks as untrusted execution, not just the configured build command.
+- Produce an immutable runtime image; publish it using existing deployer preflight and deployment operations in the assigned environment. Use scoped registry credentials and keep manifests owned by the platform.
+- Durable states: uploaded, validated, queued, building, deploying, ready, failed. Use job leases/idempotency and reconcile after worker crashes. A returned CLI response alone is not rollout readiness.
+- Validate build/run architecture, health probes, shutdown, resource caps, proxy headers, WebSocket support if advertised, and secret redaction. No customer secrets in Docker layers or build logs.
+- Restore prior release/config with explicit secret-version handling. Application/database rollback is separate; customer apps must keep data migrations backward compatible. No claim of automatic database rollback.
 
-## WordPress and a fuller visual builder
+**Exit:** sample Express app and frontend build publish successfully; broken build and unhealthy deployment leave the prior site live. Malicious builds cannot contact private networks or access other customers' artifacts; a runaway app cannot affect another workspace or the legacy fleet.
 
-**WordPress option, roughly 8–15 additional engineering days for a qualified basic package:** one-click install, supported PHP and MySQL/MariaDB versions, persistent uploads, database credentials, application-specific offsite backup/restore, admin credential delivery, HTTPS, staged core/theme/plugin updates, monitoring and quotas. Use WordPress's existing editor. Do not equate the deployer's current PostgreSQL support with WordPress support. Start with separate customer VMs and a reviewed plugin policy; install success alone is not commercial readiness. See [WordPress requirements](https://wordpress.org/about/requirements/).
+### P4. Hosting subscriptions, 5–8 days
 
-**Fuller Wix-like option, estimate after an editor prototype:** drag-and-drop layout canvas, nested/responsive layouts, undo/redo, reusable blocks, richer media library, collaboration and template compatibility. Evaluate embedding a maintained editor with an acceptable license before building one from scratch. Budget multiple additional weeks or months depending on scope. WordPress hosting and this editor are separate choices, not sequential prerequisites.
+- Stripe Checkout + Billing + Customer Portal. Start with two monthly products: Static and Dedicated Node.js; define measured resource/storage/build limits and price the VM cost into the Node tier. Avoid an unlimited plan.
+- Server owns price IDs and customer/workspace mappings. Dedupe Checkout creation. Only verified webhook/reconciliation state grants paid entitlement; a success redirect is not proof of payment.
+- Verify raw-body signatures; persist before acknowledging, deduplicate event IDs, tolerate out-of-order events and reconcile missed events. Keep payment status separate from deployment status.
+- Proposed policy for owner approval: 7-day renewal grace period; block new deploys afterward, suspend serving at the defined termination boundary, retain data for 30 days before a separate deletion workflow. Do not delete infrastructure/data on the first failed payment or a provider outage. Explicitly define external database retention and customer export.
+- Test incomplete/declined payments, authentication-required flows, renewals, duplicate/out-of-order events, cancellation at period end, refund/dispute handling and recovery.
+- Merchant activation, currency/prices, tax/invoice settings, privacy/cancellation/refund terms and support contact are prerequisites to live charges.
 
-## Payment-provider recommendation
+**Exit:** test subscription activates hosting; customer manages invoices/payment method/cancellation; other workspaces' billing is inaccessible. No real charges during tests.
 
-Use **Stripe Checkout + Billing + Customer Portal** first. Bulgaria is listed as a supported business location, subject to account onboarding and the actual merchant's eligibility. Its hosted integration covers the recurring hosting flow we need. Verify local fees and merchant details before setting retail prices. Sources: [availability](https://stripe.com/global), [subscriptions](https://docs.stripe.com/billing/subscriptions/build-subscriptions), [webhook lifecycle](https://docs.stripe.com/billing/subscriptions/webhooks), [customer portal](https://docs.stripe.com/customer-management/integrate-customer-portal).
+### P5. Customer website sales, 8–14 days
 
-Keep a small billing adapter around checkout, customer-portal links, normalized subscription events and reconciliation. Implement one provider first; do not build a general payment framework.
+Use Stripe Connect for each customer's merchant account, separate from their hosting subscription. Prefer hosted onboarding and direct charges, with the customer's business identified as seller. Validate supported merchant countries, fee responsibility, loss liability and business eligibility before selecting the final Connect account configuration. Do not assume a charge type alone resolves all liability. [Connect platform model](https://docs.stripe.com/connect/saas-platforms-and-marketplaces), [direct charges](https://docs.stripe.com/connect/direct-charges).
 
-Paddle is worth evaluating only if its merchant-of-record offering is suitable for the exact hosting/software product and it accepts the business. Do not assume generic hosting or customer marketplace payments are approved: its published policy targets software businesses and restricts marketplaces. [Paddle product restrictions](https://www.paddle.com/help/start/intro-to-paddle/what-am-i-not-allowed-to-sell-on-paddle).
+- Workspace owner chooses Enable payments, completes hosted onboarding, and sees verification/capability status. Block sales until required capabilities are active; handle later restrictions or disconnection.
+- Initial commerce is one-time, fixed-price products/services with hosted checkout. Merchant creates a product/price and gets a Buy link usable on plain HTML. No private key is embedded in the website.
+- For Node.js, provide a small documented API/example for creating checkout sessions using revocable credentials scoped to that workspace/site. Merchant account, allowed product/price and amount are resolved server-side; never trust a browser-supplied amount or account ID. Public Buy links do not expose order administration.
+- Store merchant-scoped order/payment records. Confirm payment from verified Connect events, not the return URL. Do not send fulfillment twice on retries. Provide a signed, retryable merchant callback or order-status API for Node integrations.
+- Order view and refunds for authorized owners, plus payment/refund status and references to the merchant dashboard. For initial static sites, fulfillment is manual and made explicit; paid digital downloads/shipping are not silently promised.
+- Handle disputes, failed/pending payments, refunds and disabled accounts. Keep customer-sale refunds independent from the hosting subscription. Hosting suspension must not prevent access to existing order records, refunds or billing.
+- Start without a platform percentage fee unless explicitly selected; hosting subscription revenue is sufficient for the pilot. Evaluate commission only after unit economics and merchant terms are chosen.
+- Test two connected merchants: no cross-account products, orders, refunds or callbacks; duplicate events produce no double fulfillment; account restrictions stop new sales. Secrets and test/live modes are fully separated.
 
-If customers also need to sell from their sites, the quickest separate feature is a link to each customer's own hosted payment page. Full integrated commerce needs products, orders, fulfillment, refunds and merchant onboarding. Evaluate Stripe Connect for that phase; never route all customers' sales through the operator's ordinary hosting subscription account. [Stripe Connect platform model](https://docs.stripe.com/connect/saas-platforms-and-marketplaces).
+**Exit:** a visitor buys from a hosted HTML site and a hosted Node site in Stripe test mode, the correct merchant receives the sale, and refunds/onboarding restrictions work. A full cart, inventory, shipping, customer subscriptions, split payments and tax/fulfillment automation are later commerce features.
 
-Authentication implementation references: [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html) and [session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
+### P6. Paid pilot and release qualification, 6–10 days
+
+- Three invite-only customers cover static hosting, Node hosting and commerce. Keep public signup closed until isolation and abuse controls pass.
+- Run tenant-access, upload traversal/bomb, build escape/network, quota-race, secret exposure, domain takeover, billing retry and commerce-account isolation tests.
+- Capacity/cost testing: concurrent builds, memory/disk exhaustion, traffic bursts and storage retention. Add abuse reporting, rate limits and administrative suspension. Verify cloud-provider rules allow the offering.
+- Restore portal DB plus artifacts and secrets into a disposable environment. Reconcile payments without creating new charges or duplicate deployments.
+- Verify migration/binary rollback, worker restart recovery, certificate renewal, backup freshness and webhook lag. Existing sites must serve independently of portal downtime.
+- Promote only after recorded upgrade/rollback checks confirm no legacy app spec, node identity or data changes.
+
+**Exit:** pilots complete signup, upload, publish, redeploy, hosting billing and merchant sales. Public release has an explicit go/no-go review and cost limits.
+
+## Priorities and estimates
+
+Core phases total **42–69 engineering days**, about **9–14 full-time engineering weeks**, plus provider activation, infrastructure setup and pilot feedback. This includes both payment flows and isolated Node hosting. These are initial planning estimates, not promises; refine after P0 and the build-isolation prototype.
+
+Earliest useful milestone: accounts and HTML uploads (P0–P2, approximately 13–21 days). Hosting subscriptions can be developed after accounts/ownership are stable while Node isolation is built. Merchant integration can use synthetic sites before runtime launch, but public sales require P5/P6 gates. No editor development is required.
+
+## Provider recommendation and cost controls
+
+Choose Stripe first for both hosted subscriptions and Connect. Bulgaria is on Stripe's supported list, subject to the actual merchant's eligibility. Confirm the owner's business country instead of inferring it from timezone. [Availability](https://stripe.com/global), [hosted subscriptions](https://docs.stripe.com/billing/subscriptions/build-subscriptions), [webhook lifecycle](https://docs.stripe.com/billing/subscriptions/webhooks), [customer portal](https://docs.stripe.com/customer-management/integrate-customer-portal).
+
+Paddle is not the proposed primary provider for this scope. Its policy targets software offerings and restricts platforms enabling other sellers to sell; any alternative requires approval for the exact business model. [Paddle restrictions](https://www.paddle.com/help/start/intro-to-paddle/what-am-i-not-allowed-to-sell-on-paddle). Implement one provider with a small adapter, not a general payment framework.
+
+Keep pilot infrastructure small: one portal instance, private artifact storage, static serving tier and dedicated Node runtimes only for approved paid/pilot workspaces. Builders are disposable, capacity-limited and shut down after use. Measure VM-hours, storage, traffic, payment fees, email and support before fixing prices. Do not promise low shared-hosting prices while paying for dedicated VMs.
 
 ## Compatibility and release rules
 
-- No customer gets access to the existing full-control API or the legacy three-node environment.
-- Keep current CLI/agent contracts and default deployment behavior unchanged. New deployer capabilities are additive and capability-gated.
-- Keep the new portal DB separate from the deployer DB. Snapshot it before migrations and prove compatible binary rollback; use maintenance recovery only if a schema cannot support the old binary.
-- Deploy new services behind flags and pilot routes. Rollback disables signup/publication before replacing the portal; existing immutable sites continue serving independently.
-- Do not let payment status, migrations, or a portal restart trigger legacy application deletion, data restoration, or rollout.
-- Keep secrets outside Git and logs. Existing production credentials are not fixtures or customer credentials.
+- Existing VPS/Pis and apps remain the legacy environment. No public uploads, npm commands or customer builds run there.
+- Customer portal and privileged publisher are separate processes and credential boundaries. Existing admin endpoints stay inaccessible to customers.
+- Preserve CLI/agent defaults and protocol compatibility. New runtime capabilities are additive and capability-gated.
+- Keep portal DB separate; snapshot before migrations and test the prior binary against supported schema transitions. Never restore stale billing data into live traffic without reconciliation.
+- Deploy pilot-only routes behind flags. Rollback disables signup/build/deploy workers first; existing immutable sites continue serving.
+- Never let a billing event or portal migration roll out or delete a legacy application. No data deletion is coupled directly to payment retries.
+- Keep secrets out of Git and logs. B2 source-artifact credentials are separate from backup credentials. No customer receives an operator token or unrestricted Stripe key.
 
-## Decisions and access needed
+## Decisions and access needed later
 
-Before Phase 2: template editor versus WordPress priority; brand and content-domain choice; pilot customer group and serving-environment budget.
+No secrets or purchases are needed to start contracts and local auth/upload work. Before external Node execution, choose and fund a dedicated runtime/build provider and isolated network design. The Mac can test the portal and trusted fixtures; it is not a production sandbox for customer code.
 
-Before Phase 3: hosting-only payments versus commerce; merchant's actual business country and Stripe account; plan currency, prices, limits and approved grace/retention policy; transactional-email sender/provider. Supply credentials through private configuration, not chat.
+Before public hosting: brand/content-domain choice, pilot users, resource limits, runtime budget, transactional-email sender, default Node version and database policy.
 
-No new VPS or live payment credentials are needed to write contracts, implement local account flows, or build the first simulated editor. They become dependencies for real external hosting and live billing, respectively.
+Before real payments: actual business country and Stripe/Connect activation, supported merchant countries and product types, plan currency/prices, fee policy, grace/retention/refund terms, and support contact. Use test credentials during development and private configuration for live credentials.
 
-Immediate next implementation: Phase 0, followed by a narrowly scoped PR for the portal database, owner bootstrap, sessions and permission middleware. Then add signup/invitations and verify two-workspace isolation before any customer publishing route.
+Immediate next implementation: P0, then a focused P1 change for the portal DB, owner bootstrap, sessions, workspace ownership and permission middleware. Add upload/static publishing only after two-workspace isolation is demonstrated.
