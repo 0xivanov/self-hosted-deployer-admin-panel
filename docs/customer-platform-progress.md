@@ -669,3 +669,17 @@ This is the start of the domain implementation, not a registrar integration or p
   remain worker integration work.
 - npmfetch integration tests passed with race detection, plus integration vet,
   command builds and whitespace checks. No VM or live deployment was changed.
+
+### Build-bound dependency bundles
+
+- Schema 19 saves an immutable bundle directory/manifest digest on the exact Node
+  build execution. Binding requires a valid worker lease and current submitter
+  permissions, verifies files and matches the source lockfile's dependency set.
+- Lease/permission checks repeat after filesystem work. Identical retries are
+  idempotent; replacement, corruption, revoked access, expiry during verification
+  and internally valid bundles with the wrong dependency set are rejected.
+- Integration tests cover those cases plus persistent readback across restart and
+  rejection of another execution's access. Stale execution cleanup, cache import
+  wiring and VM dispatch remain. No VM or live deployment was changed.
+- Validation passed: full integration suite with race detection, integration vet,
+  command builds and whitespace checks.

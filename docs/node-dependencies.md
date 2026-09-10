@@ -121,3 +121,24 @@ record and protect the bundle from mutation between verification and import.
 This method does not delete abandoned directories or qualify process/power-loss
 recovery. Tests cover reopen success, changed source/manifest identity, altered
 bytes, missing manifests, extra pending files, symlinks and public permissions.
+
+## Binding bundles to build jobs
+
+Schema 19 stores an immutable dependency-bundle reference on a Node build.
+`BindNodeBuildDependencies` is trusted worker access: it requires the exact running
+job/execution and unexpired lease, with the submitter still verified, enabled and
+an owner/developer. It copies the assigned source, verifies the bundle, and checks
+its exact URL/integrity set against that source's lockfile. An internally consistent
+bundle for a different dependency set is rejected even if it claims the same source.
+
+After filesystem validation the store repeats lease and permission checks in the
+binding transaction. Rebinding the same directory/manifest digest is idempotent;
+replacing it with a different reference is rejected. `NodeBuildDependencies` returns
+the persisted reference only to the current authorized worker lease. The reference
+contains a relative directory and manifest digest, never an arbitrary absolute path
+from a customer. Worker configuration still determines the assigned storage root.
+
+Bindings survive restart. Consumers must reverify files before cache import and
+keep storage immutable through use. Stale/expired execution cleanup needs a separate
+reconciliation path; this API cannot grant a stale worker access again. No public
+build route or VM dispatcher is introduced by this change.

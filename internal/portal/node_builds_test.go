@@ -16,7 +16,7 @@ func nodeUploadFixture(t *testing.T) []byte {
 	t.Helper()
 	var b bytes.Buffer
 	z := zip.NewWriter(&b)
-	for _, f := range []struct{ name, body string }{{"package.json", `{"scripts":{"start":"node server.js","build":"exit 99"}}`}, {"package-lock.json", `{"lockfileVersion":3}`}, {"server.js", "throw new Error('not executed')"}} {
+	for _, f := range []struct{ name, body string }{{"package.json", `{"scripts":{"start":"node server.js","build":"exit 99"}}`}, {"package-lock.json", `{"lockfileVersion":3,"packages":{"":{}}}`}, {"server.js", "throw new Error('not executed')"}} {
 		w, err := z.Create(f.name)
 		if err != nil {
 			t.Fatal(err)
