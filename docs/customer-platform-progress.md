@@ -457,3 +457,17 @@ Reviewed official NameSilo and Openprovider material. NameSilo is the initial bu
 Added provider-independent domain purchase validation and quote rules for the first .com/.net/.org ASCII product. URLs, subdomains, IDNs and unsupported names are rejected. Quotes require explicit non-premium classification, availability, registration and renewal prices, supported currency and a five-minute freshness window. Retail amounts use integer minor units with checked markup arithmetic. Tests cover name normalization, injection-shaped input, invalid names, stale/future quotes, missing renewal data, premium uncertainty and overflow.
 
 This is the start of the domain implementation, not a registrar integration or purchase UI. Sandbox transport, owner-authorized order storage, payment coordination, registration/renewal lifecycle and qualification remain outstanding. Existing deployments and billing code were unchanged.
+
+### Saved owner-only domain quotes
+
+- Added schema 15 for immutable domain quote snapshots, retaining private registrar
+  evidence and exact retail registration/renewal prices, currency and expiry.
+- Rechecks owner authorization after provider access and freshness before persistence;
+  reads enforce workspace ownership and evaluate expiry without altering the offer.
+- Bounds retained quotes to 1,000 per workspace, checked before provider calls and
+  transactionally before saving. Retention and HTTP rate limits remain launch work.
+- Integration coverage checks restart persistence, workspace/developer denial,
+  session revocation during provider access, expiry, storage quota and invalid
+  registrar evidence. No live provider, purchases or deployment changes.
+- Validation passed: full integration suite with the race detector, integration
+  vet, all command builds and whitespace checks.

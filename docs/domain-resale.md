@@ -29,3 +29,19 @@ The implemented internal/domains package provides validation and quote arithmeti
 4. Recheck the quote, authorize payment and submit registration once. Reconcile timeout outcomes before retrying. Define compensation/refunds when registration fails.
 5. Add customer domain inventory, expiry/renewal notices, explicit auto-renew consent, ownership/DNS linkage, cancellation/transfer lifecycle and operator reconciliation views.
 6. Test duplicate delivery, concurrent buyers, expired quotes, price changes, registration uncertainty, payment failure and cross-workspace isolation, then obtain approval for a low-cost real purchase pilot.
+
+### Saved quotes (local implementation)
+
+Schema 15 adds workspace-scoped immutable domain quote snapshots. A trusted
+`DomainQuoteReader` supplies normalized registrar evidence; operator configuration
+supplies the fixed markup. The store authorizes an owner before fetching and again
+before committing, validates freshness after the fetch, and stores provider evidence
+privately alongside the retail offer. Reads expose only the retail offer and a
+current expiry flag. Quotes do not reserve domains or authorize purchases.
+
+Storage is currently bounded to 1,000 retained quotes per workspace and fails closed
+at that limit, including before provider access. Automated archival/retention and
+request rate limiting must be added before public quote endpoints. There is no
+registrar transport or quote HTTP/UI route yet. Future orders must reference a saved
+quote and recheck current availability, price and owner authority before payment and
+registration; an unexpired snapshot alone is insufficient.
