@@ -226,6 +226,25 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.URL.Path == "/api/publications/resume" && r.Method == "POST":
+		var input struct {
+			Project string `json:"project"`
+			Job     string `json:"job"`
+			Upload  string `json:"upload"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		if h.publicationSites[input.Project] == "" {
+			httpError(w, 403, "Publishing is not enabled for this project")
+			return
+		}
+		job, err := h.store.ResumePublication(r.Context(), cookie.Value, input.Project, input.Job, input.Upload)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, job)
 	case r.URL.Path == "/api/publications" && r.Method == "GET":
 		project := r.URL.Query().Get("project")
 		jobs, active, err := h.store.PublicationJobs(r.Context(), cookie.Value, project)

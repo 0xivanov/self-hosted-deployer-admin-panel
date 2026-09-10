@@ -240,3 +240,51 @@ func (s *Store) FinishPublication(ctx context.Context, job, lease, observedHash 
 	}
 	return tx.Commit()
 }
+
+// ResumePublication lets a current owner explicitly adopt a stalled publication.
+// The exact upload and revision are preserved so uncertain runtime outcomes are
+// reconciled through the same fenced, idempotent worker request.
+func (s *Store) ResumePublication(ctx context.Context, token, project, job, upload string) (PublicationJob, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return PublicationJob{}, err
+	}
+	defer tx.Rollback()
+	p, _, err := s.uploadProject(ctx, tx, token, project, true)
+	if err != nil {
+		return PublicationJob{}, err
+	}
+	owner, err := s.authorizeOwner(ctx, tx, token, p.WorkspaceID)
+	if err != nil {
+		return PublicationJob{}, err
+	}
+	j, err := scanJob(tx.QueryRowContext(ctx, "SELECT "+jobColumns+" FROM publication_jobs WHERE id=? AND project_id=?", job, project))
+	if errors.Is(err, sql.ErrNoRows) {
+		return PublicationJob{}, ErrDenied
+	}
+	if err != nil {
+		return PublicationJob{}, err
+	}
+	if j.UploadID != upload {
+		return PublicationJob{}, ErrConflict
+	}
+	var actor string
+	var until int64
+	if err = tx.QueryRowContext(ctx, "SELECT actor_id,lease_until FROM publication_jobs WHERE id=?", job).Scan(&actor, &until); err != nil {
+		return PublicationJob{}, err
+	}
+	if j.State == "queued" && actor == owner {
+		return j, tx.Commit()
+	}
+	if j.State != "running" || until > s.now().Unix() {
+		return PublicationJob{}, ErrPublishing
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE publication_jobs SET actor_id=?,state='queued',lease_hash='',lease_until=0 WHERE id=?", owner, job); err != nil {
+		return PublicationJob{}, err
+	}
+	if err = audit(ctx, tx, owner, p.WorkspaceID, "publication.resumed:"+job+":previous_actor:"+actor, s.now().Unix()); err != nil {
+		return PublicationJob{}, err
+	}
+	j.State = "queued"
+	return j, tx.Commit()
+}
