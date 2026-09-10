@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 5 {
+	if version > 6 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -147,6 +147,11 @@ PRAGMA user_version=1;`)
 	}
 	if version < 5 {
 		if _, err = tx.Exec(`CREATE TABLE publication_jobs(id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), upload_id TEXT NOT NULL REFERENCES uploads(id), actor_id TEXT NOT NULL REFERENCES users(id), request_key TEXT NOT NULL, revision INTEGER NOT NULL, state TEXT NOT NULL CHECK(state IN ('queued','running','succeeded','failed')), lease_hash TEXT NOT NULL DEFAULT '', lease_until INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, UNIQUE(project_id,request_key), UNIQUE(project_id,revision)); CREATE UNIQUE INDEX publication_pending ON publication_jobs(project_id) WHERE state IN ('queued','running'); CREATE TABLE publications(project_id TEXT PRIMARY KEY REFERENCES projects(id), job_id TEXT NOT NULL REFERENCES publication_jobs(id)); PRAGMA user_version=5;`); err != nil {
+			return err
+		}
+	}
+	if version < 6 {
+		if _, err = tx.Exec(`CREATE TABLE billing_events(id TEXT PRIMARY KEY,event_type TEXT NOT NULL,provider_created INTEGER NOT NULL,fingerprint TEXT NOT NULL,payload BLOB NOT NULL,state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','processed','ignored')),received_at INTEGER NOT NULL); CREATE INDEX billing_events_pending ON billing_events(state,received_at); PRAGMA user_version=6;`); err != nil {
 			return err
 		}
 	}

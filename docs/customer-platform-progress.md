@@ -223,3 +223,17 @@ Implementation references checked on 2026-09-10: [Stripe webhook verification](h
 Next: durable owner-authorized checkout intents/customer mappings, a deduplicated webhook inbox, subscription/invoice reconciliation and owner billing UI. Connect merchant onboarding/sales/refunds remain a separate implementation. Hosting entitlements must never rely on a browser redirect or metadata alone. Domain resale, Node sandbox execution and the remaining recovery/qualification work also remain open.
 
 Validation for this adapter change: full race-enabled Go suite including the three-process static test, Go vet and all command builds passed. Live deployments remain unchanged.
+
+## Durable test-mode billing webhook inbox
+
+Schema 6 adds `billing_events` with provider identity/type/time, canonical object payload, fingerprint, pending state and receipt time. `AcceptBillingWebhook` verifies the raw Stripe signature and explicit test/platform scope before writing. Its transaction deduplicates event IDs, rejects conflicting payloads without replacing the original, and enforces 10,000 retained events or 100 MiB of object payload. Duplicate receipts still succeed when storage is full because they need no new allocation.
+
+Identity fingerprints include type, provider creation time and canonical object data, excluding delivery-envelope counters. Canonicalization preserves JSON numbers without converting large monetary integers through floating point. The original signed-body digest remains available from the verifier; the inbox uses semantic event identity for delivery deduplication. Payloads may contain billing details and remain in the private portal database, not browser responses or logs. Retention cleanup and receipt tombstones still need design before public operation.
+
+A dedicated, unmounted HTTPS webhook handler validates host, method, signature and body limits with four concurrent intake slots. It returns 204 only after durable insertion or verified duplicate recognition. Invalid signatures receive 400; database, identity conflict and capacity errors receive a generic retryable 503. This handler belongs on a dedicated route outside the browser CSRF/session API; no deployed endpoint was configured. Inbox acceptance grants no hosting entitlement.
+
+Tests cover concurrent duplicate intake, reopening the database, changed delivery counters, conflicting customer data, exact large-number preservation, tampered bodies, missing signatures, plaintext/foreign/browser requests, unavailable storage and count limits. Focused race tests, vet and command builds passed. Before a future persistent portal upgrade, take a consistent database backup; schema 6 cannot be opened by older portal binaries without restoring the pre-upgrade database.
+
+Next: owner-authorized billing customer/checkout intent records, reconciliation workers and subscription/invoice handling, webhook route configuration and billing UI. Paid hosting access, Connect merchant sales, domain resale and Node runtime isolation remain incomplete. No live credentials, charges or deployment changes were made.
+
+The full race-enabled suite, including the three-process static publication test, also passed after the inbox migration.
