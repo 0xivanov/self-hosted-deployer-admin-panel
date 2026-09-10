@@ -10,6 +10,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/hostingbilling"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -37,6 +39,7 @@ func run() error {
 	key := flag.String("tls-key", "", "HTTPS private key")
 	smtpFile := flag.String("smtp-config", "", "private JSON SMTP settings")
 	mailKeyFile := flag.String("mail-key-file", "", "private file containing 32-byte hex mail encryption key")
+	managementFile := flag.String("test-billing-management-config", "", "private Stripe test customer portal settings")
 	webhookFile := flag.String("test-webhook-secret-file", "", "private Stripe test webhook signing secret file")
 	testBilling := flag.Bool("test-billing", false, "enable owner billing request API for a separately configured Stripe test worker")
 	publicationFile := flag.String("publication-sites", "", "private JSON mapping assigned static project IDs to HTTPS content origins")
@@ -145,7 +148,45 @@ func run() error {
 			return errors.New("invalid publication site mapping")
 		}
 	}
-	handler, err := portal.NewHTTP(store, portal.HTTPOptions{TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
+	var management *hostingbilling.Management
+	if *managementFile != "" {
+		if !*testBilling || *demo {
+			return errors.New("billing management requires non-demo test billing")
+		}
+		raw, e := privateFile(*managementFile)
+		if e != nil {
+			return errors.New("billing management configuration unavailable")
+		}
+		var cfg struct {
+			Secret        string            `json:"secret_key"`
+			Success       string            `json:"success_url"`
+			Cancel        string            `json:"cancel_url"`
+			Plans         map[string]string `json:"plans"`
+			Configuration string            `json:"configuration"`
+		}
+		decoder := json.NewDecoder(strings.NewReader(string(raw)))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&cfg) != nil || decoder.Decode(&struct{}{}) != io.EOF {
+			return errors.New("invalid billing management configuration")
+		}
+		if cfg.Success != *origin+"/billing/success" {
+			return errors.New("billing management return URL must match the portal")
+		}
+		client, e := hostingbilling.NewTestClient(cfg.Secret, cfg.Success, cfg.Cancel, cfg.Plans)
+		if e != nil {
+			return e
+		}
+		defer client.Close()
+		management, e = hostingbilling.NewManagement(client, cfg.Configuration)
+		if e != nil {
+			return e
+		}
+	}
+	var managementProvider portal.BillingManagement
+	if management != nil {
+		managementProvider = management
+	}
+	handler, err := portal.NewHTTP(store, portal.HTTPOptions{BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
 	if err != nil {
 		return err
 	}

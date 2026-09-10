@@ -66,3 +66,13 @@ With test billing enabled, workspace owners see Hosting billing beneath their pr
 Subscription refresh signals require an already-bound subscription and matching customer. Events arriving before checkout identity binding remain pending. A valid signal clears the old observation, fences in-flight reads and reschedules the subscription task. Duplicate processing does not clear a newer observation. Refund and dispute event handling still require implementation before paid-access decisions.
 
 Invoice refresh signals now include invoice.paid, invoice.payment_failed, invoice.payment_action_required, invoice.voided, invoice.marked_uncollectible and invoice.finalized. The invoice must explicitly reference an already-bound hosting subscription and its matching customer. Standalone invoices, unmatched subscriptions and conflicting customer/account identities remain unresolved rather than being assigned by metadata. Event amounts and status do not directly grant paid access.
+
+## Stripe test subscription management
+
+The optional portal flag `--test-billing-management-config /private/management.json` enables an owner-only management button. It requires HTTPS and --test-billing. The private JSON contains the worker fields secret_key, success_url, cancel_url and plans, plus configuration set to an operator-selected bpc_ test portal configuration. success_url must equal the portal origin followed by /billing/success. The secret stays in the private file; it is never a command argument.
+
+Configure that Stripe test portal to allow payment-method updates, invoices and cancellation at period end. Keep plan and quantity changes disabled until upgrade handling is implemented. This integration pins the configuration ID but does not create or audit its feature settings; verify them in sandbox before enabling the integration.
+
+POST /api/billing/manage accepts only workspace and requires an owner session, origin and CSRF token. The server resolves the saved customer, requests a short-lived management session, rechecks ownership and returns only a validated billing.stripe.com URL. It does not store that URL. Owner revocation after a URL was already issued cannot revoke the external session; Stripe controls its expiry. Cancellation or payment-method changes are completed in Stripe, and resulting events feed reconciliation. Returning to the portal never grants hosting access.
+
+Reference: https://docs.stripe.com/customer-management and https://docs.stripe.com/customer-management/configure-portal. No real sandbox configuration or cancellation has yet been qualified.

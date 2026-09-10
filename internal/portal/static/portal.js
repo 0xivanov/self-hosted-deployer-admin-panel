@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingGeneration=0;
+let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,billingGeneration=0;
 const fragment=new URLSearchParams(location.hash.slice(1));
 let actionToken=fragment.get('verify')||fragment.get('reset')||fragment.get('invite')||'';
 const initialFlow=fragment.has('verify')?'verify':fragment.has('reset')?'reset':fragment.has('invite')?'invite':'';
@@ -36,7 +36,7 @@ $('account-form').addEventListener('submit',event=>{event.preventDefault();submi
  const data=await api(path,body);$('flow-password').value='';$('account-form').hidden=true;$('flow-copy').textContent=data.message;if(flow==='reset'||flow==='verify')actionToken='';if(flow==='invite'){pendingInvite='';actionToken='';$('account-flow').hidden=true;await loadSession();}
  });});
 async function initialize(){
- const config=await api('/api/config');testBilling=config.test_billing===true;$('open-signup').hidden=!config.signup;$('open-forgot').hidden=!config.account_mail;$('registration-note').textContent=config.signup?'Verify your email before signing in.':'Registration is closed.';
+ const config=await api('/api/config');testBilling=config.test_billing===true;billingManagement=config.billing_management===true;$('open-signup').hidden=!config.signup;$('open-forgot').hidden=!config.account_mail;$('registration-note').textContent=config.signup?'Verify your email before signing in.':'Registration is closed.';
  if(initialFlow==='invite'){try{await loadSession();}catch(e){signedOut();if(e.status===401)error(new Error('Sign in with the invited email to accept. New users must register and verify their email first.'));else throw e;}return;}
  if(initialFlow){if(!config.account_mail)throw new Error('Account recovery is unavailable. Contact the operator.');showFlow(initialFlow);return;}
  try{await loadSession();}catch(e){signedOut();if(e.status!==401)throw e;}
@@ -103,6 +103,12 @@ async function loadBilling(workspace,version){
  const content=$('billing-content');content.replaceChildren();
  const note=text=>{const p=document.createElement('p');p.textContent=text;content.append(p);};
  const action=(text,fn)=>{const button=document.createElement('button');button.textContent=text;button.addEventListener('click',async()=>{button.disabled=true;try{await fn();if(version===generation)await loadBilling(workspace,version);}catch(e){if(version===generation)error(e);}finally{button.disabled=false;}});content.append(button);};
+ if(status.customer_state==='ready'&&billingManagement){action('Manage subscription and payment details',async()=>{
+  const result=await api('/api/billing/manage',{workspace});
+  if(version!==generation)return;
+  const url=new URL(result.url);if(url.protocol!=='https:'||url.host!=='billing.stripe.com'||url.username||url.password)throw new Error('Invalid billing management link');
+  location.assign(url.href);
+ });}
  if(status.checkout){
   const checkout=status.checkout;
   note(checkout.state==='completed'?'Checkout completed. Hosting activation is awaiting billing reconciliation.':checkout.state==='open'?'Your test checkout is ready. Review the final amount on Stripe.':'Preparing your test checkout. Refresh shortly.');

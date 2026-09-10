@@ -377,3 +377,9 @@ The worker now discovers paid, failed, authentication-required, voided, uncollec
 Matched invoice events use the existing atomic invalidation and rescheduling path, so a fresh provider observation decides current state. Tests run every supported event through durable intake and worker discovery, including negative identity/mode cases, and verify that subscription access remains awaiting_reconciliation. Refund/dispute accounting, paid-hosting activation and actual Stripe sandbox qualification remain incomplete. No live provider, database or deployment was changed.
 
 Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.
+
+## Owner subscription management integration
+
+Added test-only Stripe customer portal sessions with pinned configuration, customer and return URL. Provider response validation rejects live, foreign customer/configuration/return identities, connected-account scope and untrusted links. The owner-only POST management route resolves its customer from the workspace, rechecks authorization after the provider call, and keeps ephemeral URLs out of persistence. The optional private management configuration enables a customer billing button; absent configuration keeps it hidden.
+
+Tests cover provider field pinning, identity/link rejection, owner/developer/foreign access, logout during provider lookup, missing CSRF and injected customer fields. The full race-enabled integration suite, vet and builds passed; JavaScript syntax passed. Additional HTTP protection tests were run separately. No real provider session, cancellation, charge or live deployment was used. Rendered management-button and actual Stripe portal configuration tests remain part of sandbox qualification. Paid activation, refunds/disputes, merchant commerce, domain resale and Node isolation remain active requirements.

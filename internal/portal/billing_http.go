@@ -21,6 +21,27 @@ func (h *HTTP) billingHTTP(w http.ResponseWriter, r *http.Request, token string)
 		}
 	}
 	switch {
+	case r.URL.Path == "/api/billing/manage" && r.Method == "POST":
+		if h.billingManagement == nil {
+			httpError(w, 503, "Billing management is unavailable")
+			return
+		}
+		if !h.allowLogin(r.RemoteAddr) {
+			httpError(w, 429, "Retry billing management later")
+			return
+		}
+		var input struct {
+			Workspace string `json:"workspace"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		link, err := h.store.BillingManagementURL(r.Context(), h.billingManagement, token, input.Workspace)
+		if err != nil {
+			fail(err)
+			return
+		}
+		httpJSON(w, map[string]string{"url": link})
 	case r.URL.Path == "/api/billing/status" && r.Method == "GET":
 		status, err := h.store.WorkspaceBillingStatus(r.Context(), token, r.URL.Query().Get("workspace"))
 		if err != nil {
