@@ -383,3 +383,11 @@ Validation passed: full race-enabled integration suite, vet, all command builds 
 Added test-only Stripe customer portal sessions with pinned configuration, customer and return URL. Provider response validation rejects live, foreign customer/configuration/return identities, connected-account scope and untrusted links. The owner-only POST management route resolves its customer from the workspace, rechecks authorization after the provider call, and keeps ephemeral URLs out of persistence. The optional private management configuration enables a customer billing button; absent configuration keeps it hidden.
 
 Tests cover provider field pinning, identity/link rejection, owner/developer/foreign access, logout during provider lookup, missing CSRF and injected customer fields. The full race-enabled integration suite, vet and builds passed; JavaScript syntax passed. Additional HTTP protection tests were run separately. No real provider session, cancellation, charge or live deployment was used. Rendered management-button and actual Stripe portal configuration tests remain part of sandbox qualification. Paid activation, refunds/disputes, merchant commerce, domain resale and Node isolation remain active requirements.
+
+## Verified customer portal feature settings
+
+Management sessions now validate the actual pinned Stripe portal configuration before creation and validate its expanded copy in the session response. Required settings include test mode, an active platform configuration, no public login page, subscription updates disabled, payment-method updates and invoice history enabled, and cancellation at period end with no prorations. This closes the earlier gap where only a configuration ID was checked while provider settings could expose unsupported subscription changes.
+
+Tests reject live/inactive/incomplete settings, public login, subscription edits, immediate cancellation and settings changed between lookup and session creation. No provider configuration is created or modified. Sandbox feature verification and rendered management navigation remain outstanding; no real credentials, sessions, charges or deployments were used.
+
+Validation passed: full race-enabled integration suite, vet and command builds; the additional configuration-race case also passed with race detection.
