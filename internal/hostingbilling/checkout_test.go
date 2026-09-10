@@ -93,3 +93,18 @@ func TestCreateCustomerUsesPersistentIdentity(t *testing.T) {
 		t.Fatal(id, err)
 	}
 }
+
+func TestPinnedCheckoutRejectsChangedPriceBeforeNetwork(t *testing.T) {
+	t.Parallel()
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) }))
+	defer server.Close()
+	c, err := newTestClient("sk_test_synthetic_fixture", "https://portal.example.test/success", "https://portal.example.test/cancel", map[string]string{"starter": "price_new"}, server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if _, err = c.CreatePinnedCheckout(t.Context(), "cus_fixture", "starter", "price_old", "persisted-request-key"); err == nil || calls.Load() != 0 {
+		t.Fatal("changed price reached provider", err)
+	}
+}

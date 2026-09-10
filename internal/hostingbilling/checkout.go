@@ -101,3 +101,12 @@ func (c *Client) CreateCustomer(ctx context.Context, email, requestID string) (s
 	}
 	return customer.ID, nil
 }
+
+// CreatePinnedCheckout refuses plan changes after the checkout intent was
+// persisted, so retries cannot charge a newly configured price by accident.
+func (c *Client) CreatePinnedCheckout(ctx context.Context, customer, plan, price, request string) (Checkout, error) {
+	if c.plans[plan] != price || price == "" {
+		return Checkout{}, errors.New("hosting price changed; checkout requires reconciliation")
+	}
+	return c.CreateCheckout(ctx, customer, plan, request)
+}

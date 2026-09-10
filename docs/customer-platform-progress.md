@@ -249,3 +249,15 @@ The Stripe test adapter now creates Customers using the persisted email, request
 These are internal customer-identity operations, not exposed billing routes or a running worker. Next: checkout intents tied to these customer identities, authenticated provider session binding, event-to-workspace reconciliation, subscription/invoice handling and owner billing UI. Long-lived uncertain customer requests still need a reconciliation tool. Schema 7 requires a consistent pre-upgrade backup for rollback to an older portal binary. No live credentials, charges or existing deployments were used or changed.
 
 The full race-enabled suite, including multi-process static publishing, also passed after the billing customer migration.
+
+## Durable hosting checkout intents
+
+Schema 8 adds operator-configured hosting plans and checkout intents. A current owner requests a plan for their workspace; the store resolves the workspace's bound Stripe customer and snapshots the enabled plan's Price ID before any provider request. Concurrent requests reuse one active intent. A competing plan cannot replace it, and plan edits do not mutate an existing intent. Pending/open/completed intents occupy the workspace's active checkout slot until verified lifecycle processing explicitly transitions it.
+
+Worker access rejects pending requests after 23 hours, revoked/disabled owners and a changed or disabled plan. The Stripe adapter's `CreatePinnedCheckout` independently compares the saved price with its configured plan before making a network call. The intent ID is the persistent idempotency/reference key. A provider acknowledgement may bind only one test Checkout Session and an HTTPS checkout.stripe.com URL; session IDs are unique across workspaces and bindings cannot be replaced. Customer-visible reads require owner access. Binding changes pending to open, never paid or active hosting.
+
+Tests cover concurrent request identity, persistence, foreign/developer denial, unconfigured plans, immutable customer/price snapshots, pending plan conflicts, repeated provider acknowledgement, cross-workspace session reuse, untrusted checkout links, expired requests, revoked owners and price-change rejection before contacting the provider. Focused race tests, vet and all command builds passed. Tests use local fake-provider responses only.
+
+Next: customer/checkout worker orchestration, verified checkout completion/expiry and subscription/invoice reconciliation, owner billing routes/UI and actual Stripe sandbox qualification. Subscription upgrades/cancellation and retry reconciliation beyond the provider retention window remain outstanding. No paid entitlement logic, automatic expiry or live checkout endpoint was enabled. Schema 8 requires a consistent pre-upgrade backup for older-binary rollback; no live portal database was migrated.
+
+The full race-enabled suite, including separate-process static publishing, passed after schema 8 and checkout snapshot changes.
