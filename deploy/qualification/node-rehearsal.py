@@ -14,7 +14,8 @@ import tempfile
 import time
 import urllib.request
 
-source, digest, helper, node_bin = sys.argv[1:]
+source, digest, helper, node_bin = sys.argv[1:5]
+bundle_path = Path(sys.argv[5]) if len(sys.argv) == 6 else None
 assert os.getuid() != 0, 'fixture must run as an unprivileged guest user'
 assert hashlib.sha256(Path(source).read_bytes()).hexdigest() == digest
 with tempfile.TemporaryDirectory(prefix='node-build-rehearsal-') as directory:
@@ -33,6 +34,22 @@ with tempfile.TemporaryDirectory(prefix='node-build-rehearsal-') as directory:
            'npm_config_cache': str(root / 'cache'), 'npm_config_userconfig': str(user_config),
            'npm_config_globalconfig': str(global_config)}
     assert plan['source_sha256'] == digest and plan['architecture'] == 'arm64'
+    if bundle_path:
+        import base64
+        env['npm_config_offline'] = 'true'
+        missing = subprocess.run(['npm', 'ci', '--offline', '--ignore-scripts', '--no-audit', '--no-fund'],
+                                 cwd=app, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+        assert missing.returncode != 0, 'empty offline cache unexpectedly installed dependency'
+        bundle = json.loads(bundle_path.read_text())
+        assert bundle['SourceSHA256'] == digest
+        for tarball in bundle['Tarballs']:
+            package = bundle_path.parent / tarball['File']
+            assert package.name == tarball['File'] and package.suffix == '.tgz'
+            actual = 'sha512-' + base64.b64encode(hashlib.sha512(package.read_bytes()).digest()).decode()
+            assert actual == tarball['Integrity']
+            subprocess.run(['npm', 'cache', 'add', str(package), '--offline', '--ignore-scripts', '--no-audit', '--no-fund'],
+                           cwd=app, env=env, check=True, timeout=10)
+
     for step in plan['steps']:
         subprocess.run([step['program'], *step['args']], cwd=app, env=env, check=True, timeout=60)
     assert (app / 'prepare.marker').is_file(), 'install hook did not run'
@@ -57,7 +74,10 @@ with tempfile.TemporaryDirectory(prefix='node-build-rehearsal-') as directory:
                 break
             except OSError:
                 time.sleep(0.1)
-        assert response == {'status': 'node-build-lab-ok', 'environment': 'production'}, response
+        expected = {'status': 'node-build-lab-ok', 'environment': 'production'}
+        if bundle_path:
+            expected['dependency'] = True
+        assert response == expected, response
         assert not (app / 'unexpected-prestart.marker').exists(), 'prestart hook unexpectedly ran'
     finally:
         try:
@@ -80,4 +100,4 @@ with tempfile.TemporaryDirectory(prefix='node-build-rehearsal-') as directory:
     print(json.dumps({'result': 'passed', 'node': subprocess.check_output(['node', '--version'], env=env, text=True).strip(),
                       'npm': subprocess.check_output(['npm', '--version'], env=env, text=True).strip(),
                       'install_hook': True, 'build': True, 'http_ready': True, 'prestart_disabled': True,
-                      'process_group_shutdown': True, 'broken_build_rejected': True}))
+                      'process_group_shutdown': True, 'broken_build_rejected': True, 'offline_dependency': bool(bundle_path)}))

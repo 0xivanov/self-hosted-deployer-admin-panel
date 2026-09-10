@@ -155,3 +155,8 @@ ARM64 fixture. Third-party/native package builds, package acquisition, resource
 sizing for actual plans, logs, durable artifacts, VM dispatch/retirement and
 customer runtime publication are still unqualified. This does not enable public
 Node hosting or qualify arbitrary uploaded code.
+
+The same profile also passed a real dependency installed from a verified offline
+cache. See [the dependency rehearsal](node-dependencies.md#offline-npm-cache-rehearsal).
+The original dependency-free scenario was rerun and still passed after adding the
+optional cache path. The lab service was cleaned up and the VM stopped afterward.

@@ -630,3 +630,17 @@ This is the start of the domain implementation, not a registrar integration or p
   integration vet, command builds and whitespace checks. No VM/live deployment
   changes. Offline cache import, aggregate quotas, fetch isolation and worker
   integration remain; see docs/node-dependencies.md.
+
+### Verified offline npm dependency rehearsal
+
+- Added a fixture pinned to is-number 7.0.0 and a lab prefetch helper using the
+  production source/digest/download checks. Package bytes are verified before
+  transfer and again before importing into a fresh job-local npm cache.
+- The restricted VM first rejected installation with an empty offline cache, then
+  passed cache import, installation, build and HTTP execution of the real package
+  with outbound networking disabled. Shutdown/broken-build checks also passed.
+- The original dependency-free scenario still passes. npmfetch race tests, helper
+  vet/build and Python syntax checks passed; whitespace was corrected. No package
+  scripts ran on the Mac. The lab VM was stopped and live deployments untouched.
+- Production cache/artifact storage, fetch isolation, transitive/native dependency
+  qualification and worker/runtime integration remain. Details: docs/node-dependencies.md.
