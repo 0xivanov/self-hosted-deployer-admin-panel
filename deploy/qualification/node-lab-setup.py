@@ -32,7 +32,10 @@ with tempfile.TemporaryDirectory(prefix='node-rehearsal-setup-') as directory:
     helper = stage / 'node-lab-preflight'
     subprocess.run(['go', 'build', '-o', str(helper), './deploy/qualification/node-preflight'],
                    cwd=repo, env={**os.environ, 'GOOS': 'linux', 'GOARCH': 'arm64', 'CGO_ENABLED': '0'}, check=True)
-    files = [archive, helper, *[repo / 'deploy/qualification' / name for name in
+    artifact_helper = stage / 'node-artifact-check'
+    subprocess.run(['go', 'build', '-o', str(artifact_helper), './deploy/qualification/node-artifact-check'],
+                   cwd=repo, env={**os.environ, 'GOOS': 'linux', 'GOARCH': 'arm64', 'CGO_ENABLED': '0'}, check=True)
+    files = [archive, helper, artifact_helper, *[repo / 'deploy/qualification' / name for name in
                               ['node-rehearsal.py', 'node-positive-run.py', 'node_lab_profile.py',
                                'node-restriction-run.py', 'node-restriction-probe.py']]]
     if args.worker:
@@ -52,6 +55,7 @@ with tempfile.TemporaryDirectory(prefix='node-rehearsal-setup-') as directory:
 sudo install -d -m 755 /opt/node-positive-lab /opt/node-restriction-lab
 sudo install -m 644 /tmp/node-lab-source.zip /opt/node-positive-lab/source.zip
 sudo install -m 755 /tmp/node-lab-preflight /opt/node-positive-lab/node-preflight
+sudo install -m 755 /tmp/node-artifact-check /opt/node-positive-lab/node-artifact-check
 sudo install -m 644 /tmp/node-rehearsal.py /opt/node-positive-lab/node-rehearsal.py
 sudo install -m 644 /tmp/node-restriction-probe.py /opt/node-restriction-lab/probe.py
 sudo curl --fail --silent --show-error -o /opt/node-positive-lab/node.tar.xz https://nodejs.org/dist/v24.20.0/node-v24.20.0-linux-arm64.tar.xz

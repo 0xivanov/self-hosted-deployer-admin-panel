@@ -13,6 +13,8 @@ import sys
 import tempfile
 import time
 import urllib.request
+import zipfile
+import stat
 
 source, digest, helper, node_bin = sys.argv[1:5]
 bundle_path = Path(sys.argv[5]) if len(sys.argv) == 6 else None
@@ -54,6 +56,24 @@ with tempfile.TemporaryDirectory(prefix='node-build-rehearsal-') as directory:
         subprocess.run([step['program'], *step['args']], cwd=app, env=env, check=True, timeout=60)
     assert (app / 'prepare.marker').is_file(), 'install hook did not run'
     assert (app / 'dist/server.mjs').is_file(), 'build output absent'
+    # Snapshot the trusted fixture only after build commands have completed.
+    # The production exporter must prove all customer processes have stopped.
+    artifact = root / 'runtime.zip'
+    with zipfile.ZipFile(artifact, 'w', compression=zipfile.ZIP_DEFLATED) as out:
+        for source_file in sorted(app.rglob('*')):
+            if source_file.is_symlink():
+                info = zipfile.ZipInfo(source_file.relative_to(app).as_posix())
+                info.create_system = 3
+                info.external_attr = (stat.S_IFLNK | 0o777) << 16
+                out.writestr(info, os.readlink(source_file))
+            elif source_file.is_file():
+                out.write(source_file, source_file.relative_to(app).as_posix())
+    artifact_digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    staged = json.loads(subprocess.check_output([
+        '/opt/node-positive-lab/node-artifact-check', str(artifact), artifact_digest, str(root)], text=True))
+    assert staged['Manifest']['SHA256'] == artifact_digest
+    # Readiness must be demonstrated from the extracted release, not the build tree.
+    app = root / staged['Directory']
     # An ephemeral listener avoids collisions inside the disposable guest.
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', 0))
@@ -100,4 +120,4 @@ with tempfile.TemporaryDirectory(prefix='node-build-rehearsal-') as directory:
     print(json.dumps({'result': 'passed', 'node': subprocess.check_output(['node', '--version'], env=env, text=True).strip(),
                       'npm': subprocess.check_output(['npm', '--version'], env=env, text=True).strip(),
                       'install_hook': True, 'build': True, 'http_ready': True, 'prestart_disabled': True,
-                      'process_group_shutdown': True, 'broken_build_rejected': True, 'offline_dependency': bool(bundle_path)}))
+                      'process_group_shutdown': True, 'broken_build_rejected': True, 'offline_dependency': bool(bundle_path), 'artifact_staged': True}))

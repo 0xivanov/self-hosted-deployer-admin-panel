@@ -202,3 +202,14 @@ power-loss recovery, durable retirement against delayed requests, build-log hand
 for hostile code or release artifact export/activation. Guest attempt records alone
 are not retirement proof. A successful fixture submission leaves the portal build
 running; it must not be reported as a successful published customer release.
+
+### Extracted release readiness
+
+The worker rehearsal now exports the trusted build directory after prune, stages
+it with `internal/nodeartifact` through `node-artifact-check`, and launches from
+the extracted release directory. On 2026-09-10 execution
+`9a3fae863955ae88e4966e896fea021b43f4a383b0229b5c0493b65a0cd17353`
+passed with `artifact_staged=true`, HTTP readiness, shutdown and both duplicate
+checks. The fixture exporter is not suitable for hostile output: it does not prove
+all customer child processes have terminated before snapshotting. Production
+export, durable build/release binding and activation remain separate requirements.

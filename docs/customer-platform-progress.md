@@ -727,3 +727,21 @@ connected runtime evidence, not production executor completion. Per-build VM
 provisioning, arbitrary verified input transfer, hard deadline/recovery behavior
 and artifacts remain to be implemented and qualified. Live VPS/Pi deployments
 were untouched. See `node-build-rehearsal.md` for reproduction and limitations.
+
+## Node release artifact staging (2026-09-10)
+
+Added bounded Node artifact validation and private extraction, including production
+module files and internal npm command links. Digests/ZIP checksums are checked;
+unsafe paths, special files, escaping/cyclic/dangling links, configuration secrets
+and excessive sizes are rejected. Extraction strips unsafe permissions, syncs
+completed files/directories, removes partial releases on error and preserves old
+release directories.
+
+The connected Linux worker fixture now exports its built/pruned application,
+stages it through the new validator and starts that extracted release. Execution
+`9a3fae863955ae88e4966e896fea021b43f4a383b0229b5c0493b65a0cd17353`
+reported artifact staging, HTTP health, shutdown and both duplicate guards passing.
+Full race-enabled integration tests, vet, command builds and Linux cross-build
+passed. No live deployment changed. Production export after proven builder
+termination, durable release records, storage/transfer, activation and rollback
+remain outstanding. See `node-artifacts.md` for the format and limits.
