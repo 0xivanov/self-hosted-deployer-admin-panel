@@ -157,6 +157,12 @@ func (s *Store) ClaimPublication(ctx context.Context, project string) (*Publicat
 		return nil, err
 	}
 	if !valid {
+		// Running jobs may already have changed the runtime. Retain the pending
+		// record until an operator reconciles it instead of falsely declaring
+		// failure and allowing another publication past an unknown outcome.
+		if j.State == "running" {
+			return nil, ErrDenied
+		}
 		if _, err = tx.ExecContext(ctx, "UPDATE publication_jobs SET state='failed',lease_hash='',lease_until=0 WHERE id=?", j.ID); err != nil {
 			return nil, err
 		}

@@ -100,11 +100,11 @@ func TestPublicationLeaseRecoveryAndRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(61 * time.Second)
-	if c, err := s.ClaimPublication(ctx, p.ID); err != nil || c != nil {
+	if c, err := s.ClaimPublication(ctx, p.ID); !errors.Is(err, ErrDenied) || c != nil {
 		t.Fatal(c, err)
 	}
 	jobs, active, err := s.PublicationJobs(ctx, session.Token, p.ID)
-	if err != nil || active != "" || len(jobs) != 1 || jobs[0].State != "failed" {
+	if err != nil || active != "" || len(jobs) != 1 || jobs[0].State != "running" {
 		t.Fatal(jobs, active, err)
 	}
 }
