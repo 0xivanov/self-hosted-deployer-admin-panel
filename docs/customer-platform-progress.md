@@ -359,3 +359,13 @@ The portal now shows an owner-only billing panel when test billing is enabled. I
 /billing/success and /billing/cancel return to the portal shell. Query parameters and redirects do not fulfill checkout. Currency rendering follows Stripe charge units, including zero-decimal and ISK/UGX exceptions; source: https://docs.stripe.com/currencies. Final tax and total confirmation remain on Stripe.
 
 Browser verification used disposable local data: signed in, requested billing, observed pending setup, displayed a synthetic EUR 15 monthly price, selected it, observed pending checkout and verified the rendered ready-checkout link. The external checkout link was not opened. The temporary server and browser tab were closed. Full race-enabled tests passed before the final status/return-route assertions; focused tests, vet, builds and JavaScript syntax checks were then run. Actual Stripe checkout, mobile/role-switch edge cases and complete payment lifecycle qualification remain outstanding. No live deployments or real payment provider calls were made.
+
+## Subscription event refresh signals
+
+Verified customer.subscription.created/updated/deleted events now enter the worker queue. Processing requires an already-bound subscription and its exact customer. Events arriving before checkout binding remain pending; wrong customer identities are rejected. Embedded event status and timestamps are not applied as current provider state.
+
+A matching event atomically clears the prior observation, increments its reconciliation generation, invalidates an old task lease, schedules an immediate subscription read and marks the inbox receipt processed. This prevents an in-flight older lookup from restoring stale state. Duplicate receipts do not invalidate observations produced after their first processing.
+
+Tests cover early delivery, binding/retry, foreign customer rejection, a delayed lookup racing a cancellation signal, duplicate events and current provider state differing from event payload status. Invoice/refund/dispute processing and paid-hosting activation remain incomplete. No live credentials, requests, charges or deployments were involved.
+
+Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.
