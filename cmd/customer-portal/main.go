@@ -37,6 +37,7 @@ func run() error {
 	key := flag.String("tls-key", "", "HTTPS private key")
 	smtpFile := flag.String("smtp-config", "", "private JSON SMTP settings")
 	mailKeyFile := flag.String("mail-key-file", "", "private file containing 32-byte hex mail encryption key")
+	publicationFile := flag.String("publication-sites", "", "private JSON mapping assigned static project IDs to HTTPS content origins")
 	signup := flag.Bool("signup", false, "enable public signup when mail is configured")
 	flag.Parse()
 	if flag.NArg() != 0 {
@@ -121,7 +122,17 @@ func run() error {
 			return err
 		}
 	}
-	handler, err := portal.NewHTTP(store, portal.HTTPOptions{Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup})
+	sites := map[string]string{}
+	if *publicationFile != "" {
+		raw, e := privateFile(*publicationFile)
+		if e != nil {
+			return e
+		}
+		if len(raw) > 16384 || json.Unmarshal(raw, &sites) != nil {
+			return errors.New("invalid publication site mapping")
+		}
+	}
+	handler, err := portal.NewHTTP(store, portal.HTTPOptions{Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
 	if err != nil {
 		return err
 	}
@@ -164,8 +175,8 @@ func privateFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
-		return nil, errors.New("mail settings must be private regular files (0600)")
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > 16384 {
+		return nil, errors.New("settings must be private regular files (0600), at most 16 KiB")
 	}
 	return os.ReadFile(path)
 }

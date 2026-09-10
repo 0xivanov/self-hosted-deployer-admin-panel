@@ -124,6 +124,22 @@ func (s *Store) PublicationJobs(ctx context.Context, token, project string) ([]P
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, "", err
 	}
+	// Always include the active release even when it is older than the recent
+	// history window, so the panel cannot mistake a live site for unpublished.
+	found := active == ""
+	for _, job := range jobs {
+		if job.ID == active {
+			found = true
+			break
+		}
+	}
+	if !found {
+		job, e := scanJob(tx.QueryRowContext(ctx, "SELECT "+jobColumns+" FROM publication_jobs WHERE id=? AND project_id=?", active, project))
+		if e != nil {
+			return nil, "", e
+		}
+		jobs = append(jobs, job)
+	}
 	return jobs, active, tx.Commit()
 }
 

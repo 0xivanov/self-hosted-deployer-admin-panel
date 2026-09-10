@@ -22,10 +22,11 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
-	Origin      string
-	Development bool
-	Mail        *AccountMail
-	Signup      bool
+	Origin           string
+	Development      bool
+	Mail             *AccountMail
+	Signup           bool
+	PublicationSites map[string]string
 }
 type attemptWindow struct {
 	start time.Time
@@ -33,6 +34,7 @@ type attemptWindow struct {
 }
 type HTTP struct {
 	mail                 *AccountMail
+	publicationSites     map[string]string
 	signup               bool
 	store                *Store
 	origin, host, cookie string
@@ -60,11 +62,20 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if opts.Mail != nil && (opts.Mail.store != store || opts.Mail.origin != opts.Origin) {
 		return nil, errors.New("mail and portal must use the same store and origin")
 	}
+	sites := map[string]string{}
+	for project, origin := range opts.PublicationSites {
+		id, err := hex.DecodeString(project)
+		site, e := url.Parse(origin)
+		if err != nil || len(id) != 32 || e != nil || site.Scheme != "https" || site.Host == "" || site.User != nil || site.Path != "" || site.RawQuery != "" || site.ForceQuery || site.Fragment != "" || strings.EqualFold(site.Hostname(), u.Hostname()) {
+			return nil, errors.New("invalid assigned content origin")
+		}
+		sites[project] = origin
+	}
 	cookie := "__Host-portal-session"
 	if opts.Development {
 		cookie = "portal-dev-session"
 	}
-	return &HTTP{mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 func csrfFor(token string) string {
 	sum := sha256.Sum256([]byte("portal-csrf:" + token))
@@ -215,6 +226,39 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.URL.Path == "/api/publications" && r.Method == "GET":
+		project := r.URL.Query().Get("project")
+		jobs, active, err := h.store.PublicationJobs(r.Context(), cookie.Value, project)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		p, err := h.store.GetProject(r.Context(), cookie.Value, project)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		site := h.publicationSites[project]
+		httpJSON(w, map[string]any{"jobs": jobs, "active": active, "site": site, "available": site != "" && p.Kind == "static"})
+	case r.URL.Path == "/api/publications" && r.Method == "POST":
+		var input struct {
+			Project string `json:"project"`
+			Upload  string `json:"upload"`
+			Key     string `json:"key"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		if h.publicationSites[input.Project] == "" {
+			httpError(w, 403, "Publishing is not enabled for this project")
+			return
+		}
+		job, err := h.store.RequestPublication(r.Context(), cookie.Value, input.Project, input.Upload, input.Key)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, job)
 	case r.URL.Path == "/api/uploads" && r.Method == "GET":
 		uploads, err := h.store.Uploads(r.Context(), cookie.Value, r.URL.Query().Get("project"))
 		if err != nil {
@@ -385,6 +429,10 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 func (h *HTTP) storeError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrPublishing):
+		httpError(w, 409, "A publication is already pending. Refresh its status before retrying.")
+	case errors.Is(err, ErrConflict):
+		httpError(w, 409, "Publication request conflicts with an existing operation")
 	case errors.Is(err, ErrRetained):
 		httpError(w, 409, "This upload is retained by publication history")
 	case errors.Is(err, ErrQuota):
