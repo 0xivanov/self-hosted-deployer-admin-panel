@@ -105,7 +105,7 @@ func TestHTTPRejectsRebindingAndPlaintext(t *testing.T) {
 		{"cross-site", func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "cross-site") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := httptest.NewRequest("GET", h.origin+"/", nil)
+			r := httptest.NewRequest("GET", h.origin+"/api/session", nil)
 			tc.mutate(r)
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, r)

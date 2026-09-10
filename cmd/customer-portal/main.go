@@ -3,7 +3,10 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -31,16 +35,20 @@ func run() error {
 	database := flag.String("database", "", "private portal SQLite path; never the deployer database")
 	cert := flag.String("tls-cert", "", "HTTPS certificate")
 	key := flag.String("tls-key", "", "HTTPS private key")
+	smtpFile := flag.String("smtp-config", "", "private JSON SMTP settings")
+	mailKeyFile := flag.String("mail-key-file", "", "private file containing 32-byte hex mail encryption key")
+	signup := flag.Bool("signup", false, "enable public signup when mail is configured")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return errors.New("unexpected arguments")
 	}
+	var demoMailDirectory string
 	if *demo {
 		host, _, err := net.SplitHostPort(*listen)
 		if err != nil || host != "127.0.0.1" || *origin != "http://"+*listen {
 			return errors.New("demo requires matching 127.0.0.1 listener and HTTP origin")
 		}
-		if *database != "" || *cert != "" || *key != "" {
+		if *database != "" || *cert != "" || *key != "" || *smtpFile != "" || *mailKeyFile != "" {
 			return errors.New("demo uses a disposable database and no TLS files")
 		}
 		dir, err := os.MkdirTemp("", "customer-portal-demo-")
@@ -49,6 +57,10 @@ func run() error {
 		}
 		defer os.RemoveAll(dir)
 		*database = filepath.Join(dir, "portal.db")
+		demoMailDirectory = filepath.Join(dir, "mail")
+		if err = os.Mkdir(demoMailDirectory, 0700); err != nil {
+			return err
+		}
 	} else if *database == "" || *cert == "" || *key == "" {
 		return errors.New("non-demo mode requires --database, --origin with HTTPS, --tls-cert and --tls-key")
 	}
@@ -67,7 +79,49 @@ func run() error {
 		}
 		fmt.Println("Disposable demo login: demo@example.test / demo-only-password")
 	}
-	handler, err := portal.NewHTTP(store, portal.HTTPOptions{Origin: *origin, Development: *demo})
+	var accountMail *portal.AccountMail
+	var sender portal.MailSender
+	var encryptionKey []byte
+	if *demo {
+		encryptionKey = make([]byte, 32)
+		if _, err = rand.Read(encryptionKey); err != nil {
+			return err
+		}
+		sender = demoMailSender{directory: demoMailDirectory}
+		*signup = true
+		fmt.Println("Demo emails saved privately in:", demoMailDirectory)
+	} else if *smtpFile != "" || *mailKeyFile != "" {
+		if *smtpFile == "" || *mailKeyFile == "" {
+			return errors.New("mail requires both --smtp-config and --mail-key-file")
+		}
+		data, e := privateFile(*smtpFile)
+		if e != nil {
+			return e
+		}
+		var opts portal.SMTPOptions
+		if e = json.Unmarshal(data, &opts); e != nil {
+			return errors.New("invalid SMTP JSON")
+		}
+		sender, e = portal.NewSMTPSender(opts)
+		if e != nil {
+			return e
+		}
+		raw, e := privateFile(*mailKeyFile)
+		if e != nil {
+			return e
+		}
+		encryptionKey, e = hex.DecodeString(strings.TrimSpace(string(raw)))
+		if e != nil {
+			return errors.New("mail key must be hexadecimal")
+		}
+	}
+	if sender != nil {
+		accountMail, err = portal.NewAccountMail(store, encryptionKey, *origin, *demo)
+		if err != nil {
+			return err
+		}
+	}
+	handler, err := portal.NewHTTP(store, portal.HTTPOptions{Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup})
 	if err != nil {
 		return err
 	}
@@ -79,6 +133,14 @@ func run() error {
 	server := &http.Server{Handler: handler, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if accountMail != nil {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			accountMail.Run(ctx, sender, func(error) { fmt.Fprintln(os.Stderr, "Account mail delivery failed; inspect queue health") })
+		}()
+		defer func() { stop(); <-done }()
+	}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -95,4 +157,24 @@ func run() error {
 		return nil
 	}
 	return err
+}
+
+func privateFile(path string) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+		return nil, errors.New("mail settings must be private regular files (0600)")
+	}
+	return os.ReadFile(path)
+}
+
+type demoMailSender struct{ directory string }
+
+func (s demoMailSender) Send(ctx context.Context, message portal.Mail) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(s.directory, message.ID+".txt"), []byte("To: "+message.To+"\nSubject: "+message.Subject+"\n\n"+message.Text), 0600)
 }

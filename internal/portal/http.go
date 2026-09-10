@@ -23,12 +23,16 @@ var webAssets embed.FS
 type HTTPOptions struct {
 	Origin      string
 	Development bool
+	Mail        *AccountMail
+	Signup      bool
 }
 type attemptWindow struct {
 	start time.Time
 	count int
 }
 type HTTP struct {
+	mail                 *AccountMail
+	signup               bool
 	store                *Store
 	origin, host, cookie string
 	development          bool
@@ -49,11 +53,17 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	} else if u.Scheme != "https" {
 		return nil, errors.New("HTTPS required")
 	}
+	if opts.Signup && opts.Mail == nil {
+		return nil, errors.New("signup requires account mail")
+	}
+	if opts.Mail != nil && (opts.Mail.store != store || opts.Mail.origin != opts.Origin) {
+		return nil, errors.New("mail and portal must use the same store and origin")
+	}
 	cookie := "__Host-portal-session"
 	if opts.Development {
 		cookie = "portal-dev-session"
 	}
-	return &HTTP{store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 func csrfFor(token string) string {
 	sum := sha256.Sum256([]byte("portal-csrf:" + token))
@@ -91,7 +101,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
-	if r.Host != h.host || (!h.development && r.TLS == nil) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+	if r.Host != h.host || (!h.development && r.TLS == nil) || (strings.HasPrefix(r.URL.Path, "/api/") && r.Header.Get("Sec-Fetch-Site") == "cross-site") {
 		httpError(w, 403, "Invalid request origin")
 		return
 	}
@@ -142,6 +152,14 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.Header().Set("Retry-After", "5")
 		httpError(w, 429, "Please retry shortly")
+		return
+	}
+	if r.URL.Path == "/api/config" && r.Method == "GET" {
+		httpJSON(w, map[string]bool{"signup": h.signup, "account_mail": h.mail != nil})
+		return
+	}
+	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {
+		h.accountAction(w, r)
 		return
 	}
 	if r.URL.Path == "/api/login" && r.Method == "POST" {
@@ -275,4 +293,74 @@ func httpDecode(w http.ResponseWriter, r *http.Request, v any) bool {
 		return false
 	}
 	return true
+}
+
+func (h *HTTP) accountAction(w http.ResponseWriter, r *http.Request) {
+	if !h.allowLogin(r.RemoteAddr) {
+		w.Header().Set("Retry-After", "60")
+		httpError(w, 429, "Too many account requests; retry in a minute")
+		return
+	}
+	switch r.URL.Path {
+	case "/api/register":
+		if !h.signup {
+			httpError(w, 403, "Registration is closed")
+			return
+		}
+		var input struct {
+			Email     string `json:"email"`
+			Password  string `json:"password"`
+			Workspace string `json:"workspace"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		err := h.mail.Register(r.Context(), input.Email, input.Password, input.Workspace)
+		if errors.Is(err, ErrInvalid) {
+			httpError(w, 400, "Use a valid email, a workspace name and a password of 12 to 1024 characters")
+			return
+		}
+		if err != nil && !errors.Is(err, ErrExists) {
+			httpError(w, 503, "Registration unavailable")
+			return
+		}
+		httpJSON(w, map[string]string{"message": "If this email can be registered, a verification link will arrive shortly. Existing users can sign in or reset their password."})
+	case "/api/password/forgot":
+		var input struct {
+			Email string `json:"email"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		if err := h.mail.RequestReset(r.Context(), input.Email); err != nil {
+			httpError(w, 503, "Account recovery unavailable")
+			return
+		}
+		httpJSON(w, map[string]string{"message": "If an eligible account exists, a reset link will arrive shortly."})
+	case "/api/verify":
+		var input struct {
+			Token string `json:"token"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		if err := h.store.Verify(r.Context(), input.Token); err != nil {
+			httpError(w, 400, "Verification link is invalid or expired")
+			return
+		}
+		httpJSON(w, map[string]string{"message": "Email verified. You can sign in now."})
+	case "/api/password/reset":
+		var input struct {
+			Token    string `json:"token"`
+			Password string `json:"password"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		if err := h.store.ResetPassword(r.Context(), input.Token, input.Password); err != nil {
+			httpError(w, 400, "Reset link is invalid, expired, or the password does not meet the length requirement")
+			return
+		}
+		httpJSON(w, map[string]string{"message": "Password changed. Sign in with your new password."})
+	}
 }
