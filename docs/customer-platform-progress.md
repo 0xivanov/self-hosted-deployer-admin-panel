@@ -89,3 +89,15 @@ Tests cover non-owner issuance, wrong-recipient acceptance, granted developer ac
 Current onboarding limitation: invite recipients must sign in with an existing verified account or register/verify first when signup is enabled. Creating an account directly from an invitation while public signup is disabled is not yet implemented. The browser retains a pending invitation in memory through sign-in; a reload after removing the URL fragment requires reopening the original email link. Invitation preview details and dedicated acceptance browser tests remain qualification work.
 
 Schema 3 is a development migration. As with schema 2, earlier binaries reject the newer schema; pre-migration backup recovery is needed for rollback across this change. The live operator service and three-node fleet remain unchanged.
+
+## Project archive validation
+
+Added `internal/projectarchive` as the first upload-pipeline component. It validates ZIP content without extracting or executing customer code. Current development limits: 10 MiB compressed, 32 MiB total expanded, 8 MiB per file, 1000 entries and 16 path levels. It checks actual decompressed streams and checksums, not only ZIP header sizes.
+
+Rejected inputs include traversal/absolute/Windows paths, control characters, symlinks/special files, duplicate/case-colliding paths, file/directory conflicts, encrypted/unsupported archives, repository metadata, uploaded dependencies and common credential filenames. Filename checks are best-effort secret prevention, not proof that project content contains no secrets.
+
+Static projects require root `index.html`. Node projects require root `package.json` with a start script and a supported npm lockfile. These checks establish the upload contract; they do not establish that dependencies resolve or the application runs. Dependency installation and any build/start scripts still require the planned isolated build/runtime environments.
+
+Validation tests cover accepted static/Node fixtures, unsafe paths, links, credentials, collisions, expansion bombs, total expanded-size limits, truncation, entry count, incomplete project contracts and cancellation. Race tests, vet and existing command builds pass.
+
+This component is not yet wired to HTTP upload storage or the browser file picker. Next: authenticated workspace-scoped archive persistence, quotas, upload metadata/UI, then static publication and immutable releases. No uploaded code was executed and no live deployments changed.
