@@ -391,3 +391,13 @@ Management sessions now validate the actual pinned Stripe portal configuration b
 Tests reject live/inactive/incomplete settings, public login, subscription edits, immediate cancellation and settings changed between lookup and session creation. No provider configuration is created or modified. Sandbox feature verification and rendered management navigation remain outstanding; no real credentials, sessions, charges or deployments were used.
 
 Validation passed: full race-enabled integration suite, vet and command builds; the additional configuration-race case also passed with race detection.
+
+## Charge-to-subscription payment observations
+
+Added a test-provider lookup for a captured successful charge and its InvoicePayment mapping. It validates charge/customer/PaymentIntent identity, platform scope, currency and amount bounds, then requires exactly one fully allocated invoice payment whose expanded invoice belongs to that customer and references a subscription. The request is bounded to thirty seconds and a single two-item list page; multiple/truncated allocations are rejected for later accounting handling.
+
+The observation retains the captured amount, refunded amount and disputed flag alongside charge, invoice, customer and subscription IDs. It neither issues refunds nor grants or suspends hosting. Durable mapping storage, refund/dispute webhook handling and policy integration are still required.
+
+Local fake-provider tests cover paid charges, partial refunds, disputes, live/uncaptured charges, invalid refund totals, split allocations, foreign payment/customer identities, unexpanded/standalone invoices and multiple/truncated mappings. No real Stripe requests, charges, refunds or live deployment changes were made.
+
+Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.
