@@ -809,3 +809,18 @@ candidates, identity/evidence errors, reference cleanup, tenant access, idempote
 revocation and migration of an outstanding schema-22 operation. Production launcher,
 authenticated runtime transport, worker orchestration and qualification remain.
 No live VPS/Pi deployment was changed.
+
+## Authenticated Node runtime observations (2026-09-10)
+
+Added a scoped HTTPS status handler and client implementing `NodeRuntimeReader`.
+Access requires the assigned management host, bearer token, project and runtime;
+browser requests, bodies, queries and mutations are denied. Fresh nonce envelopes
+prevent cached response replay. The client verifies certificates, disables proxy/
+redirect/decompression inheritance and rejects oversized or invalid responses.
+Provider calls are bounded and concurrent reads capped.
+
+TLS security tests and a connected portal/reconciliation integration test passed
+with explicit executor/runtime fixtures. No production launcher is implied by these
+fixtures. The API exposes only read-only observations; production process identity,
+listener provisioning, activation transport and worker orchestration remain.
+Live deployments were unchanged. See `node-runtime-api.md` for the contract.
