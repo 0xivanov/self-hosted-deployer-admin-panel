@@ -37,6 +37,7 @@ func run() error {
 	key := flag.String("tls-key", "", "HTTPS private key")
 	smtpFile := flag.String("smtp-config", "", "private JSON SMTP settings")
 	mailKeyFile := flag.String("mail-key-file", "", "private file containing 32-byte hex mail encryption key")
+	testBilling := flag.Bool("test-billing", false, "enable owner billing request API for a separately configured Stripe test worker")
 	publicationFile := flag.String("publication-sites", "", "private JSON mapping assigned static project IDs to HTTPS content origins")
 	signup := flag.Bool("signup", false, "enable public signup when mail is configured")
 	flag.Parse()
@@ -132,7 +133,7 @@ func run() error {
 			return errors.New("invalid publication site mapping")
 		}
 	}
-	handler, err := portal.NewHTTP(store, portal.HTTPOptions{Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
+	handler, err := portal.NewHTTP(store, portal.HTTPOptions{TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
 	if err != nil {
 		return err
 	}

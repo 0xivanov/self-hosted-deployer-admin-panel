@@ -307,3 +307,11 @@ The new billing-worker command loads a private test-only Stripe configuration an
 Tests cover customer creation with an uncertain first result, durable retry after store reopen, exact saved customer/plan/price/request values, checkout event processing, periodic subscription retrieval, concurrent worker exclusion and recovery after a provider result cannot be acknowledged. Tests use a local fake provider only. The full race-enabled integration suite, vet and all command builds passed; the added cancellation recovery test also passed with race detection.
 
 No live database was migrated and no provider credentials, charges or deployments were used. Schema 11 needs a consistent pre-upgrade backup for older-binary rollback. The broader domain resale, merchant commerce and isolated Node hosting requirements remain active.
+
+## Owner billing request API
+
+The customer portal now has opt-in test billing endpoints for customer identity requests/reads, checkout requests/reads and subscription observations. They run behind existing host/TLS, session, origin and CSRF checks, then enforce workspace ownership in the store. The default is disabled; --test-billing enables the routes. Browser input cannot set provider customer IDs, prices, URLs or acknowledgement state. Worker-only identifiers remain excluded from checkout JSON.
+
+Tests cover owner requests, anonymous access, foreign origins, missing CSRF, foreign workspaces, developer restrictions, injected customer/price fields and disabled-by-default behavior. Customer payment screens, plan administration, webhook wiring, payment entitlement rules and actual Stripe sandbox qualification remain outstanding. No live deployment or provider call was made.
+
+Validation passed: the full race-enabled integration suite, vet, all command builds and whitespace checks.

@@ -22,6 +22,7 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
+	TestBilling      bool
 	Origin           string
 	Development      bool
 	Mail             *AccountMail
@@ -33,6 +34,7 @@ type attemptWindow struct {
 	count int
 }
 type HTTP struct {
+	testBilling          bool
 	mail                 *AccountMail
 	publicationSites     map[string]string
 	signup               bool
@@ -75,7 +77,7 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if opts.Development {
 		cookie = "portal-dev-session"
 	}
-	return &HTTP{publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 func csrfFor(token string) string {
 	sum := sha256.Sum256([]byte("portal-csrf:" + token))
@@ -223,6 +225,10 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "POST" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(csrfFor(cookie.Value))) != 1 {
 		httpError(w, 403, "Reload the page and retry")
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/billing/") {
+		h.billingHTTP(w, r, cookie.Value)
 		return
 	}
 	switch {
