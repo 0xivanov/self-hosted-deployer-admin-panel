@@ -275,3 +275,13 @@ Race-enabled tests cover early webhook delivery followed by binding, wrong custo
 Next: subscription/invoice retrieval and reconciliation, billing worker scheduling/retries, owner billing controls and actual Stripe sandbox tests. Refunds/cancellation, Connect merchant flows, domain resale, Node hosting and remaining deployment qualification are still open. Schema 9 requires the matching portal binary or restoration of a consistent pre-upgrade backup; no live database was upgraded.
 
 The full race-enabled suite, including the separate portal/worker/runtime publication test, also passed after schema 9 and event reconciliation changes.
+
+## Current subscription state retrieval
+
+The test Stripe adapter now retrieves a subscription with its latest invoice expanded. It checks the saved subscription/customer/price identities, a single quantity-one hosting item, valid billing periods, supported statuses and invoice customer/subscription ownership. Live objects, truncated item lists and unexpanded invoice references are rejected. Cancellation and paused collection are retained in the returned snapshot.
+
+This read produces evidence for reconciliation only. It does not grant hosting access, persist subscription changes or override webhook state. The reconciliation worker still needs durable concurrency control, invoice/payment policy, refund/dispute handling and retry scheduling before it can apply entitlements.
+
+Local fake-provider tests cover matching subscriptions, foreign customer/price/invoice identities, live responses, unsupported quantities, incomplete item lists, trial subscriptions without invoices and past-due state. No real Stripe credentials, charges, live database migrations or deployment changes were involved.
+
+Validation: the full race-enabled integration suite, vet, command builds and whitespace checks passed.
