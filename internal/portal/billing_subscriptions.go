@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/hostingbilling"
 )
@@ -12,6 +13,10 @@ import (
 // SubscriptionReader supplies authenticated provider state, never browser input.
 type SubscriptionReader interface {
 	RetrieveSubscription(context.Context, string, string, string) (hostingbilling.SubscriptionSnapshot, error)
+}
+
+type InvoiceChargeFinder interface {
+	DiscoverInvoiceCharge(context.Context, string, string, string) (string, error)
 }
 
 // ReconcileBillingSubscription fences each provider read with a durable generation.
@@ -38,11 +43,23 @@ func (s *Store) ReconcileBillingSubscription(ctx context.Context, id string, rea
 	if snapshot.ID != id || snapshot.CustomerID != customer || snapshot.PriceID != price || snapshot.ObservedAt < started || snapshot.ObservedAt > s.now().Unix() {
 		return ErrBillingConflict
 	}
+	chargeID := ""
+	if finder, ok := reader.(InvoiceChargeFinder); ok && snapshot.InvoiceID != "" {
+		chargeID, err = finder.DiscoverInvoiceCharge(ctx, snapshot.InvoiceID, customer, id)
+		if err != nil {
+			return err
+		}
+	}
 	data, err := json.Marshal(snapshot)
 	if err != nil {
 		return err
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE billing_subscriptions SET snapshot=? WHERE id=? AND reconciliation_generation=?`, data, id, generation)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE billing_subscriptions SET snapshot=? WHERE id=? AND reconciliation_generation=?`, data, id, generation)
 	if err != nil {
 		return err
 	}
@@ -53,7 +70,15 @@ func (s *Store) ReconcileBillingSubscription(ctx context.Context, id string, rea
 	if changed != 1 {
 		return ErrBillingConflict
 	}
-	return nil
+	if chargeID != "" {
+		if len(chargeID) < 4 || len(chargeID) > 255 || !strings.HasPrefix(chargeID, "ch_") || strings.ContainsAny(chargeID, " /\\\r\n") {
+			return ErrBillingConflict
+		}
+		if _, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO billing_charges(id) VALUES(?)", chargeID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // BillingSubscriptionSnapshot is owner-only and may be nil before reconciliation.

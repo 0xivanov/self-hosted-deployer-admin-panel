@@ -84,3 +84,5 @@ Supported risk events are charge.refunded, charge.dispute.created, charge.disput
 Charge observations now include verified dispute outcomes and DisputesChecked. Older snapshots without that marker require refresh before interpreting missing dispute data. Unknown or incomplete dispute results prevent a successful observation. Hosting access policy must examine current outcomes rather than using the charge's disputed boolean as a loss decision.
 
 Known charges refresh every five minutes, using durable sixty-second reservation/backoff after failures. charge.succeeded now seeds charge tracking through the same verified-event path. A missing event for an entirely unknown charge cannot be recovered by this scheduler; a provider discovery sweep remains required.
+
+Subscription reconciliation now discovers charges associated with its latest invoice and queues their verification even when the charge webhook was missed. Discovery requires exact customer/subscription identity and a supported single payment allocation. An empty result does not prove paid access. Historical invoices and unknown subscriptions still require a broader discovery sweep.

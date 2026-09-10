@@ -110,8 +110,26 @@ func TestSubscriptionReconciliationFencingAndPersistence(t *testing.T) {
 	if err != nil || snapshot == nil || snapshot.Status != "past_due" {
 		t.Fatal(snapshot, err)
 	}
+	discovery := discoveringReader{subscriptionReaderFunc: func(ctx context.Context, id, customer, price string) (hostingbilling.SubscriptionSnapshot, error) {
+		v, err := read("active")(ctx, id, customer, price)
+		v.InvoiceID = "in_latest"
+		return v, err
+	}}
+	if err = reopened.ReconcileBillingSubscription(ctx, "sub_saved", discovery); err != nil {
+		t.Fatal(err)
+	}
+	var tracked int
+	if err = reopened.db.QueryRow("SELECT count(*) FROM billing_charges WHERE id='ch_discovered' AND next_refresh=0 AND snapshot IS NULL").Scan(&tracked); err != nil || tracked != 1 {
+		t.Fatal("discovered charge was not queued", tracked, err)
+	}
 	var state string
 	if err = reopened.db.QueryRow("SELECT state FROM billing_subscriptions WHERE id='sub_saved'").Scan(&state); err != nil || state != "awaiting_reconciliation" {
 		t.Fatal("snapshot granted entitlement", state, err)
 	}
+}
+
+type discoveringReader struct{ subscriptionReaderFunc }
+
+func (d discoveringReader) DiscoverInvoiceCharge(context.Context, string, string, string) (string, error) {
+	return "ch_discovered", nil
 }

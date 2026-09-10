@@ -439,3 +439,13 @@ Verified charge.succeeded events now also enter charge reconciliation, allowing 
 Tests cover persisted schedules, failed refresh/backoff, later successful refresh and successful-charge event discovery in addition to existing identity/race tests. Schema 14 requires a consistent pre-upgrade backup for older-binary rollback. No live database, provider request or deployment was used.
 
 Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.
+
+## Discover latest-invoice charges without charge webhooks
+
+The Stripe adapter can now discover a charge from a subscription's latest invoice through expanded InvoicePayment and PaymentIntent records. It verifies the requested invoice/customer/subscription relation, test mode, matching currency and allocation amount, successful PaymentIntent and charge identity. Empty payment lists yield no charge, not paid entitlement. Multiple or truncated allocations remain unsupported.
+
+Subscription reconciliation uses this discovery capability when supplied by the provider and a latest invoice exists. It atomically saves the fenced subscription observation and seeds a discovered charge for the existing periodic charge verifier. Existing charge records are not replaced or rebound by discovery. Provider discovery failures prevent a successful subscription observation update.
+
+Tests cover valid/missing payments, multiple/truncated results, foreign identities, unexpanded PaymentIntents, live objects and queueing a discovered charge without a charge webhook. This recovers missing charge events for the current invoice of known subscriptions. A historical invoice sweep and missing subscription/customer identity recovery remain outstanding. No actual Stripe requests or live deployment changes were made.
+
+Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.
