@@ -7,18 +7,9 @@ import subprocess
 import uuid
 
 assert os.getuid() != 0
-properties = {
-    'User': str(os.getuid()), 'Group': str(os.getgid()),
-    'NoNewPrivileges': 'yes', 'PrivateNetwork': 'yes', 'PrivateDevices': 'yes',
-    'ProtectSystem': 'strict', 'ProtectHome': 'yes', 'ProtectControlGroups': 'yes',
-    'ProtectKernelTunables': 'yes', 'ProtectKernelModules': 'yes',
-    'RestrictSUIDSGID': 'yes', 'RestrictNamespaces': 'yes', 'CapabilityBoundingSet': '',
-    'MemoryMax': '128M', 'MemorySwapMax': '0', 'TasksMax': '32', 'CPUQuota': '100%',
-    'RuntimeMaxSec': '10', 'TimeoutStopSec': '2', 'KillMode': 'control-group',
-    'LimitFSIZE': '4M',
-    'TemporaryFileSystem': f'/work:rw,size=64M,mode=0700,uid={os.getuid()},gid={os.getgid()} /tmp:rw,size=16M,mode=1777 /var/tmp:rw,size=16M,mode=1777',
-    'WorkingDirectory': '/work',
-}
+from node_lab_profile import restriction_properties
+
+properties = restriction_properties()
 for mode in ['boundaries', 'cpu', 'memory', 'timeout']:
     unit = 'node-probe-' + mode + '-' + uuid.uuid4().hex[:12]
     command = ['sudo', '-n', 'systemd-run', '--wait', '--unit=' + unit]

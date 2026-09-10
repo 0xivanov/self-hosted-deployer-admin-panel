@@ -603,3 +603,17 @@ This is the start of the domain implementation, not a registrar integration or p
 - Stopped/reset all probe services and stopped the lab VM. Live VPS/Pis and the
   other local labs were unchanged. Full scope and remaining qualification limits
   are recorded in docs/node-build-rehearsal.md; this is not public Node readiness.
+
+### Restricted positive Node build
+
+- Ran the synthetic Node fixture under the same memory/CPU/PID/time/filesystem/
+  network/privilege restrictions used by negative probes, without raising limits.
+  Install/build/prune, HTTP startup, shutdown and broken-build checks passed.
+- Extracted a shared service profile and added deterministic Mac lab setup plus
+  a guest positive runner. Fixed rehearsal reproducibility after VM reboot removed
+  old /tmp inputs; pinned fixture/toolchain inputs now live read-only under /opt.
+- Reran negative probes with the shared profile. Only the named disposable Node VM
+  was used. Third-party package acquisition and production worker/runtime wiring
+  remain outstanding; this result covers a trusted dependency-free fixture.
+- Positive and negative live lab runs, Python syntax and whitespace checks passed.
+  No test services remained active; all four local VMs were confirmed stopped.

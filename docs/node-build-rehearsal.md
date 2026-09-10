@@ -120,3 +120,38 @@ operation retirement and recovery; artifact validation/export; and tenant isolat
 qualification. Journaling is not yet an untrusted log-retention solution. These
 service restrictions supplement the VM boundary and do not authorize sharing a
 legacy host or executing arbitrary customer code on the Mac.
+
+## Positive Node build under the restricted profile, 2026-09-10
+
+The synthetic Node fixture now passes under the same service profile as the
+negative probes, shared in `deploy/qualification/node_lab_profile.py`. The profile
+was not relaxed: 128 MiB memory, zero swap, 32 tasks, one CPU quota, a 10-second
+runtime limit, blocked outbound networking, no privilege elevation, protected
+system/home paths and bounded writable temporary filesystems remained enabled.
+
+Node v24.20.0/npm 11.19.0 passed install hooks, build output, offline prune, HTTP
+readiness, suppressed prestart hooks, process-group shutdown and broken-build
+rejection under that profile. The fixture has no third-party dependencies, so this
+only demonstrates the offline execution stage. Negative resource/network probes
+were rerun successfully against the shared profile afterward.
+
+A reboot cleared the earlier `/tmp` rehearsal inputs. The new Mac setup helper
+`deploy/qualification/node-lab-setup.py` deterministically packages the checked-in
+fixture, cross-builds the Linux ARM64 preflight helper, explicitly copies inputs to
+the named running lab, installs read-only fixture/toolchain inputs under `/opt`,
+verifies the pinned Node archive checksum and runs the positive test. It accepts no
+customer source path and does not create or start a VM. Run it from the Mac after
+starting `deployer-node-build-lab`; then stop the VM after qualification. Its local
+temporary inputs are automatically removed.
+
+The deterministic fixture ZIP SHA-256 for this run was
+`c5dfe6f88bfbe21215d3afce1d97293144fbd3f61045c73fccca5b6b28975c5c`.
+`node-positive-run.py` takes the expected fixture digest explicitly and uses the
+shared profile. Inputs under `/opt/node-positive-lab` now survive guest reboots;
+temporary copies of the runners under `/tmp` can be recreated by the setup helper.
+
+The previous positive-build-under-restrictions gap is closed for this synthetic
+ARM64 fixture. Third-party/native package builds, package acquisition, resource
+sizing for actual plans, logs, durable artifacts, VM dispatch/retirement and
+customer runtime publication are still unqualified. This does not enable public
+Node hosting or qualify arbitrary uploaded code.
