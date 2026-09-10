@@ -93,8 +93,9 @@ Owners/developers can list retained metadata, read a checksum-validated archive 
 delete an archive to free capacity. These operations recheck current workspace
 membership; viewers and other workspaces cannot access release contents. Deletion
 is idempotent and audited, keeps build/source history, and cannot cause automatic
-recreation of a deleted successful release. Future active/queued deployment
-references must use restricting foreign keys before runtime activation is added.
+recreation of a deleted successful release. Queued/running deployment references now prevent archive deletion through both
+a store check and a restricting foreign key. See `node-deployments.md`; active
+runtime release references must be retained by the future activation path too.
 
 Tests cover schema-20 migration with a pending dispatched build, expired-lease
 recovery, restart persistence, concurrent/idempotent retention, evidence mismatch,

@@ -157,7 +157,7 @@ func TestNodeDispatchMigrationPreservesPreparedBuild(t *testing.T) {
 	if err := s.BindNodeBuildDependencies(t.Context(), c.Job.ID, c.ExecutionID, c.Lease, root, bundle); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec("DROP TABLE node_releases; ALTER TABLE node_builds DROP COLUMN dispatch_intent; PRAGMA user_version=19"); err != nil {
+	if _, err := s.db.Exec("DROP TABLE node_deployment_releases; DROP TABLE node_deployments; DROP TABLE node_releases; ALTER TABLE node_builds DROP COLUMN dispatch_intent; PRAGMA user_version=19"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {

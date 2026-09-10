@@ -759,3 +759,20 @@ idempotent deletion, with 10 releases per project and 500 MiB per workspace limi
 Tests cover persistence/migration, expired leases, evidence rejection, permissions,
 revocation, concurrent retries, quota recovery and stored corruption. This is
 retention only: no public routes, runtime activation or live fleet changes.
+
+## Node deployment queue and release retention (2026-09-10)
+
+Added schema 22 with idempotent deployment requests against exact retained releases,
+operator runtime assignments and increasing project revisions. One pending request
+per project is enforced in the database. Pending deployment references protect
+archives from deletion; cancelling queued work frees only its reference and retains
+history. Selecting older releases uses the same revision path for future rollback.
+
+Workers can claim only matching runtime/toolchain/architecture assignments after
+current permission and archive-integrity checks. Claims have unique operation IDs
+and renewable leases; expired running operations cannot be reclaimed or cancelled
+without runtime evidence. Tests cover request conflicts, retention, restart/history,
+corruption, assignment mismatch, permissions, lease expiry and schema-21 migration.
+No activation or public routing was added, and no live deployment changed. Health-
+checked runtime activation, previous-release preservation and reconciliation remain
+next. See `node-deployments.md` for contracts and remaining requirements.

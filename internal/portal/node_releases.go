@@ -245,8 +245,8 @@ func (s *Store) NodeReleaseArchive(ctx context.Context, token, project, id strin
 }
 
 // DeleteNodeRelease removes a retained archive, preserving build/audit history.
-// Future deployment references must use restricting foreign keys to prevent
-// deleting active or queued releases. No hosting activation exists here yet.
+// Deployment references prevent deletion while a release is needed by pending
+// work. Build and deployment history remain after deletion.
 func (s *Store) DeleteNodeRelease(ctx context.Context, token, project, id string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -263,6 +263,13 @@ func (s *Store) DeleteNodeRelease(ctx context.Context, token, project, id string
 	}
 	if saved == nil {
 		return tx.Commit()
+	}
+	var references int
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM node_deployment_releases WHERE release_id=?", id).Scan(&references); err != nil {
+		return err
+	}
+	if references > 0 {
+		return ErrRetained
 	}
 	if _, err = tx.ExecContext(ctx, "DELETE FROM node_releases WHERE build_id=?", id); err != nil {
 		return err
