@@ -22,18 +22,20 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
-	TestBilling      bool
-	Origin           string
-	Development      bool
-	Mail             *AccountMail
-	Signup           bool
-	PublicationSites map[string]string
+	TestWebhookSecret string
+	TestBilling       bool
+	Origin            string
+	Development       bool
+	Mail              *AccountMail
+	Signup            bool
+	PublicationSites  map[string]string
 }
 type attemptWindow struct {
 	start time.Time
 	count int
 }
 type HTTP struct {
+	billingWebhook       http.Handler
 	testBilling          bool
 	mail                 *AccountMail
 	publicationSites     map[string]string
@@ -73,11 +75,21 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 		}
 		sites[project] = origin
 	}
+	var webhook http.Handler
+	if opts.TestWebhookSecret != "" {
+		if !opts.TestBilling || opts.Development {
+			return nil, errors.New("billing webhook requires test billing and HTTPS mode")
+		}
+		webhook, err = BillingWebhookHandler(store, u.Host, opts.TestWebhookSecret)
+		if err != nil {
+			return nil, err
+		}
+	}
 	cookie := "__Host-portal-session"
 	if opts.Development {
 		cookie = "portal-dev-session"
 	}
-	return &HTTP{testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 func csrfFor(token string) string {
 	sum := sha256.Sum256([]byte("portal-csrf:" + token))
@@ -111,6 +123,14 @@ func (h *HTTP) allowLogin(address string) bool {
 	return true
 }
 func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/webhooks/stripe-test" {
+		if h.billingWebhook == nil || r.URL.EscapedPath() != "/webhooks/stripe-test" || r.URL.RawQuery != "" || r.URL.ForceQuery {
+			httpError(w, 404, "Not found")
+			return
+		}
+		h.billingWebhook.ServeHTTP(w, r)
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")

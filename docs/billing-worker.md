@@ -15,7 +15,7 @@ The configuration must be a regular private file, with no group/other permission
 }
 ```
 
-Return URLs must use HTTPS on the same host. The secret must be supplied locally, never in chat, source control or command arguments. The configured plans must match the operator's enabled database plan records. The worker intentionally does not create, re-enable or reprice plans on startup. Start the portal with `--test-billing` to opt into the owner request API. Plan administration, customer payment screens and the dedicated webhook endpoint still need wiring before customer use.
+Return URLs must use HTTPS on the same host. The secret must be supplied locally, never in chat, source control or command arguments. The configured plans must match the operator's enabled database plan records. The worker intentionally does not create, re-enable or reprice plans on startup. Start the portal with `--test-billing` to opt into the owner request API. Plan administration and customer payment screens still need wiring before customer use. The webhook is separately opt-in as described below.
 
 Each task has a durable 60-second lease. Operations have a 30-second context deadline; canceled work recovers after lease expiry. Failed tasks back off from 30 seconds to one hour. The same customer/checkout request key is reused after uncertain results, and existing guards stop blind provider creates after 23 hours. Those aged requests need operator reconciliation. Completed creates and checkout events stop polling; subscriptions refresh every five minutes. Unsupported inbox event types remain for their future processors. Failed subscription reads keep the previous timestamped observation, which must never be assumed fresh by an access policy.
 
@@ -30,3 +30,11 @@ With `--test-billing`, authenticated workspace owners can use:
 - `GET /api/billing/subscription` with `workspace` and `id` to read the test subscription observation. This is not an access entitlement.
 
 POST requests require the same-origin header and session CSRF token. The API accepts no price, provider acknowledgement or redirect URL. Billing requests do not contact Stripe within the browser request; the separately configured worker handles them. Endpoints remain disabled unless explicitly enabled.
+
+## Test webhook endpoint
+
+In HTTPS mode, add `--test-billing --test-webhook-secret-file /private/stripe-test-webhook-secret` to the portal command. The secret file contains the test endpoint signing secret beginning with `whsec_`, and uses the same private-file permissions and 16 KiB limit as other settings. The webhook cannot be enabled in plaintext demo mode. Without the secret configuration its route returns 404.
+
+The exact destination is `/webhooks/stripe-test` on the configured portal origin. No query string, encoded path alias or browser Origin header is accepted. Register only a test-mode platform endpoint matching the pinned Stripe SDK API version; Connect events and live events are rejected. The currently processed event types are `checkout.session.completed` and `checkout.session.expired`. Other verified types remain pending until their processors are implemented.
+
+Receipt requires a valid raw-body signature and is acknowledged only after durable inbox storage or duplicate recognition. Receipt itself grants no hosting access. The separately running billing worker resolves the acknowledged checkout identity and retrieves subscription observations. Browser billing routes continue to require session authentication and CSRF protection. This configuration has been tested with local synthetic signed events, not an actual Stripe endpoint.

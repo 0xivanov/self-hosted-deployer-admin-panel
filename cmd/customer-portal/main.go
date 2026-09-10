@@ -37,12 +37,24 @@ func run() error {
 	key := flag.String("tls-key", "", "HTTPS private key")
 	smtpFile := flag.String("smtp-config", "", "private JSON SMTP settings")
 	mailKeyFile := flag.String("mail-key-file", "", "private file containing 32-byte hex mail encryption key")
+	webhookFile := flag.String("test-webhook-secret-file", "", "private Stripe test webhook signing secret file")
 	testBilling := flag.Bool("test-billing", false, "enable owner billing request API for a separately configured Stripe test worker")
 	publicationFile := flag.String("publication-sites", "", "private JSON mapping assigned static project IDs to HTTPS content origins")
 	signup := flag.Bool("signup", false, "enable public signup when mail is configured")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return errors.New("unexpected arguments")
+	}
+	var webhookSecret string
+	if *webhookFile != "" {
+		if !*testBilling || *demo {
+			return errors.New("test webhook requires --test-billing and non-demo HTTPS mode")
+		}
+		raw, e := privateFile(*webhookFile)
+		if e != nil {
+			return errors.New("test webhook signing secret unavailable")
+		}
+		webhookSecret = strings.TrimSpace(string(raw))
 	}
 	var demoMailDirectory string
 	if *demo {
@@ -133,7 +145,7 @@ func run() error {
 			return errors.New("invalid publication site mapping")
 		}
 	}
-	handler, err := portal.NewHTTP(store, portal.HTTPOptions{TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
+	handler, err := portal.NewHTTP(store, portal.HTTPOptions{TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
 	if err != nil {
 		return err
 	}

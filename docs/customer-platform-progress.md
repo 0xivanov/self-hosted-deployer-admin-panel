@@ -315,3 +315,11 @@ The customer portal now has opt-in test billing endpoints for customer identity 
 Tests cover owner requests, anonymous access, foreign origins, missing CSRF, foreign workspaces, developer restrictions, injected customer/price fields and disabled-by-default behavior. Customer payment screens, plan administration, webhook wiring, payment entitlement rules and actual Stripe sandbox qualification remain outstanding. No live deployment or provider call was made.
 
 Validation passed: the full race-enabled integration suite, vet, all command builds and whitespace checks.
+
+## Mounted test webhook intake
+
+The customer portal can now mount the dedicated Stripe test webhook at /webhooks/stripe-test, using --test-billing and a private --test-webhook-secret-file. Configuration requires non-demo HTTPS mode. The exact route dispatches to the existing signature/host/TLS/body-limit verifier before browser-session middleware; browser billing routes keep their existing authentication and CSRF checks. Unconfigured, query-bearing and encoded alias routes are rejected.
+
+An integration test sends a locally signed checkout completion through the mounted HTTP handler, verifies duplicate acknowledgement and runs the worker to complete the matching saved checkout. Negative cases cover missing signatures, browser origins, plaintext, foreign hosts, GET requests, aliases and unsafe configuration. No provider endpoint was registered and no live deployment or credentials were used. Customer payment screens, operator plan controls, full billing lifecycle and actual sandbox qualification remain next.
+
+Validation passed: full race-enabled integration suite, vet, command builds and whitespace checks.
