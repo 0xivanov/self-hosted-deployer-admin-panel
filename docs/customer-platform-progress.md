@@ -297,3 +297,13 @@ Race-enabled tests exercise overlapping reads finishing out of order, failed loo
 Next: wire the billing worker and owner-facing controls, implement the payment/access lifecycle and qualify against Stripe sandbox. Domain resale, merchant sales and isolated Node hosting remain open parts of the goal.
 
 Validation passed: full race-enabled integration suite, including the separate portal/worker/runtime publication flow; vet; all command builds; whitespace checks.
+
+## Durable test billing worker
+
+Schema 11 adds a durable billing task queue. The worker discovers saved customer/checkout requests, supported verified checkout inbox events and subscription identities. It leases one task for 60 seconds, bounds work to 30 seconds, retains request idempotency keys, retries failed work with 30-second to one-hour backoff and periodically refreshes subscription observations. Completed one-shot tasks are retained as done. Canceled acknowledgement leaves the lease for recovery. Existing owner, price and 23-hour create guards remain in effect.
+
+The new billing-worker command loads a private test-only Stripe configuration and opens the customer portal database. It does not modify configured plan rows or mount HTTP endpoints. Setup and limitations are described in billing-worker.md. Paid entitlement policy, owner payment screens, plan administration, webhook mounting, operator failure visibility and retention are still needed.
+
+Tests cover customer creation with an uncertain first result, durable retry after store reopen, exact saved customer/plan/price/request values, checkout event processing, periodic subscription retrieval, concurrent worker exclusion and recovery after a provider result cannot be acknowledged. Tests use a local fake provider only. The full race-enabled integration suite, vet and all command builds passed; the added cancellation recovery test also passed with race detection.
+
+No live database was migrated and no provider credentials, charges or deployments were used. Schema 11 needs a consistent pre-upgrade backup for older-binary rollback. The broader domain resale, merchant commerce and isolated Node hosting requirements remain active.
