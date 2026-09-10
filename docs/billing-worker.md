@@ -2,7 +2,7 @@
 
 The worker processes persisted owner-authorized customer and checkout requests, verified checkout inbox events and periodic subscription observations. It uses Stripe test keys only. It does not enable paid hosting access or merchant sales.
 
-Build `./cmd/billing-worker` and run with `--database /private/portal.sqlite --config /private/billing-test.json`. Both portal and worker must support the database schema. Back up an existing portal database consistently before upgrading; schema 11 needs a matching binary or restoration of the pre-upgrade backup for rollback.
+Build `./cmd/billing-worker` and run with `--database /private/portal.sqlite --config /private/billing-test.json`. Both portal and worker must support the database schema. Back up an existing portal database consistently before upgrading; schema 12 needs a matching binary or restoration of the pre-upgrade backup for rollback.
 
 The configuration must be a regular private file, with no group/other permissions, at most 16 KiB. Example values are placeholders:
 
@@ -52,3 +52,9 @@ Use `--enabled false` to stop new requests for that plan. The enabled value is m
 Existing checkout intents keep their saved price. A pending intent whose plan was disabled or repriced cannot create a provider checkout until reconciled. Already-open provider checkouts are not canceled by this command. Existing subscriptions are not repriced or canceled.
 
 `GET /api/billing/plans?workspace=...` lists enabled plan identifiers to workspace owners when test billing is enabled. It excludes Stripe Price IDs and does not quote amounts. Accurate price display from provider data remains required for the customer payment screen.
+
+## Verified price refresh
+
+The worker also refreshes enabled plan prices. A successful lookup schedules another after five minutes; failed or interrupted lookups retry after a 60-second reservation. Changes made through billing-plan clear previous price details and fence off earlier responses. Reapplying unchanged configuration preserves cached data.
+
+Owners can request `/api/billing/offers?workspace=...` for enabled plans and their verified base prices. An unavailable or at least fifteen-minute-old observation yields a null price. Prices are not final tax quotes, and currency minor units must be formatted correctly by the customer screen. The endpoint does not contact Stripe during the browser request.

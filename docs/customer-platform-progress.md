@@ -341,3 +341,13 @@ This is provider verification only, not a final invoice/tax quote or a customer 
 Local fake-provider tests cover valid monthly/free/zero-decimal-currency prices, expanded default currency, unsupported price modes and rejection of configured price drift before network access. No real Stripe request, charge or deployment change was made.
 
 Validation passed: full race-enabled integration suite, vet, command builds and whitespace checks.
+
+## Durable verified price catalog
+
+Schema 12 adds provider price observations, refresh scheduling and generation fencing to hosting plans. The billing worker refreshes one due enabled plan per loop, alongside its existing task queue. Each lookup has a 30-second deadline and reserves the plan for 60 seconds. Successful observations refresh after five minutes; failures retry after the reservation expires. An operator price or enabled-state change clears the saved price, schedules refresh and invalidates in-flight responses. Reapplying unchanged configuration preserves the observation.
+
+The owner-only /api/billing/offers endpoint returns enabled plans with optional verified base-price details. Missing, future-dated and observations at least fifteen minutes old are hidden as unavailable. Provider Price IDs remain private. These observations do not change checkout amounts or grant access; checkout remains the final price/tax confirmation.
+
+Tests cover persistence after reopening, refresh intervals, failed refresh backoff, stale-price suppression, immediate invalidation on reprice/disable, an in-flight lookup racing a plan edit and workspace/developer boundaries. No live database, Stripe request, charge or deployment was used. Schema 12 requires a consistent pre-upgrade backup for older-binary rollback. Payment screens and provider sandbox qualification remain next, with the broader domain, commerce and Node requirements still active.
+
+Validation passed: full race-enabled integration suite, vet, command builds and whitespace checks.

@@ -21,6 +21,13 @@ func (h *HTTP) billingHTTP(w http.ResponseWriter, r *http.Request, token string)
 		}
 	}
 	switch {
+	case r.URL.Path == "/api/billing/offers" && r.Method == "GET":
+		offers, err := h.store.BillingPlanOffers(r.Context(), token, r.URL.Query().Get("workspace"))
+		if err != nil {
+			fail(err)
+			return
+		}
+		httpJSON(w, map[string]any{"test_mode": true, "offers": offers})
 	case r.URL.Path == "/api/billing/plans" && r.Method == "GET":
 		plans, err := h.store.AvailableBillingPlans(r.Context(), token, r.URL.Query().Get("workspace"))
 		if err != nil {

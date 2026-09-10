@@ -134,13 +134,20 @@ func (s *Store) performBillingWork(ctx context.Context, p BillingProvider, kind,
 
 // RunBillingWorker drains available work, then polls quietly. Callback errors
 // should be summarized by the caller without logging provider secrets or PII.
-func (s *Store) RunBillingWorker(ctx context.Context, p BillingProvider, onError func(error)) {
+func (s *Store) RunBillingWorker(ctx context.Context, p interface {
+	BillingProvider
+	BillingPriceReader
+}, onError func(error)) {
 	for ctx.Err() == nil {
+		refreshed, refreshErr := s.RefreshBillingPriceOnce(ctx, p)
+		if refreshErr != nil && onError != nil && ctx.Err() == nil {
+			onError(refreshErr)
+		}
 		worked, err := s.BillingWorkOnce(ctx, p)
 		if err != nil && onError != nil && ctx.Err() == nil {
 			onError(err)
 		}
-		if worked && err == nil {
+		if (worked && err == nil) || (refreshed && refreshErr == nil) {
 			continue
 		}
 		timer := time.NewTimer(5 * time.Second)

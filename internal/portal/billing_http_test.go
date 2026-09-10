@@ -80,7 +80,7 @@ func TestBillingHTTPAuthorizationAndRequestIdentity(t *testing.T) {
 	if _, err = s.db.Exec("INSERT INTO memberships VALUES(?,?,'developer')", other.ID, owner.WorkspaceID); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/api/billing/plans?workspace=" + owner.WorkspaceID, "/api/billing/customer?workspace=" + owner.WorkspaceID, "/api/billing/checkout?workspace=" + owner.WorkspaceID + "&id=" + checkout.ID, "/api/billing/subscription?workspace=" + owner.WorkspaceID + "&id=sub_missing"} {
+	for _, path := range []string{"/api/billing/offers?workspace=" + owner.WorkspaceID, "/api/billing/plans?workspace=" + owner.WorkspaceID, "/api/billing/customer?workspace=" + owner.WorkspaceID, "/api/billing/checkout?workspace=" + owner.WorkspaceID + "&id=" + checkout.ID, "/api/billing/subscription?workspace=" + owner.WorkspaceID + "&id=sub_missing"} {
 		w = portalRequest(h, "GET", path, "", "", "", foreignCookie)
 		if w.Code != 403 {
 			t.Fatal("developer read", path, w.Code)

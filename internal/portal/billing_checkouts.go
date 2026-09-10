@@ -35,7 +35,7 @@ func (s *Store) ConfigureBillingPlan(ctx context.Context, plan, price string, en
 	if plan == "" || len(plan) > 100 || !strings.HasPrefix(price, "price_") || len(price) > 255 || len(price) <= 6 || strings.ContainsAny(price, " /\\\r\n") {
 		return ErrInvalid
 	}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO billing_plans VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,enabled=excluded.enabled", plan, price, enabled)
+	_, err := s.db.ExecContext(ctx, "INSERT INTO billing_plans(id,price_id,enabled) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,enabled=excluded.enabled,price_snapshot=NULL,price_observed=0,next_refresh=0,price_generation=price_generation+1 WHERE price_id!=excluded.price_id OR enabled!=excluded.enabled", plan, price, enabled)
 	return err
 }
 func (s *Store) RequestBillingCheckout(ctx context.Context, token, workspace, plan string) (BillingCheckout, error) {
