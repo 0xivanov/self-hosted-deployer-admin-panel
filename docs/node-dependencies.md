@@ -142,3 +142,22 @@ Bindings survive restart. Consumers must reverify files before cache import and
 keep storage immutable through use. Stale/expired execution cleanup needs a separate
 reconciliation path; this API cannot grant a stale worker access again. No public
 build route or VM dispatcher is introduced by this change.
+
+## Worker preparation
+
+`PrepareNodeBuild` connects queued-build claiming, dependency downloading and
+verified bundle binding. It renews the worker lease every 20 seconds while those
+operations run. Renewal failure cancels downloads; binding and a final handoff
+renewal also recheck the submitter's authorization. A successful result includes
+the execution identity, refreshed lease and persisted bundle reference. The next
+executor stage must continue renewal before dispatching.
+
+A non-nil result on error retains the claimed execution identity and any completed
+bundle for reconciliation. The job stays running and cannot be automatically
+claimed again. Failed downloads remove their partial directory; completed bundles
+are retained because a binding may already have committed. Preparation does not
+create a VM, import an npm cache, execute customer code or activate a release.
+
+Integration tests exercise the complete claim/download/bind path, actual lease
+renewal during downloading, authorization revocation, provider failure, partial
+file cleanup and refusal to redispatch a running job.

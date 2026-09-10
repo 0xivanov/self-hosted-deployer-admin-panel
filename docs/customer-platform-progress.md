@@ -683,3 +683,17 @@ This is the start of the domain implementation, not a registrar integration or p
   wiring and VM dispatch remain. No VM or live deployment was changed.
 - Validation passed: full integration suite with race detection, integration vet,
   command builds and whitespace checks.
+
+## Node worker preparation (2026-09-10)
+
+Connected build claiming, dependency download and immutable bundle binding in
+`PrepareNodeBuild`. Background lease renewal cancels work on authorization loss;
+a final renewal refreshes the executor handoff. Errors retain execution identity
+and completed bundles for reconciliation, without making running jobs reclaimable.
+Reviewed and fixed a cancellation race at successful handoff: renewal now finishes
+before its context is cancelled.
+
+Validation: integration coverage for the connected path, lease renewal,
+revocation/provider errors, partial cleanup and no duplicate dispatch. This stage
+still does not dispatch a VM or execute/publish Node applications. Production Node
+execution, domain provider integration and merchant commerce remain outstanding.
