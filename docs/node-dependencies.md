@@ -105,3 +105,19 @@ The lab prefetch helper now uses this shared component (with its additional
 restricted offline dependency build passed again after the change. Tests verify
 private permissions, reopened manifest/content identity, missing temporary manifest
 and cleanup after provider errors, bad bytes, quota overruns and cancellation.
+
+## Reopening a completed bundle
+
+`VerifyBundle` accepts the bundle directory and manifest SHA-256 retained by the
+trusted worker, plus the expected source SHA-256. It rejects unsafe directory/file
+names, non-private paths, symlinks, incomplete manifests, unexpected files and
+mismatched identities. Every stored tarball is reread with byte limits and checked
+against its filename SHA-256, integrity SHA-512 and recorded size. Aggregate byte
+and entry limits are checked again. A pending manifest is not a completed bundle.
+
+The lab prefetch helper now verifies its completed bundle before handing it off.
+Consumers still need to store the expected manifest digest in a trusted build
+record and protect the bundle from mutation between verification and import.
+This method does not delete abandoned directories or qualify process/power-loss
+recovery. Tests cover reopen success, changed source/manifest identity, altered
+bytes, missing manifests, extra pending files, symlinks and public permissions.

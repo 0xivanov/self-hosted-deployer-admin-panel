@@ -658,3 +658,14 @@ This is the start of the domain implementation, not a registrar integration or p
   dependency fixture successfully under the restricted offline VM profile. The
   lab was stopped afterward; live VPS/Pis were unchanged.
 - Integration vet, command builds, Python syntax and whitespace checks passed.
+
+### Dependency bundle reopen verification
+
+- Added a bounded reader that checks trusted source/manifest identities, every
+  tarball's filename/content hashes and size, private permissions and exact files.
+  Incomplete, altered, extra-file and symlink bundles are rejected before import.
+- The lab prefetch helper now uses this verifier before handing off a completed
+  bundle. Trusted build-record binding, immutable consumption and orphan recovery
+  remain worker integration work.
+- npmfetch integration tests passed with race detection, plus integration vet,
+  command builds and whitespace checks. No VM or live deployment was changed.

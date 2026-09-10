@@ -53,5 +53,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if _, err = npmfetch.VerifyBundle(ctx, root, bundle, os.Args[2]); err != nil {
+		return err
+	}
 	return json.NewEncoder(os.Stdout).Encode(bundle)
 }
