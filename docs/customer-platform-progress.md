@@ -449,3 +449,11 @@ Subscription reconciliation uses this discovery capability when supplied by the 
 Tests cover valid/missing payments, multiple/truncated results, foreign identities, unexpanded PaymentIntents, live objects and queueing a discovered charge without a charge webhook. This recovers missing charge events for the current invoice of known subscriptions. A historical invoice sweep and missing subscription/customer identity recovery remain outstanding. No actual Stripe requests or live deployment changes were made.
 
 Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.
+
+## Domain resale provider discovery and quote rules
+
+Reviewed official NameSilo and Openprovider material. NameSilo is the initial budget-conscious candidate, pending sandbox access, exact operation contracts and resale-term/funding verification. No account, membership, support message or purchase was created. Source links and the registration/renewal implementation sequence are recorded in domain-resale.md.
+
+Added provider-independent domain purchase validation and quote rules for the first .com/.net/.org ASCII product. URLs, subdomains, IDNs and unsupported names are rejected. Quotes require explicit non-premium classification, availability, registration and renewal prices, supported currency and a five-minute freshness window. Retail amounts use integer minor units with checked markup arithmetic. Tests cover name normalization, injection-shaped input, invalid names, stale/future quotes, missing renewal data, premium uncertainty and overflow.
+
+This is the start of the domain implementation, not a registrar integration or purchase UI. Sandbox transport, owner-authorized order storage, payment coordination, registration/renewal lifecycle and qualification remain outstanding. Existing deployments and billing code were unchanged.

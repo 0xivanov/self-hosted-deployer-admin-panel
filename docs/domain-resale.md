@@ -1,0 +1,31 @@
+# Domain resale implementation
+
+## First provider candidate
+
+NameSilo is the initial candidate for a budget-conscious integration. Its reseller material describes free API access and its API reference documents a sandbox available by contacting support. Its reseller FAQ says there is no separate reseller price schedule; discounts depend on its discount program. These facts do not establish the cost or margin of a particular registration. Verify current registration and renewal prices, account funding requirements and applicable resale terms before enabling sales.
+
+Sources checked on 2026-09-10:
+
+- https://www.namesilo.com/reseller
+- https://www.namesilo.com/support/v2/articles/domain-manager/reseller-frequently-asked
+- https://www.namesilo.com/api-reference
+- https://developer.openprovider.com/get-started.html
+
+Openprovider is an alternative with a REST API and reseller tooling. No account, paid membership or registrar balance was created for either provider. NameSilo sandbox access and the exact sandbox endpoint/operation response contracts must be obtained and verified before implementing its transport. Its API puts credentials in the query string, so URLs must never appear in logs or surfaced errors; redirects and ambient HTTP proxies must be disabled. Do not use the production hostname as a test fallback.
+
+## Initial purchase scope
+
+The first domain product accepts ASCII second-level .com, .net and .org names, one year at a time. URLs, subdomains, IDNs, premium names and restricted/multi-label suffixes are excluded until their workflows are supported explicitly. Parsing normalizes case and surrounding whitespace without rewriting the requested label.
+
+The provider must report availability, an explicit premium classification, registration cost, renewal cost and currency. A quote is usable for at most five minutes. Retail amounts use integer minor units and an operator-defined fixed markup. The quote is not a reservation or a final tax-inclusive charge. Availability and costs must be rechecked before purchase. Future renewal prices must be presented as estimates, with customer consent before charging.
+
+The implemented internal/domains package provides validation and quote arithmetic only. It is not mounted as a purchase endpoint and has no registrar transport yet.
+
+## Next implementation
+
+1. Verify sandbox access and operation contracts for availability, normal/premium prices, registration, renewals, contacts, transfer locks and registration-status lookup.
+2. Add a sandbox-only provider adapter, with bounded responses, private credentials, sanitized errors and explicit unknown-outcome handling.
+3. Persist owner-authorized quotes and orders with the exact name, registrant contact, cost, markup, currency and consent. Separate domain charges from hosting subscriptions.
+4. Recheck the quote, authorize payment and submit registration once. Reconcile timeout outcomes before retrying. Define compensation/refunds when registration fails.
+5. Add customer domain inventory, expiry/renewal notices, explicit auto-renew consent, ownership/DNS linkage, cancellation/transfer lifecycle and operator reconciliation views.
+6. Test duplicate delivery, concurrent buyers, expired quotes, price changes, registration uncertainty, payment failure and cross-workspace isolation, then obtain approval for a low-cost real purchase pilot.
