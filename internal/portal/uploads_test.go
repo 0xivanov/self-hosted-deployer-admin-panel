@@ -227,7 +227,7 @@ func TestUploadMigrationPreservesExistingAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.db.Exec("DROP TABLE uploads; PRAGMA user_version=3"); err != nil {
+	if _, err = s.db.Exec("DROP TABLE publications; DROP TABLE publication_jobs; DROP TABLE uploads; PRAGMA user_version=3"); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.Close(); err != nil {

@@ -131,6 +131,13 @@ func (s *Store) DeleteUpload(ctx context.Context, token, project, id string) err
 	if err != nil {
 		return err
 	}
+	var retained int
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM publication_jobs WHERE upload_id=? AND project_id=?", id, project).Scan(&retained); err != nil {
+		return err
+	}
+	if retained > 0 {
+		return ErrRetained
+	}
 	result, err := tx.ExecContext(ctx, "DELETE FROM uploads WHERE id=? AND project_id=?", id, project)
 	if err != nil {
 		return err
