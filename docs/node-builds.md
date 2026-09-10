@@ -159,3 +159,32 @@ This does not enable public Node execution or replace the remaining isolation ga
 The first dependency download component is implemented separately in
 [node dependency downloads](node-dependencies.md). It verifies registry tarballs
 without executing npm; offline cache import and worker integration are pending.
+
+## Durable executor submission
+
+Schema 20 adds an immutable dispatch intent to each Node build. The trusted worker
+calls `DispatchNodeBuild` only with an approved executor and its assigned private
+bundle root. The store revalidates source bytes, the complete dependency bundle and
+lockfile correspondence, then transactionally rechecks current authorization and
+lease ownership. It records execution/build/project identities, the saved plan,
+toolchain digest, bundle reference and a one-minute execution deadline before
+calling the executor. Source archive bytes are transferred separately; lease tokens
+are never included in the request or stored intent.
+
+Submission has a 30-second context timeout. Only one invocation can reserve the
+intent. Success, errors, cancellation and restart all leave it reserved, so a lost
+response cannot trigger automatic redispatch. A successful submission is not build
+success or permission to publish. The existing retirement reconciliation path must
+resolve uncertain execution. Even a crash before the network call needs retirement
+proof, because absence alone cannot rule out a delayed request.
+
+The executor adapter must durably deduplicate execution IDs, verify every identity
+and its assigned toolchain, reverify transferred bundles, reject retired or expired
+requests, isolate each build in a VM and stop it by `NotAfter`. Deadline extension is
+not supported by this handoff yet. Renewing the database lease does not extend an
+executor deadline. There is no production VM adapter or browser dispatch route in
+this change; the method is not itself evidence of VM isolation or cancellation.
+
+Tests cover concurrent submissions, intent durability before provider access,
+lost responses across restart, migration of a prepared schema-19 build, missing or
+corrupted bundles/source, revocation, expiry, wrong execution and cancellation.

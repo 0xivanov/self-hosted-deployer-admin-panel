@@ -697,3 +697,17 @@ Validation: integration coverage for the connected path, lease renewal,
 revocation/provider errors, partial cleanup and no duplicate dispatch. This stage
 still does not dispatch a VM or execute/publish Node applications. Production Node
 execution, domain provider integration and merchant commerce remain outstanding.
+
+## Durable Node execution handoff (2026-09-10)
+
+Added schema 20 and worker-only `DispatchNodeBuild`. The handoff revalidates bound
+inputs and authorization, then commits an immutable dispatch intent before its
+single executor submission attempt. A lost response or worker restart cannot
+resubmit the same build. The request carries an execution deadline and immutable
+identities, without worker lease secrets. The executor must independently enforce
+isolation, deadline and durable retirement; a nil submission response does not
+complete or publish a build.
+
+Integration coverage includes concurrent dispatch, uncertain response/restart,
+prepared-build migration and rejected invalid/revoked/corrupted inputs. Production
+VM execution and artifact publication remain outstanding; no live fleet was changed.
