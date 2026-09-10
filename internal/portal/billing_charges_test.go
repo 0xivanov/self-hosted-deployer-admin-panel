@@ -102,6 +102,30 @@ func TestDurableChargeMappingAndFencing(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	now := s.now()
+	s.now = func() time.Time { return now }
+	if worked, err := s.RefreshBillingChargeOnce(ctx, reader); worked || err != nil {
+		t.Fatal("refresh ignored persisted schedule", worked, err)
+	}
+	now = now.Add(301 * time.Second)
+	if worked, err := s.RefreshBillingChargeOnce(ctx, chargeReaderFunc(func(context.Context, string) (hostingbilling.ChargeObservation, error) {
+		return hostingbilling.ChargeObservation{}, errors.New("offline")
+	})); !worked || err == nil {
+		t.Fatal("missing failed refresh", worked, err)
+	}
+	if worked, err := s.RefreshBillingChargeOnce(ctx, reader); worked || err != nil {
+		t.Fatal("failed refresh ignored backoff", worked, err)
+	}
+	now = now.Add(61 * time.Second)
+	fresh := chargeReaderFunc(func(_ context.Context, id string) (hostingbilling.ChargeObservation, error) {
+		v := fixture(id)
+		v.ObservedAt = now.Unix()
+		v.Disputed = true
+		return v, nil
+	})
+	if worked, err := s.RefreshBillingChargeOnce(ctx, fresh); !worked || err != nil {
+		t.Fatal("due charge not refreshed", worked, err)
+	}
 	observation, err := s.BillingChargeObservation(ctx, session.Token, a.WorkspaceID, "ch_saved")
 	if err != nil || !observation.Disputed || observation.AmountRefunded != 250 || observation.InvoiceID != "in_saved" || !observation.DisputesChecked || len(observation.Disputes) != 1 || observation.Disputes[0].Status != "under_review" {
 		t.Fatal(observation, err)

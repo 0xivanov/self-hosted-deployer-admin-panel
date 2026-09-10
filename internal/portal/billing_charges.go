@@ -69,7 +69,7 @@ func (s *Store) ReconcileBillingCharge(ctx context.Context, p BillingChargeReade
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE billing_charges SET subscription_id=?,customer_id=?,invoice_id=?,payment_intent_id=?,snapshot=? WHERE id=?", observation.SubscriptionID, customer, observation.InvoiceID, observation.PaymentIntentID, data, id); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE billing_charges SET subscription_id=?,customer_id=?,invoice_id=?,payment_intent_id=?,snapshot=?,next_refresh=? WHERE id=?", observation.SubscriptionID, customer, observation.InvoiceID, observation.PaymentIntentID, data, s.now().Unix()+300, id); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -97,4 +97,23 @@ func (s *Store) BillingChargeObservation(ctx context.Context, token, workspace, 
 		return observation, err
 	}
 	return observation, tx.Commit()
+}
+
+// RefreshBillingChargeOnce periodically rechecks known charges, including those
+// whose first lookup could not yet bind a subscription. Scheduling survives
+// restarts. Missed events for entirely unknown charges still need discovery.
+func (s *Store) RefreshBillingChargeOnce(ctx context.Context, p BillingChargeReader) (bool, error) {
+	if p == nil {
+		return false, ErrInvalid
+	}
+	var id string
+	now := s.now().Unix()
+	err := s.db.QueryRowContext(ctx, `UPDATE billing_charges SET next_refresh=? WHERE id=(SELECT id FROM billing_charges WHERE next_refresh<=? ORDER BY next_refresh,id LIMIT 1) RETURNING id`, now+60, now).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, s.ReconcileBillingCharge(ctx, p, id)
 }

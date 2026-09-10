@@ -20,7 +20,7 @@ type chargeWorkerProvider struct {
 
 func TestChargeEventsFetchCurrentProviderState(t *testing.T) {
 	t.Parallel()
-	for _, kind := range []string{"charge.refunded", "charge.dispute.created", "charge.dispute.updated", "charge.dispute.closed", "charge.dispute.funds_withdrawn", "charge.dispute.funds_reinstated"} {
+	for _, kind := range []string{"charge.succeeded", "charge.refunded", "charge.dispute.created", "charge.dispute.updated", "charge.dispute.closed", "charge.dispute.funds_withdrawn", "charge.dispute.funds_reinstated"} {
 		t.Run(kind, func(t *testing.T) {
 			s, _, a, session := billingCheckoutFixture(t)
 			ctx := t.Context()
@@ -36,7 +36,7 @@ func TestChargeEventsFetchCurrentProviderState(t *testing.T) {
 				t.Fatal(err)
 			}
 			object := map[string]any{"id": "dp_risk", "object": "dispute", "livemode": false, "charge": "ch_risk", "status": "won"}
-			if kind == "charge.refunded" {
+			if kind == "charge.refunded" || kind == "charge.succeeded" {
 				object = map[string]any{"id": "ch_risk", "object": "charge", "livemode": false, "amount_refunded": 1}
 			}
 			body, err := json.Marshal(map[string]any{"id": "evt_risk", "object": "event", "api_version": stripe.APIVersion, "type": kind, "created": 1700000000, "livemode": false, "data": map[string]any{"object": object}})

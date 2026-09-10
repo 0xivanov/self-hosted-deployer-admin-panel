@@ -31,7 +31,7 @@ func (s *Store) ProcessBillingChargeEvent(ctx context.Context, id string, p Bill
 		Object string `json:"object"`
 	}
 	switch kind {
-	case "charge.refunded":
+	case "charge.succeeded", "charge.refunded":
 		var charge stripe.Charge
 		if json.Unmarshal(payload, &charge) != nil || json.Unmarshal(payload, &scope) != nil || scope.Live == nil || *scope.Live || scope.Object != "charge" {
 			return false, ErrBillingConflict

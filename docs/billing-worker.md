@@ -2,7 +2,7 @@
 
 The worker processes persisted owner-authorized customer and checkout requests, verified checkout inbox events and periodic subscription observations. It uses Stripe test keys only. It does not enable paid hosting access or merchant sales.
 
-Build `./cmd/billing-worker` and run with `--database /private/portal.sqlite --config /private/billing-test.json`. Both portal and worker must support the database schema. Back up an existing portal database consistently before upgrading; schema 13 needs a matching binary or restoration of the pre-upgrade backup for rollback.
+Build `./cmd/billing-worker` and run with `--database /private/portal.sqlite --config /private/billing-test.json`. Both portal and worker must support the database schema. Back up an existing portal database consistently before upgrading; schema 14 needs a matching binary or restoration of the pre-upgrade backup for rollback.
 
 The configuration must be a regular private file, with no group/other permissions, at most 16 KiB. Example values are placeholders:
 
@@ -79,6 +79,8 @@ Reference: https://docs.stripe.com/customer-management and https://docs.stripe.c
 
 ## Refund and dispute signals
 
-Supported risk events are charge.refunded, charge.dispute.created, charge.dispute.updated, charge.dispute.closed, charge.dispute.funds_withdrawn and charge.dispute.funds_reinstated. Current charge state is fetched and mapped through its invoice before consuming the event and refreshing the subscription. A failed or ambiguous lookup stays pending for retry/reconciliation. Refund creation requests, periodic charge refresh and access policy remain unfinished. The disputed flag alone must not be treated as proof of an unresolved or lost dispute.
+Supported risk events are charge.refunded, charge.dispute.created, charge.dispute.updated, charge.dispute.closed, charge.dispute.funds_withdrawn and charge.dispute.funds_reinstated. Current charge state is fetched and mapped through its invoice before consuming the event and refreshing the subscription. A failed or ambiguous lookup stays pending for retry/reconciliation. Refund creation requests and access policy remain unfinished. The disputed flag alone must not be treated as proof of an unresolved or lost dispute.
 
 Charge observations now include verified dispute outcomes and DisputesChecked. Older snapshots without that marker require refresh before interpreting missing dispute data. Unknown or incomplete dispute results prevent a successful observation. Hosting access policy must examine current outcomes rather than using the charge's disputed boolean as a loss decision.
+
+Known charges refresh every five minutes, using durable sixty-second reservation/backoff after failures. charge.succeeded now seeds charge tracking through the same verified-event path. A missing event for an entirely unknown charge cannot be recovered by this scheduler; a provider discovery sweep remains required.

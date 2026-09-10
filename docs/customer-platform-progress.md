@@ -429,3 +429,13 @@ Charge retrieval now queries disputes for the exact charge and validates every r
 The lookup covers warnings, open/review states, won/lost and prevented disputes. The charge's historical disputed flag is still retained but cannot alone determine hosting access. Existing JSON snapshot storage preserves the additional evidence without a schema migration. Tests cover outcome validation and restart persistence; automatic access policy and periodic charge refresh remain unfinished. No real provider requests, disputes or deployments were used.
 
 Validation passed: full race-enabled integration suite, vet and command builds; the extended outcome-persistence test also passed with race detection.
+
+## Periodic charge refresh
+
+Schema 14 adds durable refresh scheduling to charge records. The billing worker now checks one due charge alongside plan refresh and task processing. Successful observations schedule another check after five minutes; reservations/backoff last sixty seconds after failed or interrupted attempts. Existing reconciliation generations continue to prevent older lookup results from overwriting newer evidence. Scheduling persists across worker/store restarts.
+
+Verified charge.succeeded events now also enter charge reconciliation, allowing known payments to be tracked before their first refund or dispute event. Early events remain retryable until invoice/subscription binding is available. Periodic refresh recovers missed changes for known charges; discovery of entirely unknown charges is still required for a complete provider reconciliation sweep.
+
+Tests cover persisted schedules, failed refresh/backoff, later successful refresh and successful-charge event discovery in addition to existing identity/race tests. Schema 14 requires a consistent pre-upgrade backup for older-binary rollback. No live database, provider request or deployment was used.
+
+Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.
