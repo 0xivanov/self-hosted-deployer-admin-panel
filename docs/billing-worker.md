@@ -15,7 +15,7 @@ The configuration must be a regular private file, with no group/other permission
 }
 ```
 
-Return URLs must use HTTPS on the same host. The secret must be supplied locally, never in chat, source control or command arguments. The configured plans must match the operator's enabled database plan records. The worker intentionally does not create, re-enable or reprice plans on startup. Start the portal with `--test-billing` to opt into the owner request API. Customer payment screens still need wiring before customer use. Operator plan configuration is described below. The webhook is separately opt-in as described below.
+Return URLs must use HTTPS on the same host. The secret must be supplied locally, never in chat, source control or command arguments. The configured plans must match the operator's enabled database plan records. The worker intentionally does not create, re-enable or reprice plans on startup. Start the portal with `--test-billing` to opt into the owner request API. The portal includes an owner-only test billing screen; live payment use remains unqualified. Operator plan configuration is described below. The webhook is separately opt-in as described below.
 
 Each task has a durable 60-second lease. Operations have a 30-second context deadline; canceled work recovers after lease expiry. Failed tasks back off from 30 seconds to one hour. The same customer/checkout request key is reused after uncertain results, and existing guards stop blind provider creates after 23 hours. Those aged requests need operator reconciliation. Completed creates and checkout events stop polling; subscriptions refresh every five minutes. Unsupported inbox event types remain for their future processors. Failed subscription reads keep the previous timestamped observation, which must never be assumed fresh by an access policy.
 
@@ -58,3 +58,7 @@ Existing checkout intents keep their saved price. A pending intent whose plan wa
 The worker also refreshes enabled plan prices. A successful lookup schedules another after five minutes; failed or interrupted lookups retry after a 60-second reservation. Changes made through billing-plan clear previous price details and fence off earlier responses. Reapplying unchanged configuration preserves cached data.
 
 Owners can request `/api/billing/offers?workspace=...` for enabled plans and their verified base prices. An unavailable or at least fifteen-minute-old observation yields a null price. Prices are not final tax quotes, and currency minor units must be formatted correctly by the customer screen. The endpoint does not contact Stripe during the browser request.
+
+## Customer billing screen
+
+With test billing enabled, workspace owners see Hosting billing beneath their projects. Set up test billing, refresh until the account is ready, choose a verified plan and refresh until the checkout link is available. The link opens Stripe in another tab. Use /billing/success and /billing/cancel on the configured portal origin as return URLs. The portal always retrieves saved status; a return URL does not confirm payment. Checkout completion currently remains awaiting billing reconciliation rather than enabling paid hosting.

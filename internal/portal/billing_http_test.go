@@ -76,11 +76,15 @@ func TestBillingHTTPAuthorizationAndRequestIdentity(t *testing.T) {
 	if w.Code != 400 {
 		t.Fatal("client price accepted", w.Code)
 	}
+	w = portalRequest(h, "GET", "/api/billing/status?workspace="+owner.WorkspaceID, "", "", "", cookie)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), checkout.ID) || !strings.Contains(w.Body.String(), "ready") || strings.Contains(w.Body.String(), "cus_http") || strings.Contains(w.Body.String(), "price_http") {
+		t.Fatal("unsafe billing status", w.Code, w.Body.String())
+	}
 	foreignCookie, foreignCSRF := httpLogin(t, h, other.Email)
 	if _, err = s.db.Exec("INSERT INTO memberships VALUES(?,?,'developer')", other.ID, owner.WorkspaceID); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/api/billing/offers?workspace=" + owner.WorkspaceID, "/api/billing/plans?workspace=" + owner.WorkspaceID, "/api/billing/customer?workspace=" + owner.WorkspaceID, "/api/billing/checkout?workspace=" + owner.WorkspaceID + "&id=" + checkout.ID, "/api/billing/subscription?workspace=" + owner.WorkspaceID + "&id=sub_missing"} {
+	for _, path := range []string{"/api/billing/status?workspace=" + owner.WorkspaceID, "/api/billing/offers?workspace=" + owner.WorkspaceID, "/api/billing/plans?workspace=" + owner.WorkspaceID, "/api/billing/customer?workspace=" + owner.WorkspaceID, "/api/billing/checkout?workspace=" + owner.WorkspaceID + "&id=" + checkout.ID, "/api/billing/subscription?workspace=" + owner.WorkspaceID + "&id=sub_missing"} {
 		w = portalRequest(h, "GET", path, "", "", "", foreignCookie)
 		if w.Code != 403 {
 			t.Fatal("developer read", path, w.Code)
@@ -89,6 +93,16 @@ func TestBillingHTTPAuthorizationAndRequestIdentity(t *testing.T) {
 	w = portalRequest(h, "POST", "/api/billing/checkout", `{"workspace":"`+owner.WorkspaceID+`","plan":"starter"}`, h.origin, foreignCSRF, foreignCookie)
 	if w.Code != 403 {
 		t.Fatal("developer purchase", w.Code)
+	}
+	for _, path := range []string{"/billing/success?session_id=forged", "/billing/cancel"} {
+		w = portalRequest(h, "GET", path, "", "", "", nil)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), "billing-panel") {
+			t.Fatal("billing return unavailable", path, w.Code)
+		}
+	}
+	saved, err := s.BillingCheckout(t.Context(), session.Token, owner.WorkspaceID, checkout.ID)
+	if err != nil || saved.State != "pending" {
+		t.Fatal("browser return fulfilled checkout", saved, err)
 	}
 	disabled, err := NewHTTP(s, HTTPOptions{Origin: h.origin})
 	if err != nil {

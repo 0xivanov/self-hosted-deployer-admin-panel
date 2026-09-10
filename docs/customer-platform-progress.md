@@ -351,3 +351,11 @@ The owner-only /api/billing/offers endpoint returns enabled plans with optional 
 Tests cover persistence after reopening, refresh intervals, failed refresh backoff, stale-price suppression, immediate invalidation on reprice/disable, an in-flight lookup racing a plan edit and workspace/developer boundaries. No live database, Stripe request, charge or deployment was used. Schema 12 requires a consistent pre-upgrade backup for older-binary rollback. Payment screens and provider sandbox qualification remain next, with the broader domain, commerce and Node requirements still active.
 
 Validation passed: full race-enabled integration suite, vet, command builds and whitespace checks.
+
+## Customer test billing screen
+
+The portal now shows an owner-only billing panel when test billing is enabled. It supports requesting a billing account, displaying verified plan prices, selecting a plan, refreshing pending work and opening an acknowledged Stripe test checkout. Missing prices have no selection button. Completed checkout is labeled as awaiting billing reconciliation, never active hosting. The status endpoint returns the current workspace checkout without provider customer/price identifiers, enabling recovery after page reload. Workspace changes invalidate stale UI responses.
+
+/billing/success and /billing/cancel return to the portal shell. Query parameters and redirects do not fulfill checkout. Currency rendering follows Stripe charge units, including zero-decimal and ISK/UGX exceptions; source: https://docs.stripe.com/currencies. Final tax and total confirmation remain on Stripe.
+
+Browser verification used disposable local data: signed in, requested billing, observed pending setup, displayed a synthetic EUR 15 monthly price, selected it, observed pending checkout and verified the rendered ready-checkout link. The external checkout link was not opened. The temporary server and browser tab were closed. Full race-enabled tests passed before the final status/return-route assertions; focused tests, vet, builds and JavaScript syntax checks were then run. Actual Stripe checkout, mobile/role-switch edge cases and complete payment lifecycle qualification remain outstanding. No live deployments or real payment provider calls were made.

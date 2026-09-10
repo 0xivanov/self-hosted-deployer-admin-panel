@@ -158,7 +158,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		name, kind := "", ""
 		switch r.URL.Path {
-		case "/":
+		case "/", "/billing/success", "/billing/cancel":
 			name = "index.html"
 			kind = "text/html; charset=utf-8"
 		case "/portal.js":
@@ -189,7 +189,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/config" && r.Method == "GET" {
-		httpJSON(w, map[string]bool{"signup": h.signup, "account_mail": h.mail != nil})
+		httpJSON(w, map[string]bool{"signup": h.signup, "account_mail": h.mail != nil, "test_billing": h.testBilling})
 		return
 	}
 	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {
