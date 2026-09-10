@@ -110,8 +110,27 @@ inherited by executed children. Never unlink or replace the lock or database
 while old router processes may still exist; use a private, local filesystem and
 one canonical database path, not copied or aliased routing databases.
 
-This establishes one place to track traffic. It is not yet a per-backend drain
-API or complete `RoutingDetached` evidence. The launcher still must wait for a
-verified drain before stopping or reusing an old backend. Database handles close
+This establishes one place to track traffic. Use the guarded drain operation
+below before stopping an old backend; complete launcher retirement integration
+is still required. Database handles close
 normally, so an activation overlapping `Close` may return a database error and
 must be reconciled from persisted state after the old owner finishes.
+
+### Guarded backend drain
+
+`WithDrainedBackend(ctx, candidate, action)` persists the operation retirement
+fence and waits for content requests and health activations using that backend.
+It then rechecks that no active or pending route uses the backend and invokes a
+trusted synchronous shutdown action while holding an immediate SQLite write
+reservation. This excludes new activations across database handles. Dedicated
+read connections allow replacement content to keep serving throughout the action.
+A previously retired operation cannot stop a backend now used by a new operation.
+
+Cancellation before the action leaves the fence in place and performs no shutdown.
+Cancellation during the action does not drop its database guard: the action must
+finish before the guard releases. The action must be bounded and must not call
+router control methods or return with a delayed stop still outstanding. An error
+can follow a real stop, so reconcile actual state before retrying. The operation
+is not a persisted receipt proving processes stopped or that other ingress is
+absent. Service-start fencing and process/listener checks remain separate launcher
+responsibilities. No automatic timeout forcibly terminates customer connections.

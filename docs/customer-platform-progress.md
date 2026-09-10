@@ -970,3 +970,17 @@ close, verified that another handle remained excluded, then completed the respon
 and successfully handed over replacement traffic. Unsafe-lock regression tests
 passed. Per-backend draining and the production retirement adapter remain open.
 No live deployment or customer database changed.
+
+## Guarded Node backend draining (2026-09-10)
+
+Added per-backend request and health-operation tracking and a guarded retirement
+action. The drain waits for old traffic, rechecks active/pending routes, and
+excludes new activations while a synchronous stop completes. Separate content
+read connections keep the replacement serving during this guard. Cancellation
+cannot release the guard beneath an action still running; retries reject a backend
+already reused by another active operation.
+
+Real HTTP tests covered outstanding old requests, health probes, canceled waiting,
+replacement serving during the action, activation exclusion after cancellation,
+and reuse protection. Production launcher integration and complete retirement
+qualification remain. No live deployment or customer database changed.

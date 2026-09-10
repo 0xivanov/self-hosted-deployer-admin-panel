@@ -58,6 +58,9 @@ type Router struct {
 	ownerPath string
 	closed    bool
 	upstreams int
+	inFlight  map[string]int
+	changed   chan struct{}
+	readDB    *sql.DB
 	db        *sql.DB
 	config    Config
 	backends  map[string]*url.URL
@@ -141,11 +144,17 @@ func Open(database string, config Config) (*Router, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
+	readDB, err := sql.Open("sqlite", location.String())
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	readDB.SetMaxOpenConns(4)
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	transport.DialContext = (&net.Dialer{Timeout: 3 * time.Second}).DialContext
 	transport.ResponseHeaderTimeout = 5 * time.Second
-	r := &Router{ownerPath: absolute + ".serve.lock", db: db, config: config, backends: urls, transport: transport, health: &http.Client{Transport: transport, Timeout: 3 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	r := &Router{readDB: readDB, inFlight: make(map[string]int), changed: make(chan struct{}), ownerPath: absolute + ".serve.lock", db: db, config: config, backends: urls, transport: transport, health: &http.Client{Transport: transport, Timeout: 3 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	if err = r.initialize(); err != nil {
 		r.Close()
 		return nil, err
@@ -158,7 +167,7 @@ func (r *Router) Close() error {
 	r.releaseOwnerLocked()
 	r.mu.Unlock()
 	r.transport.CloseIdleConnections()
-	return r.db.Close()
+	return errors.Join(r.db.Close(), r.readDB.Close())
 }
 func (r *Router) initialize() error {
 	tx, err := r.db.Begin()
@@ -222,7 +231,7 @@ func writeState(ctx context.Context, tx *sql.Tx, state State) error {
 	return err
 }
 func (r *Router) Snapshot(ctx context.Context) (State, error) {
-	return readState(r.db.QueryRowContext(ctx, "SELECT state FROM node_route WHERE id=1"))
+	return readState(r.readDB.QueryRowContext(ctx, "SELECT state FROM node_route WHERE id=1"))
 }
 
 // Activate is trusted control-plane access, not an HTTP customer endpoint. The
@@ -237,6 +246,10 @@ func (r *Router) Activate(ctx context.Context, c Candidate) error {
 		return err
 	}
 	defer r.endUpstream()
+	r.mu.Lock()
+	r.inFlight[c.Backend]++
+	r.mu.Unlock()
+	defer r.endBackend(c.Backend)
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -342,11 +355,17 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	defer r.endUpstream()
+	r.mu.Lock()
 	state, err := r.Snapshot(req.Context())
+	if err == nil && state.Active != nil {
+		r.inFlight[state.Active.Backend]++
+	}
+	r.mu.Unlock()
 	if err != nil || state.Active == nil {
 		http.Error(w, "site unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	defer r.endBackend(state.Active.Backend)
 	target := r.backends[state.Active.Backend]
 	if target == nil {
 		http.Error(w, "site unavailable", http.StatusServiceUnavailable)
