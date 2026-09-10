@@ -116,8 +116,40 @@ identity/size failures, process exit inside the installer, receipt persistence,
 directory alias rejection and migration of an outstanding schema-1 start. A real
 Linux-root test connected reservation, `LinuxInstaller`, receipt persistence and
 start authorization, and verified that even a direct second installation cannot
-replace the reserved release. Production service-manager dispatch and successful
-reconciliation of unknown installations remain to be connected.
+replace the reserved release. Production service-manager dispatch remains to be
+connected; recovery of an unknown installation is described below.
+
+## Recovering a published installation without a receipt
+
+`ReconcileInstallation` requires an existing attempted, still-reserved operation
+and its original validated archive. It requests fresh local evidence, checks the
+entire assignment and manifest, then records the receipt only if the operation is
+still eligible. A concurrent retirement cannot be undone. A persisted receipt
+makes retries idempotent while the operation remains reserved. Recovery does not
+install files or start a process, and failed verification does not free the slot.
+
+`nodeartifact.VerifySealed` compares the complete installed tree to the archive:
+all expected and implicit directories, file contents, exact internal symlink
+targets, executable permissions and read-only modes. Missing and extra paths are
+rejected. `LinuxInstaller.ObserveNodeInstallation` additionally checks root
+ownership, the actual machine architecture, a real release directory rather than
+a directory symlink, and single-link regular files. It syncs files and directories
+before returning a locally timestamped observation. It never repairs/re-seals
+drift to make verification pass. The runtime agent must keep the tree protected
+against concurrent mutation and later service-manager operations.
+
+On 2026-09-10, the disposable Linux-root test exited a child process immediately
+after publishing the release, before its receipt was saved. The parent reopened
+the pool, confirmed starts remained blocked, recovered the receipt through the
+actual Linux verifier, and then obtained start authorization. Exactly one release
+directory remained. Additional tests rejected changed bytes, missing/extra paths,
+changed links or modes, wrong ownership, directory symlinks, hard links, stale or
+mismatched observations and retirement races. The VM was stopped afterward.
+
+For recovered receipts, `InstalledAt` records successful recovery verification,
+not a guessed original publication time. This proves this process-exit recovery
+path, not power-loss durability, host compromise resistance or complete runtime
+recovery. Damaged/absent installations still require retirement and a new operation.
 
 `PrivateTmp=no` preserves the explicit bounded temporary mounts. Dynamic users are
 not used because systemd forces private temporary directories for them; see the

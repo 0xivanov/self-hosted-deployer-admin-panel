@@ -258,3 +258,127 @@ func TestInstallReleaseConnectsPoolReceiptAndStartClaim(t *testing.T) {
 		t.Fatal("unexpected installation residue", entries, err)
 	}
 }
+
+func TestInstallReleaseRecoversPublishedProcessExit(t *testing.T) {
+	if base := os.Getenv("NODE_PUBLISHED_EXIT_FIXTURE"); base != "" {
+		config := poolConfig()
+		config.Architecture = runtime.GOARCH
+		p, err := OpenPool(filepath.Join(base, "private", "pool.db"), config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		root, err := os.OpenRoot(filepath.Join(base, "releases"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := poolAssignment(1)
+		a.Architecture = runtime.GOARCH
+		if _, err = p.Reserve(context.Background(), a); err != nil {
+			t.Fatal(err)
+		}
+		installer := fixtureInstaller(func(ctx context.Context, a Assignment, data []byte) (nodeartifact.Release, error) {
+			r, e := (LinuxInstaller{Releases: root}).InstallNodeRelease(ctx, a, data)
+			if e != nil {
+				return r, e
+			}
+			os.Exit(0)
+			return r, nil
+		})
+		if _, err = p.PrepareRelease(context.Background(), a.OperationID, reservationData, installer); err != nil {
+			t.Fatal(err)
+		}
+		t.Fatal("child did not exit after publication")
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("requires root inside disposable Linux VM")
+	}
+	t.Parallel()
+	base := t.TempDir()
+	if err := os.Mkdir(filepath.Join(base, "releases"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	child := exec.Command(os.Args[0], "-test.run=^TestInstallReleaseRecoversPublishedProcessExit$")
+	child.Env = append(os.Environ(), "NODE_PUBLISHED_EXIT_FIXTURE="+base)
+	if output, err := child.CombinedOutput(); err != nil {
+		t.Fatalf("child: %v %s", err, output)
+	}
+	config := poolConfig()
+	config.Architecture = runtime.GOARCH
+	p := openPool(t, filepath.Join(base, "private", "pool.db"), config)
+	ctx := t.Context()
+	a := poolAssignment(1)
+	a.Architecture = runtime.GOARCH
+	before, err := p.Lookup(ctx, a.OperationID)
+	if err != nil || !before.InstallationAttempted || before.Installed != nil {
+		t.Fatal(before, err)
+	}
+	if _, err = p.ClaimStart(ctx, a.OperationID); !errors.Is(err, ErrConflict) {
+		t.Fatal("lost receipt allowed start", err)
+	}
+	root, err := os.OpenRoot(filepath.Join(base, "releases"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	recovered, err := p.ReconcileInstallation(ctx, a.OperationID, reservationData, LinuxInstaller{Releases: root})
+	if err != nil || recovered.Installed == nil || recovered.Installed.Manifest.SHA256 != a.ArtifactSHA256 {
+		t.Fatal(recovered, err)
+	}
+	if _, err = p.ClaimStart(ctx, a.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join(base, "releases"))
+	if err != nil || len(entries) != 1 || entries[0].Name() != a.ReleaseDirectory {
+		t.Fatal("recovery reinstalled files", entries, err)
+	}
+}
+func TestInstallReleaseInspectionRejectsOwnershipAndHardLinks(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []string{"owner", "hard_link", "writable", "contents", "directory_link"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			directory, root := installRoot(t)
+			ctx := t.Context()
+			a := poolAssignment(1)
+			a.UID = 60000
+			a.Port = 31001
+			a.Architecture = runtime.GOARCH
+			installer := LinuxInstaller{Releases: root}
+			if _, err := installer.InstallNodeRelease(ctx, a, reservationData); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := installer.ObserveNodeInstallation(ctx, a, reservationData); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(directory, a.ReleaseDirectory, "package.json")
+			switch kind {
+			case "owner":
+				if err := os.Chown(target, 60000, 60000); err != nil {
+					t.Fatal(err)
+				}
+			case "hard_link":
+				if err := os.Link(target, filepath.Join(t.TempDir(), "alias")); err != nil {
+					t.Fatal(err)
+				}
+			case "writable":
+				if err := os.Chmod(target, 0644); err != nil {
+					t.Fatal(err)
+				}
+			case "contents":
+				if err := os.WriteFile(target, []byte("changed"), 0444); err != nil {
+					t.Fatal(err)
+				}
+			case "directory_link":
+				if err := os.Rename(filepath.Join(directory, a.ReleaseDirectory), filepath.Join(directory, "other")); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink("other", filepath.Join(directory, a.ReleaseDirectory)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := installer.ObserveNodeInstallation(ctx, a, reservationData); err == nil {
+				t.Fatal("unsafe installed tree accepted")
+			}
+		})
+	}
+}

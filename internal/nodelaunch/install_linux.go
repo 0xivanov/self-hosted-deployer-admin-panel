@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/nodeartifact"
 	"golang.org/x/sys/unix"
@@ -171,4 +172,90 @@ func (i LinuxInstaller) InstallNodeRelease(ctx context.Context, a Assignment, da
 		return nodeartifact.Release{}, ErrAssignment
 	}
 	return installReleaseAt(ctx, data, a.ArtifactSHA256, a.ReleaseDirectory, i.Releases)
+}
+
+// ObserveNodeInstallation verifies and syncs a sealed release without changing
+// its contents or running code. It does not re-seal damaged files to hide drift.
+func (i LinuxInstaller) ObserveNodeInstallation(ctx context.Context, a Assignment, data []byte) (InstallationObservation, error) {
+	var out InstallationObservation
+	if _, err := Render(a); err != nil {
+		return out, err
+	}
+	if os.Geteuid() != 0 || a.Architecture != runtime.GOARCH || i.Releases == nil {
+		return out, ErrAssignment
+	}
+	parent, err := i.Releases.Stat(".")
+	if err != nil || !parent.IsDir() || !rootOwned(parent) || parent.Mode().Perm()&0022 != 0 {
+		return out, ErrAssignment
+	}
+	info, err := i.Releases.Lstat(a.ReleaseDirectory)
+	if err != nil {
+		return out, err
+	}
+	if !info.IsDir() || !rootOwned(info) {
+		return out, ErrAssignment
+	}
+	root, err := i.Releases.OpenRoot(a.ReleaseDirectory)
+	if err != nil {
+		return out, err
+	}
+	defer root.Close()
+	manifest, err := nodeartifact.VerifySealed(ctx, data, a.ArtifactSHA256, root)
+	if err != nil {
+		return out, err
+	}
+	var directories []string
+	err = fs.WalkDir(root.FS(), ".", func(name string, _ fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		info, err := root.Lstat(name)
+		if err != nil {
+			return err
+		}
+		if !rootOwned(info) {
+			return ErrAssignment
+		}
+		if info.IsDir() {
+			directories = append(directories, name)
+			return nil
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if !info.Mode().IsRegular() || info.Sys().(*syscall.Stat_t).Nlink != 1 {
+			return ErrAssignment
+		}
+		file, err := root.Open(name)
+		if err != nil {
+			return err
+		}
+		return errors.Join(file.Sync(), file.Close())
+	})
+	if err != nil {
+		return out, err
+	}
+	for n := len(directories) - 1; n >= 0; n-- {
+		if err = ctx.Err(); err != nil {
+			return out, err
+		}
+		dir, e := root.Open(directories[n])
+		if e != nil {
+			return out, e
+		}
+		if err = errors.Join(dir.Sync(), dir.Close()); err != nil {
+			return out, err
+		}
+	}
+	dir, err := i.Releases.Open(".")
+	if err != nil {
+		return out, err
+	}
+	if err = errors.Join(dir.Sync(), dir.Close(), ctx.Err()); err != nil {
+		return out, err
+	}
+	return InstallationObservation{Assignment: a, Manifest: manifest, ObservedAt: time.Now()}, nil
 }

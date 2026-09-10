@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/nodeartifact"
 )
@@ -280,5 +281,103 @@ func TestInstallationIntentSurvivesInstallerProcessExit(t *testing.T) {
 	}
 	if _, err = p.ClaimStart(ctx, a.OperationID); !errors.Is(err, ErrConflict) {
 		t.Fatal("unknown installation started", err)
+	}
+}
+
+type installationReader func(context.Context, Assignment, []byte) (InstallationObservation, error)
+
+func (f installationReader) ObserveNodeInstallation(ctx context.Context, a Assignment, data []byte) (InstallationObservation, error) {
+	return f(ctx, a, data)
+}
+func successfulInspection(ctx context.Context, a Assignment, data []byte) (InstallationObservation, error) {
+	manifest, err := nodeartifact.Validate(ctx, data, a.ArtifactSHA256)
+	return InstallationObservation{Assignment: a, Manifest: manifest, ObservedAt: time.Now()}, err
+}
+func unknownInstallation(t *testing.T, p *Pool) Assignment {
+	t.Helper()
+	a := poolAssignment(1)
+	if _, err := p.Reserve(t.Context(), a); err != nil {
+		t.Fatal(err)
+	}
+	installer := fixtureInstaller(func(context.Context, Assignment, []byte) (nodeartifact.Release, error) {
+		return nodeartifact.Release{}, context.DeadlineExceeded
+	})
+	if _, err := p.PrepareRelease(t.Context(), a.OperationID, reservationData, installer); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	return a
+}
+func TestInstallationReconciliationReceiptSurvivesRestart(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "private", "pool.db")
+	p := openPool(t, path, poolConfig())
+	a := unknownInstallation(t, p)
+	var calls atomic.Int32
+	reader := installationReader(func(ctx context.Context, a Assignment, data []byte) (InstallationObservation, error) {
+		calls.Add(1)
+		return successfulInspection(ctx, a, data)
+	})
+	recovered, err := p.ReconcileInstallation(t.Context(), a.OperationID, reservationData, reader)
+	if err != nil || recovered.Installed == nil {
+		t.Fatal(recovered, err)
+	}
+	if err = p.Close(); err != nil {
+		t.Fatal(err)
+	}
+	p = openPool(t, path, poolConfig())
+	r, err := p.ReconcileInstallation(t.Context(), a.OperationID, reservationData, reader)
+	if err != nil || calls.Load() != 1 || r.Installed == nil || !r.Installed.InstalledAt.Equal(recovered.Installed.InstalledAt) {
+		t.Fatal(r, err)
+	}
+	if _, err = p.ClaimStart(t.Context(), a.OperationID); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestInstallationReconciliationRejectsUntrustedEvidence(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		change func(*InstallationObservation)
+	}{
+		{"old", func(o *InstallationObservation) { o.ObservedAt = time.Now().Add(-time.Second) }},
+		{"future", func(o *InstallationObservation) { o.ObservedAt = time.Now().Add(time.Minute) }},
+		{"wrong_identity", func(o *InstallationObservation) { o.Assignment.UID++ }},
+		{"wrong_artifact", func(o *InstallationObservation) { o.Manifest.SHA256 = poolAssignment(9).OperationID }},
+		{"wrong_size", func(o *InstallationObservation) { o.Manifest.ExpandedBytes++ }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := openPool(t, filepath.Join(t.TempDir(), "private", "pool.db"), poolConfig())
+			a := unknownInstallation(t, p)
+			reader := installationReader(func(ctx context.Context, a Assignment, data []byte) (InstallationObservation, error) {
+				o, e := successfulInspection(ctx, a, data)
+				tc.change(&o)
+				return o, e
+			})
+			if _, err := p.ReconcileInstallation(t.Context(), a.OperationID, reservationData, reader); !errors.Is(err, ErrConflict) {
+				t.Fatal(err)
+			}
+			if _, err := p.ClaimStart(t.Context(), a.OperationID); !errors.Is(err, ErrConflict) {
+				t.Fatal("bad recovery started", err)
+			}
+		})
+	}
+}
+func TestInstallationReconciliationCannotUndoRetirement(t *testing.T) {
+	t.Parallel()
+	p := openPool(t, filepath.Join(t.TempDir(), "private", "pool.db"), poolConfig())
+	a := unknownInstallation(t, p)
+	reader := installationReader(func(ctx context.Context, assigned Assignment, data []byte) (InstallationObservation, error) {
+		if _, err := p.BeginRetirement(ctx, a.OperationID); err != nil {
+			return InstallationObservation{}, err
+		}
+		return successfulInspection(ctx, assigned, data)
+	})
+	if _, err := p.ReconcileInstallation(t.Context(), a.OperationID, reservationData, reader); !errors.Is(err, ErrConflict) {
+		t.Fatal(err)
+	}
+	r, err := p.Lookup(t.Context(), a.OperationID)
+	if err != nil || r.State != "retiring" || r.Installed != nil {
+		t.Fatal(r, err)
 	}
 }

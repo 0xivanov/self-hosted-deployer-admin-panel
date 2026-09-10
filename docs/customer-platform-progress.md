@@ -887,3 +887,18 @@ start authorization, including refusal to replace an existing release. The test
 VM was stopped afterward. Service-manager dispatch/fencing, unknown-installation
 reconciliation and the remaining full MVP requirements are still open. No live
 deployment or customer database changed.
+
+## Recovery of unacknowledged Node installations (2026-09-10)
+
+Added complete sealed-tree verification against the retained archive and trusted
+Linux installation observations. Recovery checks all paths, bytes, modes, symlink
+targets, root ownership and hard-link counts, then syncs the tree and persists the
+receipt only while the operation remains reserved. It never reinstalls files or
+undoes retirement. Cached or mismatched observations cannot authorize a start.
+
+A real Linux child exited after release publication but before receipt storage.
+Reopening and verification recovered the receipt without a duplicate installation,
+after which start authorization succeeded. Drift, ownership/link errors, stale
+evidence and retirement races were rejected. Service-manager dispatch/fencing,
+toolchain lifecycle and full hosting/pilot qualification remain. No live fleet or
+customer database changed; the disposable VM was stopped after testing.
