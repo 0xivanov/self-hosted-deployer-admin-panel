@@ -984,3 +984,18 @@ Real HTTP tests covered outstanding old requests, health probes, canceled waitin
 replacement serving during the action, activation exclusion after cancellation,
 and reuse protection. Production launcher integration and complete retirement
 qualification remain. No live deployment or customer database changed.
+
+## Masked systemd retirement (2026-09-10)
+
+Added a Linux service retirement adapter under the durable control gate. It
+persistently masks the exact unit, syncs the mask directory, stops the service,
+and verifies masked, settled systemd status. Uncertain command results preserve
+the retirement fence and must not free reservations.
+
+The real ARM64 Linux rehearsal resumed its trusted fixture after crash-limit
+qualification so retirement stopped a live service. Process/cgroup/listener
+clearance, repeated retirement, direct systemd start rejection and delayed gate
+start rejection passed. Qualified operation:
+`d42b879ac62549fdaeddb02c42972b308ff0d6682bf14295b117a3bc82d419cb`.
+Full portable race tests, vet/build and Linux cross-vet passed. Complete routing
+and reservation retirement integration remains. No live deployments changed.

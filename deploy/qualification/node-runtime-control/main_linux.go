@@ -75,7 +75,8 @@ func run() error {
 			return command("start")
 		})
 	case "retire":
-		return gate.Retire(ctx, a, func(context.Context, nodelaunch.Assignment) error { return command("stop") })
+		_, err := gate.RetireSystemd(ctx, a)
+		return err
 	default:
 		return fmt.Errorf("unsupported fixture action")
 	}

@@ -110,11 +110,27 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
                 time.sleep(.1)
             assert recovered, 'restart/restart-limit behavior did not match the service policy'
         assert Probe.calls==1, 'a restarted runtime bypassed network restriction'
+        # Trusted fixture-only restart after deliberately exhausting the budget:
+        # retirement below must stop a live service, not merely observe a failure.
+        subprocess.run(['sudo','-n','systemctl','reset-failed',unit['Name']],check=True,timeout=10)
+        subprocess.run(['sudo','-n','systemctl','start',unit['Name']],check=True,timeout=10)
+        live_deadline=time.monotonic()+5
+        while True:
+            try:
+                with urllib.request.urlopen('http://127.0.0.1:31877/health',timeout=1) as response:
+                    assert response.status==200
+                    break
+            except OSError:
+                assert time.monotonic()<live_deadline, 'fixture did not resume before live retirement'
+                time.sleep(.1)
 
     finally:
         subprocess.run(['sudo','-n','/tmp/node-runtime-control','retire',operation,digest,installed_release['Directory']],check=True,timeout=25)
         stopped_status=json.loads(subprocess.check_output(['sudo','-n','/tmp/node-runtime-control','status',operation,digest,installed_release['Directory']],text=True,timeout=15))
-        assert stopped_status['UnitStopped'], stopped_status
+        assert stopped_status['UnitStopped'] and stopped_status['State']['LoadState']=='masked' and stopped_status['State']['UnitFileState']=='masked', stopped_status
+        subprocess.run(['sudo','-n','/tmp/node-runtime-control','retire',operation,digest,installed_release['Directory']],check=True,timeout=25)
+        direct_start=subprocess.run(['sudo','-n','systemctl','start',unit['Name']],capture_output=True,text=True,timeout=10)
+        assert direct_start.returncode!=0 and 'masked' in direct_start.stderr, 'persistent mask did not reject direct systemd start'
         usage_deadline=time.monotonic()+3
         while True:
             stopped_usage=json.loads(subprocess.check_output(['sudo','-n','/tmp/node-runtime-control','usage',operation,digest,installed_release['Directory']],text=True,timeout=15))
@@ -129,5 +145,5 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
     late=subprocess.run(['sudo','-n','/tmp/node-runtime-control','start',operation,digest,installed_release['Directory']],capture_output=True,text=True,timeout=25)
     assert late.returncode!=0 and 'Node reservation conflicts with recorded state' in late.stderr, 'late start was not rejected by the retirement gate'
     with socket.socket() as check: assert check.connect_ex(('127.0.0.1',31877))!=0, 'runtime listener survived stop'
-    print(json.dumps({'runtime_service':'passed','installed_release':installed_release,'unit':unit['Name'],'report':report,'listener_stopped':True,'crash_restart':True,'restart_limit':True,'late_start_blocked':True,'running_status_verified':True,'stopped_status_verified':True,'running_usage_verified':True,'stopped_usage_verified':True}),flush=True)
+    print(json.dumps({'runtime_service':'passed','installed_release':installed_release,'unit':unit['Name'],'report':report,'listener_stopped':True,'crash_restart':True,'restart_limit':True,'late_start_blocked':True,'persistent_mask_verified':True,'direct_start_blocked':True,'retirement_retry_verified':True,'live_service_retired':True,'running_status_verified':True,'stopped_status_verified':True,'running_usage_verified':True,'stopped_usage_verified':True}),flush=True)
 server.shutdown();server.server_close();thread.join(timeout=2)

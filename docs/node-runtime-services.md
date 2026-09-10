@@ -305,3 +305,19 @@ This runtime profile still needs hostile workload qualification, including memor
 and process exhaustion and cross-runtime access. Reading limit values is not that
 qualification. Earlier build-profile stress results do not substitute for runtime
 tests. No live VPS/Pi deployments or customer databases changed.
+
+### Systemd retirement adapter
+
+`ControlGate.RetireSystemd` records permanent retirement before issuing fixed,
+bounded local mask and stop commands for the exact generated unit. It creates a
+persistent `/etc/systemd/system/<unit>` mask, syncs the directory, and requires
+masked, stopped status with no pending job or reload before reporting success.
+It does not force replacement of unexpected operator configuration. Masks and
+control records must remain for retired operation IDs.
+
+A timeout or error may follow a dispatched systemd job. Keep the reservation
+occupied and reconcile actual state; an error never proves that no stop occurred.
+This adapter alone does not authorize UID/port reuse and is not yet wired into a
+complete routing-drain and retirement-reconciliation workflow. Routing, process,
+cgroup and listener evidence are still required. The fixture exercises this
+adapter, but does not expose it as a customer-facing service manager.
