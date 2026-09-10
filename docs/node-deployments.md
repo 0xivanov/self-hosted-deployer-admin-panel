@@ -21,9 +21,9 @@ Both an application check and a restricting foreign key prevent deletion through
 `DeleteNodeRelease` or directly through the database while this reference exists.
 Queued cancellation is audited and idempotent, removes only this reference, and
 preserves request/history identity. Cancelling a running operation is rejected;
-its outcome must first be established through the runtime control plane. Future
-activation/reconciliation must preserve references for active and pending releases
-and remove obsolete references transactionally, before enabling live deployment.
+its outcome must first be established through the runtime control plane. Activation reconciliation preserves the active reference and transactionally
+removes obsolete or failed references. The active pointer independently references
+the retained archive, so database constraints protect it too.
 
 ## Worker claims
 
@@ -40,16 +40,57 @@ even after expiry or restart. Permission loss or expiry does not prove a runtime
 stopped or that a delayed activation cannot arrive. The worker must stop dependent
 work and reconcile; it cannot cancel the job locally or release its archive.
 
+## Runtime reconciliation
+
+Schema 23 adds recorded runtime observations and a persistent active deployment
+pointer. `ReconcileNodeDeployment` reads fresh evidence from the assigned trusted
+runtime and matches project, runtime, deployment, operation, revision, artifact,
+toolchain and architecture. The runtime must report the operation settled, with
+no outstanding provisioning or delayed activation able to change its result.
+For success, the active route must exactly equal the expected candidate and a
+fresh health check must pass. A failed candidate must be stopped, and its reported
+remaining active route must exactly match the previously recorded active route.
+
+Completion, active-pointer changes, evidence, audit and archive-reference updates
+share a transaction. Failure preserves the old active release. Success releases
+only the previous deployment reference; the new active archive stays retained by
+both its reference and the active pointer's foreign key. Repeated reconciliation
+of a completed job does not query the runtime or apply changes again. Expired
+leases do not prevent recording a proven settled result after worker restart.
+
+This operation records facts and does not initiate activation. If the submitter
+lost permission after a route was activated, the actual active route is recorded
+and the audit action includes `submitter_revoked`. Claim/renewal still deny further
+work by that submitter. Stopping or reverting an already-active route requires a
+separate authorized runtime operation; falsely reporting it cancelled would hide
+what is serving. `ActiveNodeDeployment` is available only to current project
+owners/developers. A normal deployment request cannot silently move a project with
+an active route to a different runtime assignment.
+
+The runtime adapter must authenticate the assigned service, verify the actual
+listener-to-artifact/toolchain binding, take a fresh observation, prove operation
+settlement and failed-candidate cleanup, and check active health. Router snapshot
+metadata alone is insufficient, and customer app output is never this evidence.
+The observation timestamp must use the observing worker's clock for comparison
+with request start; a cached remote timestamp is not a fresh observation.
+
 ## Current boundary
 
-These methods neither start a runtime nor change a public route. There is no
-activation-completion API, runtime transport, public deployment endpoint or active
-Node release pointer yet. Runtime revision fencing, health checks, preserving the
-previous site on failure, retirement/reconciliation and actual rollback remain
-required. Deployment requests must not be displayed as successful live deployments.
+Queue/recovery methods do not start runtime processes or expose a browser endpoint.
+The routing core performs actual health-gated switching, but the production
+launcher, authenticated transport, deployment-worker orchestration, draining and
+hostile-workload/recovery qualification remain required. This store's completed
+records must not be used to bypass those runtime guarantees.
 
 Integration tests cover idempotency and conflicting targets, pending serialization,
 increasing revisions, archive retention including direct database deletion, queued
 cancellation, history across restart/archive deletion, assignment/integrity checks,
 lease renewal/expiry, no restart redispatch, tenant/role revocation and migration
 from schema 21 with retained release data.
+
+Reconciliation tests additionally connect the portal store to a real router with
+HTTP test backends, independently probe active health, stop the failed test backend,
+and verify failure preservation, expiry/restart recovery, idempotency and archive
+reference cleanup. Contract tests reject missing/mismatched/stale evidence, verify
+post-activation revocation recording and migrate an outstanding schema-22 operation.
+These tests do not qualify a production Node launcher or artifact/process identity.

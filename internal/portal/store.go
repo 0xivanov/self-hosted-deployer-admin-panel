@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 22 {
+	if version > 23 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -239,6 +239,12 @@ PRAGMA user_version=1;`)
 
 	if version < 22 {
 		if _, err = tx.Exec(`CREATE TABLE node_deployments(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),release_id TEXT NOT NULL REFERENCES node_builds(id),artifact_sha256 TEXT NOT NULL,runtime_id TEXT NOT NULL,actor_id TEXT NOT NULL REFERENCES users(id),request_key TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),state TEXT NOT NULL CHECK(state IN ('queued','running','succeeded','failed','cancelled')),operation_id TEXT NOT NULL DEFAULT '',lease_hash TEXT NOT NULL DEFAULT '',lease_until INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,UNIQUE(project_id,request_key),UNIQUE(project_id,revision)); CREATE UNIQUE INDEX node_deployment_pending ON node_deployments(project_id) WHERE state IN ('queued','running'); CREATE UNIQUE INDEX node_deployment_operation ON node_deployments(operation_id) WHERE operation_id<>''; CREATE TABLE node_deployment_releases(deployment_id TEXT PRIMARY KEY REFERENCES node_deployments(id),release_id TEXT NOT NULL REFERENCES node_releases(build_id)); CREATE INDEX node_deployment_release_refs ON node_deployment_releases(release_id); PRAGMA user_version=22;`); err != nil {
+			return err
+		}
+	}
+
+	if version < 23 {
+		if _, err = tx.Exec(`ALTER TABLE node_deployments ADD COLUMN result BLOB; CREATE TABLE node_active_deployments(project_id TEXT PRIMARY KEY REFERENCES projects(id),deployment_id TEXT NOT NULL UNIQUE REFERENCES node_deployments(id),release_id TEXT NOT NULL REFERENCES node_releases(build_id)); PRAGMA user_version=23;`); err != nil {
 			return err
 		}
 	}

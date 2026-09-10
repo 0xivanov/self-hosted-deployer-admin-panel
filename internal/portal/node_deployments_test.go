@@ -164,7 +164,7 @@ func TestNodeDeploymentCurrentPermissionsAndMigration(t *testing.T) {
 	s, path, a, session, release := deploymentFixture(t)
 	ctx := t.Context()
 	runtimeID := strings.Repeat("b", 64)
-	if _, err := s.db.Exec("DROP TABLE node_deployment_releases; DROP TABLE node_deployments; PRAGMA user_version=21"); err != nil {
+	if _, err := s.db.Exec("DROP TABLE node_active_deployments; DROP TABLE node_deployment_releases; DROP TABLE node_deployments; PRAGMA user_version=21"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {

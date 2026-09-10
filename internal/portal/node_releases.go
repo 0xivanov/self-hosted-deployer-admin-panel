@@ -265,7 +265,7 @@ func (s *Store) DeleteNodeRelease(ctx context.Context, token, project, id string
 		return tx.Commit()
 	}
 	var references int
-	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM node_deployment_releases WHERE release_id=?", id).Scan(&references); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT (SELECT count(*) FROM node_deployment_releases WHERE release_id=?)+(SELECT count(*) FROM node_active_deployments WHERE release_id=?)", id, id).Scan(&references); err != nil {
 		return err
 	}
 	if references > 0 {

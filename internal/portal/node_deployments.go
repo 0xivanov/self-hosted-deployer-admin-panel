@@ -59,6 +59,14 @@ func (s *Store) RequestNodeDeployment(ctx context.Context, token, project, relea
 	if !errors.Is(err, sql.ErrNoRows) {
 		return NodeDeployment{}, err
 	}
+	var activeRuntime string
+	err = tx.QueryRowContext(ctx, "SELECT j.runtime_id FROM node_active_deployments a JOIN node_deployments j ON j.id=a.deployment_id WHERE a.project_id=?", project).Scan(&activeRuntime)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return NodeDeployment{}, err
+	}
+	if activeRuntime != "" && activeRuntime != runtimeID {
+		return NodeDeployment{}, ErrConflict
+	}
 	release, err := savedNodeRelease(ctx, tx, releaseID, project)
 	if err != nil {
 		return NodeDeployment{}, err

@@ -792,3 +792,20 @@ redirect rejection and host/configuration checks. Full race-enabled integration
 tests, vet and builds passed. This is the routing core, not a provisioner or public
 runtime service: launcher identity/isolation, draining, authenticated transport and
 portal activation reconciliation remain. Live deployments were not changed.
+
+## Node runtime activation reconciliation (2026-09-10)
+
+Added schema 23 with persisted runtime evidence and active deployment pointers.
+Reconciliation requires fresh exact operation/revision/release/runtime identity,
+actual toolchain/architecture, settlement and current health for success. Failed
+candidates must be stopped and preserve the previously recorded active route.
+Completion and reference changes are atomic; active archives have an independent
+restricting foreign key. Silent cross-runtime moves are rejected.
+
+Recovery works after lease expiry/restart and records actual serving facts after
+submitter revocation with an explicit audit flag. It never initiates deployment.
+Connected real-router/HTTP tests and contract tests cover success/failure, stopped
+candidates, identity/evidence errors, reference cleanup, tenant access, idempotency,
+revocation and migration of an outstanding schema-22 operation. Production launcher,
+authenticated runtime transport, worker orchestration and qualification remain.
+No live VPS/Pi deployment was changed.

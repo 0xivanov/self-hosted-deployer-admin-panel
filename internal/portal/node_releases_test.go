@@ -201,7 +201,7 @@ func TestNodeReleaseRetentionCountAndMigration(t *testing.T) {
 	if err = s.DispatchNodeBuild(ctx, c.Job.ID, c.ExecutionID, c.Lease, root, nodeSubmit(func(context.Context, NodeExecutionRequest) error { return nil })); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.db.Exec("DROP TABLE node_deployment_releases; DROP TABLE node_deployments; DROP TABLE node_releases; PRAGMA user_version=20"); err != nil {
+	if _, err = s.db.Exec("DROP TABLE node_active_deployments; DROP TABLE node_deployment_releases; DROP TABLE node_deployments; DROP TABLE node_releases; PRAGMA user_version=20"); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.Close(); err != nil {
