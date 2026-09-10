@@ -17,13 +17,9 @@ Updated: 2026-09-10. The four-part goal remains active and incomplete. No custom
 
 Validation: `go test -race ./...`, `go vet ./...`, and existing admin-panel build. Dedicated tests cover unverified access, duplicate email normalization, verification replay, session persistence/logout, cross-workspace operations, viewer permissions, membership removal, concurrent reset replay, session/reset expiration, account disable and private/future-schema database rejection.
 
-## Not implemented yet
+## Current remaining work
 
-This is not a production-ready public account service. Returned verification/reset tokens are intended only for trusted mail delivery, never browser responses. There is no HTTP signup endpoint or production exposure yet. The new HTTP service has per-address login limits and a bounded global request gate. Production proxy behavior, distributed abuse protection and operational qualification remain outstanding.
-
-Next: durable mail outbox, signup/reset UI, verification delivery, invitations, owner bootstrap, administrator MFA/recovery, account administration and additional authorization tests. Workspaces and project metadata exist; project uploading, builds and publication do not.
-
-Still outstanding: isolated HTML/Node upload/deployment pipeline and release recovery, Stripe hosting subscriptions, Connect merchant sales, registrar selection/domain resale, full pilot qualification, backup/restore drills and production rollout. See `customer-platform-plan.md` for the unchanged overall scope.
+The customer portal is a development service, not a production-qualified public account service. Signup, encrypted mail delivery, membership management, invitations and validated upload storage are implemented as described below. Publishing/build workers, durable releases and rollback, registrar integration, hosting subscriptions and merchant payments remain outstanding. Account recovery/resend, administrator MFA/bootstrap, production abuse controls, storage capacity operations and recovery qualification also remain.
 
 ## Customer HTTP portal added
 
@@ -101,3 +97,15 @@ Static projects require root `index.html`. Node projects require root `package.j
 Validation tests cover accepted static/Node fixtures, unsafe paths, links, credentials, collisions, expansion bombs, total expanded-size limits, truncation, entry count, incomplete project contracts and cancellation. Race tests, vet and existing command builds pass.
 
 This component is not yet wired to HTTP upload storage or the browser file picker. Next: authenticated workspace-scoped archive persistence, quotas, upload metadata/UI, then static publication and immutable releases. No uploaded code was executed and no live deployments changed.
+
+## Customer project upload storage and panel controls
+
+Schema version 4 adds private, immutable ZIP uploads. The ZIP bytes and validated metadata are stored together in SQLite so failed transactions do not leave filesystem orphans. This initial storage design supports small projects; object storage migration and capacity/backup qualification remain required before a public hosting rollout. Uploaded code is never extracted, executed or served from the portal origin.
+
+Owners and developers can upload and delete saved archives. Viewers can list upload metadata. API authorization is checked before body intake and again within the final transaction after validation. Uploads are bounded to 10 MiB each, with a workspace-wide limit of 20 archives or 100 MiB of compressed data across all projects. Quota checks and insertion share a transaction. Deleting an unused upload releases its logical quota; SQLite may retain allocated disk pages for reuse. Release references do not exist yet and must prevent deletion of required artifacts when publishing is added.
+
+The customer panel includes a ZIP picker, project-specific instructions, validation results and deletion controls. It explicitly labels projects and uploads as not published. Node uploads require package.json with a start script and package-lock.json; static uploads require root index.html. Content validation does not establish that an application is safe to execute.
+
+Validation: race-enabled Go unit/integration tests, vet, command builds and JavaScript syntax checks. Upload integration tests cover cross-workspace denial, viewer restrictions, invalid/oversized bodies, CSRF/content type, archive persistence, concurrent quota contention, quota across projects, deletion and migration from schema 3 without losing an existing account/session/project. CI now includes integration-tagged tests. A disposable browser demo verified sign-in, project creation and rendered upload controls; an actual browser file-selection/upload interaction is still to be checked. No live VPS/Pi changes or external mail were performed.
+
+Operational caveat: take a consistent pre-migration database backup before upgrading any persistent customer portal. An older binary rejects schema 4, so binary-only rollback is insufficient. These local tests do not qualify backup/restore, public registration, multi-process capacity or production rollout.

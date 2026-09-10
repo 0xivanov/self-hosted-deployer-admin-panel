@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 3 {
+	if version > 4 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -137,6 +137,11 @@ PRAGMA user_version=1;`)
 	}
 	if version < 3 {
 		if _, err = tx.Exec(`CREATE TABLE invitations(id TEXT PRIMARY KEY,token_hash TEXT NOT NULL UNIQUE,workspace_id TEXT NOT NULL REFERENCES workspaces(id),email TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('owner','developer','viewer')),inviter_id TEXT NOT NULL REFERENCES users(id),expires_at INTEGER NOT NULL,state TEXT NOT NULL CHECK(state IN ('pending','accepted','revoked')),created_at INTEGER NOT NULL); CREATE INDEX invitations_workspace ON invitations(workspace_id,state); PRAGMA user_version=3;`); err != nil {
+			return err
+		}
+	}
+	if version < 4 {
+		if _, err = tx.Exec(`CREATE TABLE uploads(id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), sha256 TEXT NOT NULL, files INTEGER NOT NULL, expanded_bytes INTEGER NOT NULL, archive BLOB NOT NULL, created_at INTEGER NOT NULL); CREATE INDEX uploads_project ON uploads(project_id,created_at); PRAGMA user_version=4;`); err != nil {
 			return err
 		}
 	}

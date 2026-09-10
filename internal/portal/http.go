@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/projectarchive"
 	"io"
 	"mime"
 	"net"
@@ -214,6 +215,49 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.URL.Path == "/api/uploads" && r.Method == "GET":
+		uploads, err := h.store.Uploads(r.Context(), cookie.Value, r.URL.Query().Get("project"))
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, map[string]any{"uploads": uploads})
+	case r.URL.Path == "/api/uploads" && r.Method == "POST":
+		project := r.URL.Query().Get("project")
+		if _, err := h.store.UploadAccess(r.Context(), cookie.Value, project); err != nil {
+			h.storeError(w, err)
+			return
+		}
+		typ, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil || typ != "application/zip" {
+			httpError(w, 415, "Upload a ZIP archive")
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, projectarchive.MaxCompressed)
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			httpError(w, 413, "ZIP must be no larger than 10 MiB")
+			return
+		}
+		upload, err := h.store.SaveUpload(r.Context(), cookie.Value, project, data)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, upload)
+	case r.URL.Path == "/api/uploads/delete" && r.Method == "POST":
+		var input struct {
+			Project string `json:"project"`
+			ID      string `json:"id"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		if err := h.store.DeleteUpload(r.Context(), cookie.Value, input.Project, input.ID); err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, map[string]bool{"ok": true})
 	case r.URL.Path == "/api/session" && r.Method == "GET":
 		workspaces, err := h.store.Workspaces(r.Context(), cookie.Value)
 		if err != nil {
@@ -341,6 +385,10 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 func (h *HTTP) storeError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrQuota):
+		httpError(w, 409, "Workspace upload limit reached (20 archives or 100 MiB). Delete unused uploads first.")
+	case errors.Is(err, ErrArchive):
+		httpError(w, 400, err.Error())
 	case errors.Is(err, ErrDenied):
 		httpError(w, 403, "Workspace access denied")
 	case errors.Is(err, ErrLastOwner):
