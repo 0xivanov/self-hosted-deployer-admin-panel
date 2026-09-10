@@ -498,3 +498,19 @@ This is the start of the domain implementation, not a registrar integration or p
 - Validation passed: portal integration tests with race detection, customer portal
   build, JavaScript syntax and whitespace checks. The temporary preview process was
   intentionally stopped after browser checks, then removed before regression tests.
+
+### Node build preflight
+
+- Added immutable source-bound Node build specifications and a command-line
+  preflight tool. Plans require assigned Linux amd64/arm64 architecture, target
+  Node 24, support optional build scripts and define install/prune/start commands.
+- Uploads are revalidated and their expected SHA-256 must match. No archive
+  extraction, npm install, hooks or source execution occurs during preflight.
+- Unit tests cover source mismatch, unsupported architecture/package manager,
+  cancellation, optional builds and untrusted script contents. A disposable CLI
+  fixture verified generated JSON and rejection of a mismatched source digest.
+- Node executor, VM/network isolation, jobs, artifacts, secrets and runtime
+  publication remain outstanding. Existing control-plane VMs and live nodes were
+  not started or modified. See docs/node-builds.md for execution requirements.
+- Validation passed: nodebuild unit tests with race detection, integration vet,
+  all command builds, CLI fixture checks and whitespace checks.
