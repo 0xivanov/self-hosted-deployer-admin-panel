@@ -711,3 +711,19 @@ complete or publish a build.
 Integration coverage includes concurrent dispatch, uncertain response/restart,
 prepared-build migration and rejected invalid/revoked/corrupted inputs. Production
 VM execution and artifact publication remain outstanding; no live fleet was changed.
+
+## Connected Node worker VM rehearsal (2026-09-10)
+
+Qualified the real portal worker path against the trusted offline dependency
+fixture inside the disposable ARM64 Linux VM: registration, upload, queued build,
+claim/download/bind, durable dispatch, restricted npm install/build, HTTP readiness
+and shutdown. Verified the guest rejects a repeated execution ID and the portal
+rejects redispatch after reopening its database. The fixture executor checks exact
+source/plan/toolchain/bundle correspondence with the staged service inputs.
+
+The successful run reported one executor call and both duplicate guards passing.
+Cross-compilation, Go vet and qualification-package checks passed. This provides
+connected runtime evidence, not production executor completion. Per-build VM
+provisioning, arbitrary verified input transfer, hard deadline/recovery behavior
+and artifacts remain to be implemented and qualified. Live VPS/Pi deployments
+were untouched. See `node-build-rehearsal.md` for reproduction and limitations.

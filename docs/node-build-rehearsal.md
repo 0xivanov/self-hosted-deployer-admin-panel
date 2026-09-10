@@ -160,3 +160,45 @@ The same profile also passed a real dependency installed from a verified offline
 cache. See [the dependency rehearsal](node-dependencies.md#offline-npm-cache-rehearsal).
 The original dependency-free scenario was rerun and still passed after adding the
 optional cache path. The lab service was cleaned up and the VM stopped afterward.
+
+## Portal worker through restricted guest execution
+
+Run `python3 deploy/qualification/node-lab-setup.py --worker` with the named lab
+VM already running. This builds the guest-only `node-worker-rehearsal` helper and
+uses the pinned dependency fixture. It does not accept arbitrary source paths or
+customer archives. The helper refuses other operating systems, architectures and
+root execution, checks the exact fixture/toolchain archive digests, and creates a
+throwaway portal database in a private guest directory.
+
+The rehearsal registers/verifies a synthetic account, creates a Node project,
+saves its upload, requests a build, prepares dependencies and calls
+`DispatchNodeBuild`. Its fixture executor reopens the worker bundle and verifies
+that its source, plan, toolchain and complete manifest match the root-owned inputs
+consumed by the restricted service. The service uses the dispatch execution ID as
+its unit identity. Before starting, the guest reserves a private, synced exclusive
+attempt record; duplicate IDs are rejected before starting another service.
+
+The helper checks actual install hooks, offline dependency installation, build
+output, HTTP readiness, disabled prestart hook, process-group shutdown and rejection
+of a broken build through the existing restricted fixture runner. It then tries the
+same guest execution ID again and requires an exclusive-record failure. Finally it
+reopens the portal database and requires redispatch to fail without a second
+executor call. Reports are bounded to 256 KiB in the guest helper. Synthetic portal
+data is removed on exit; guest attempt records remain under
+`/var/tmp/node-worker-attempts-<uid>` until the disposable lab is reset.
+
+Verified on 2026-09-10 with execution
+`5d3903c401facaa5ec090c50fa7bd2c50520402bec60c3b5f51207bfe4f16fda`:
+`worker_flow=passed`, `executor_calls=1`, `guest_duplicate_rejected=true`,
+`restart_redispatch_rejected=true`. Node v24.20.0 / npm 11.19.0 and all existing
+restricted positive-fixture assertions passed. An initial cleanup check was
+corrected after observing that systemd had already collected the completed unit;
+cleanup now verifies inactive/failed state and no main process before reporting.
+
+This is a connected synthetic qualification, not the production executor adapter.
+It reuses a preconfigured lab VM and fixed staged inputs, has no network dispatch
+protocol or arbitrary-input transfer, and does not qualify hard deadline behavior,
+power-loss recovery, durable retirement against delayed requests, build-log handling
+for hostile code or release artifact export/activation. Guest attempt records alone
+are not retirement proof. A successful fixture submission leaves the portal build
+running; it must not be reported as a successful published customer release.

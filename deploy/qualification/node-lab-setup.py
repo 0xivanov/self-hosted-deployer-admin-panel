@@ -13,7 +13,10 @@ import zipfile
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dependency', action='store_true')
+parser.add_argument('--worker', action='store_true', help='qualify the portal worker with the pinned dependency fixture')
 args = parser.parse_args()
+if args.worker:
+    args.dependency = True
 repo = Path(__file__).resolve().parents[2]
 vm = 'deployer-node-build-lab'
 with tempfile.TemporaryDirectory(prefix='node-rehearsal-setup-') as directory:
@@ -32,6 +35,11 @@ with tempfile.TemporaryDirectory(prefix='node-rehearsal-setup-') as directory:
     files = [archive, helper, *[repo / 'deploy/qualification' / name for name in
                               ['node-rehearsal.py', 'node-positive-run.py', 'node_lab_profile.py',
                                'node-restriction-run.py', 'node-restriction-probe.py']]]
+    if args.worker:
+        worker = stage / 'node-worker-rehearsal'
+        subprocess.run(['go', 'build', '-o', str(worker), './deploy/qualification/node-worker-rehearsal'],
+                       cwd=repo, env={**os.environ, 'GOOS': 'linux', 'GOARCH': 'arm64', 'CGO_ENABLED': '0'}, check=True)
+        files.append(worker)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     packages = stage / 'packages'
     if args.dependency:
@@ -58,4 +66,7 @@ sudo tar --no-same-owner -xf node.tar.xz
             subprocess.run(['limactl', 'shell', vm, 'sudo', 'install', '-m', '644', '/tmp/' + package.name,
                             '/opt/node-positive-lab/packages/' + package.name], check=True)
     print('Fixture SHA-256: ' + digest, flush=True)
-    subprocess.run(['limactl', 'shell', vm, 'python3', '/tmp/node-positive-run.py', digest, *(['--dependency'] if args.dependency else [])], check=True)
+    if args.worker:
+        subprocess.run(['limactl', 'shell', vm, '/tmp/node-worker-rehearsal'], check=True, timeout=150)
+    else:
+        subprocess.run(['limactl', 'shell', vm, 'python3', '/tmp/node-positive-run.py', digest, *(['--dependency'] if args.dependency else [])], check=True)
