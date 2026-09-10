@@ -824,3 +824,18 @@ with explicit executor/runtime fixtures. No production launcher is implied by th
 fixtures. The API exposes only read-only observations; production process identity,
 listener provisioning, activation transport and worker orchestration remain.
 Live deployments were unchanged. See `node-runtime-api.md` for the contract.
+
+## Restricted Node runtime service profile (2026-09-10)
+
+Added a validated service renderer with dedicated non-root identities, read-only
+releases, bounded temporary storage, resource limits, loopback-only IP policy,
+control-group shutdown and limited crash restarts. A trusted synthetic fixture in
+the disposable ARM64 VM verified the profile, successful HTTP serving, two crash
+recoveries, restart exhaustion and listener removal. The VM was stopped afterward.
+Go race-enabled integration tests, vet and builds passed.
+
+This is a renderer and rehearsal, not the production launcher. Durable identity
+reservations, verified installation, activation transport, routing integration and
+hostile runtime/recovery qualification remain. Loopback access is not tenant
+network isolation. See `node-runtime-services.md` for evidence and caller contracts.
+The live fleet and customer databases were unchanged.
