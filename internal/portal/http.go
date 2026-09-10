@@ -228,6 +228,31 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		http.SetCookie(w, &http.Cookie{Name: h.cookie, Value: "", Path: "/", Secure: !h.development, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1})
 		httpJSON(w, map[string]bool{"ok": true})
+	case r.URL.Path == "/api/members" && r.Method == "GET":
+		members, err := h.store.Members(r.Context(), cookie.Value, r.URL.Query().Get("workspace"))
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, map[string]any{"members": members})
+	case r.URL.Path == "/api/members" && r.Method == "POST":
+		var input struct {
+			Workspace string  `json:"workspace"`
+			User      string  `json:"user"`
+			Role      *string `json:"role"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		if input.Role == nil {
+			httpError(w, 400, "An explicit role or removal is required")
+			return
+		}
+		if err := h.store.ChangeMember(r.Context(), cookie.Value, input.Workspace, input.User, *input.Role); err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, map[string]bool{"ok": true})
 	case r.URL.Path == "/api/projects" && r.Method == "GET":
 		projects, err := h.store.Projects(r.Context(), cookie.Value, r.URL.Query().Get("workspace"))
 		if err != nil {
@@ -258,6 +283,8 @@ func (h *HTTP) storeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrDenied):
 		httpError(w, 403, "Workspace access denied")
+	case errors.Is(err, ErrLastOwner):
+		httpError(w, 409, "Keep at least one active workspace owner")
 	case errors.Is(err, ErrExists):
 		httpError(w, 409, "A project with this name already exists")
 	case errors.Is(err, ErrInvalid):

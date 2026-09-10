@@ -8,7 +8,7 @@ if(location.hash)history.replaceState(null,'',location.pathname+location.search)
 async function api(path,body){const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok){const error=new Error(data.error||'Request failed');error.status=response.status;throw error;}return data;}
 function error(e){$('error').textContent=e.message;$('error').hidden=false;}
 function signedOut(){generation++;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
-async function loadProjects(){const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);$('project-form').hidden=!selected||selected.role==='viewer';$('projects').replaceChildren();if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website')+' · Awaiting upload support';card.append(name,kind);$('projects').append(card);}if(!data.projects.length)$('projects').textContent='No projects yet. Create your first project above.';}
+async function loadProjects(){const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website')+' · Awaiting upload support';card.append(name,kind);$('projects').append(card);}if(!data.projects.length)$('projects').textContent='No projects yet.';if(selected.role==='owner')await loadMembers(workspace,version);}
 async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;}}
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();});});
@@ -45,3 +45,16 @@ window.addEventListener('hashchange',()=>{
  const kind=params.has('verify')?'verify':params.has('reset')?'reset':'';
  if(!kind)return;actionToken=params.get(kind)||'';history.replaceState(null,'',location.pathname+location.search);showFlow(kind);
 });
+
+async function loadMembers(workspace,version){
+ const data=await api('/api/members?workspace='+encodeURIComponent(workspace));if(version!==generation)return;
+ for(const member of data.members){
+  const row=document.createElement('form');row.className='project';const title=document.createElement('strong');title.textContent=member.email;
+  const label=document.createElement('label');label.textContent='Role for '+member.email;
+  const select=document.createElement('select');for(const [value,text] of [['owner','Owner'],['developer','Developer'],['viewer','Viewer'],['','Remove from workspace']]){const option=document.createElement('option');option.value=value;option.textContent=text;select.append(option);}select.value=member.role;label.append(select);
+  const button=document.createElement('button');button.textContent='Apply change';row.append(title,label,button);
+  row.addEventListener('submit',event=>{event.preventDefault();if(select.value===member.role)return;if(!confirm('Change access for '+member.email+' to '+(select.value||'removed')+'? Their sessions will be signed out.'))return;
+   submit(row,async()=>{await api('/api/members',{workspace,user:member.id,role:select.value});try{await loadSession();}catch(e){if(e.status===401)signedOut();else throw e;}});
+  });$('members').append(row);
+ }
+}
