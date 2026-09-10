@@ -69,3 +69,27 @@ func TestProviderErrorsAreSanitized(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCreateCustomerUsesPersistentIdentity(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Error(err)
+		}
+		if r.URL.Path != "/v1/customers" || r.Form.Get("email") != "owner@example.test" || r.Form.Get("metadata[hosting_request]") != "persisted-request-id" || r.Header.Get("Idempotency-Key") != "persisted-request-id" {
+			t.Error("wrong customer create request")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"cus_fixture","object":"customer","livemode":false}`))
+	}))
+	defer server.Close()
+	c, err := newTestClient("sk_test_synthetic_fixture", "https://portal.example.test/success", "https://portal.example.test/cancel", map[string]string{"starter": "price_fixture"}, server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	id, err := c.CreateCustomer(t.Context(), "owner@example.test", "persisted-request-id")
+	if err != nil || id != "cus_fixture" {
+		t.Fatal(id, err)
+	}
+}

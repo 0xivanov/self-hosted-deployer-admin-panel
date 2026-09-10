@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 6 {
+	if version > 7 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -152,6 +152,11 @@ PRAGMA user_version=1;`)
 	}
 	if version < 6 {
 		if _, err = tx.Exec(`CREATE TABLE billing_events(id TEXT PRIMARY KEY,event_type TEXT NOT NULL,provider_created INTEGER NOT NULL,fingerprint TEXT NOT NULL,payload BLOB NOT NULL,state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','processed','ignored')),received_at INTEGER NOT NULL); CREATE INDEX billing_events_pending ON billing_events(state,received_at); PRAGMA user_version=6;`); err != nil {
+			return err
+		}
+	}
+	if version < 7 {
+		if _, err = tx.Exec(`CREATE TABLE billing_customers(workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id),request_id TEXT NOT NULL UNIQUE,actor_id TEXT NOT NULL REFERENCES users(id),email TEXT NOT NULL,customer_id TEXT UNIQUE,created_at INTEGER NOT NULL); PRAGMA user_version=7;`); err != nil {
 			return err
 		}
 	}

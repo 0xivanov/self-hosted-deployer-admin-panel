@@ -83,3 +83,21 @@ func (c *Client) CreateCheckout(ctx context.Context, customer, plan, requestID s
 	}
 	return Checkout{ID: session.ID, URL: session.URL}, nil
 }
+
+// CreateCustomer is called only with a persisted request/email snapshot. It
+// creates a Stripe test customer, not a subscription or hosting entitlement.
+func (c *Client) CreateCustomer(ctx context.Context, email, requestID string) (string, error) {
+	if len(email) > 254 || !strings.Contains(email, "@") || strings.ContainsAny(email, "\r\n") || len(requestID) < 16 || len(requestID) > 128 {
+		return "", errors.New("invalid customer request")
+	}
+	params := &stripe.CustomerCreateParams{Email: stripe.String(email), Metadata: map[string]string{"hosting_request": requestID}}
+	params.SetIdempotencyKey(requestID)
+	customer, err := c.stripe.V1Customers.Create(ctx, params)
+	if err != nil {
+		return "", errors.New("customer creation outcome unavailable; retain request for reconciliation")
+	}
+	if customer.Livemode || !strings.HasPrefix(customer.ID, "cus_") {
+		return "", errors.New("invalid test customer response")
+	}
+	return customer.ID, nil
+}

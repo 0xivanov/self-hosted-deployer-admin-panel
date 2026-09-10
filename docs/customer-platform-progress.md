@@ -237,3 +237,15 @@ Tests cover concurrent duplicate intake, reopening the database, changed deliver
 Next: owner-authorized billing customer/checkout intent records, reconciliation workers and subscription/invoice handling, webhook route configuration and billing UI. Paid hosting access, Connect merchant sales, domain resale and Node runtime isolation remain incomplete. No live credentials, charges or deployment changes were made.
 
 The full race-enabled suite, including the three-process static publication test, also passed after the inbox migration.
+
+## Workspace billing customer identities
+
+Schema 7 adds one durable billing-customer request per workspace, containing a generated request ID, requesting owner, normalized owner-email snapshot, creation time and an optional unique Stripe Customer ID. Request/read operations require a current workspace owner. Concurrent requests return the same identity; developers/viewers and other workspaces cannot request or inspect it. Request IDs are excluded from customer JSON serialization.
+
+Trusted worker access stops pending customer creation after 23 hours, before Stripe's documented minimum 24-hour idempotency retention window, and when the original requester is no longer a verified, enabled owner. Expired/uncertain requests require provider reconciliation rather than generating a new customer blindly. Binding an authenticated provider response is idempotent, cannot replace an existing customer and cannot bind one customer to two workspaces. A response already obtained may be retained even after permission revocation so the external object is not forgotten. No subscription or hosting access is granted by customer creation.
+
+The Stripe test adapter now creates Customers using the persisted email, request metadata and idempotency key, rejecting live responses. Local fake-provider tests verify those exact request fields. Store tests cover concurrent creation, restart persistence, owner-only read/write, stable request identity, cross-workspace customer collisions, immutable binding, expired requests and revoked owner work. Focused race tests, vet and command builds passed.
+
+These are internal customer-identity operations, not exposed billing routes or a running worker. Next: checkout intents tied to these customer identities, authenticated provider session binding, event-to-workspace reconciliation, subscription/invoice handling and owner billing UI. Long-lived uncertain customer requests still need a reconciliation tool. Schema 7 requires a consistent pre-upgrade backup for rollback to an older portal binary. No live credentials, charges or existing deployments were used or changed.
+
+The full race-enabled suite, including multi-process static publishing, also passed after the billing customer migration.
