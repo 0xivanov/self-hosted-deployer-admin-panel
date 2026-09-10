@@ -590,3 +590,16 @@ This is the start of the domain implementation, not a registrar integration or p
 - Post-rehearsal checks passed: nodebuild integration tests with race detection,
   helper vet/build, Python syntax and whitespace checks. Lima confirmed all four
   local VMs stopped after cleanup.
+
+### Linux service resource and network probes
+
+- Added and ran trusted negative probes in the disposable Node VM. Verified
+  cgroup memory/swap/PID/CPU settings, actual CPU throttling, OOM termination,
+  timeout child cleanup, blocked network/elevation/system writes, and bounded
+  job/temporary filesystems. Final probes passed.
+- Fixed evidence collection after transient-unit cleanup and a real mount conflict
+  where PrivateTmp defeated intended temporary-storage caps. The final profile
+  uses explicit bounded private tmpfs mounts.
+- Stopped/reset all probe services and stopped the lab VM. Live VPS/Pis and the
+  other local labs were unchanged. Full scope and remaining qualification limits
+  are recorded in docs/node-build-rehearsal.md; this is not public Node readiness.

@@ -71,3 +71,52 @@ publication readiness/rollback, public HTTPS or a complete Node hosting service.
 The harness's subprocess timeouts are not a production resource isolation boundary.
 Database worker claims/recovery were tested separately and were not wired to this
 VM rehearsal. Those integrations remain necessary before an untrusted pilot.
+
+## Service restriction probes, 2026-09-10
+
+The same disposable VM ran trusted Python negative probes in transient systemd
+services. `node-restriction-run.py` supplies the explicit restrictions and invokes
+`node-restriction-probe.py`, installed read-only under `/opt/node-restriction-lab/`.
+The runner uses sudo only to create/inspect/stop services; probes run as the normal
+unprivileged guest user. These probes are separate from the earlier Node app test.
+
+Verified from inside the service's actual cgroup:
+
+- `memory.max=134217728` and `memory.swap.max=0`: memory pressure ended with
+  `Result=oom-kill`, within the 128 MiB limit.
+- `pids.max=32`: the probe created 31 sleeping children before EAGAIN stopped it.
+- `cpu.max=100000 100000`: two busy children produced 20 throttled periods.
+- Runtime limit 10 seconds, stop timeout 2 seconds, control-group termination:
+  the timeout probe ended with `Result=timeout`; its child PID no longer existed.
+
+Other checks passed:
+
+- A private network namespace blocked TCP connections to metadata address
+  169.254.169.254, the legacy VPN address 10.8.0.1 and public address 1.1.1.1.
+  These services intentionally have no package-download or public egress.
+- No-new-privileges was set in `/proc/self/status`, sudo elevation failed, and a
+  write under `/etc` failed with the system filesystem protected read-only.
+- 4 MiB per-file limit produced EFBIG. The private `/work` tmpfs filled at its
+  64 MiB cap, and `/tmp` and `/var/tmp` each filled at their 16 MiB caps.
+- The runner stopped and reset each transient service. No active probe units
+  remained, and the VM was stopped afterward.
+
+Two issues found during verification were corrected in the checked-in harness:
+completed transient services can be garbage-collected, making later property reads
+show defaults, so resource assertions now read kernel cgroup files from inside the
+running probe. Also `PrivateTmp=yes` overrode the intended temporary mounts; the
+profile now uses explicit bounded tmpfs mounts without that conflicting property.
+
+The complete final profile is in `deploy/qualification/node-restriction-run.py`.
+Additional restrictions include protected home directories, cgroups/kernel settings,
+private devices, an empty capability bounding set, and blocked namespace creation.
+Those settings are not an exhaustive kernel-escape test. The trusted negative
+probes exercise selected controls, not hostile customer packages or Node itself
+under this profile. The tiny resource values are test limits, not hosting plan sizes.
+
+Still required: a positive Node build under the final restrictions; a safe package
+fetch/gateway stage; log limits; pinned system/runtime images; per-job VM dispatch,
+operation retirement and recovery; artifact validation/export; and tenant isolation
+qualification. Journaling is not yet an untrusted log-retention solution. These
+service restrictions supplement the VM boundary and do not authorize sharing a
+legacy host or executing arbitrary customer code on the Mac.
