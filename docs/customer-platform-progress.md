@@ -776,3 +776,19 @@ corruption, assignment mismatch, permissions, lease expiry and schema-21 migrati
 No activation or public routing was added, and no live deployment changed. Health-
 checked runtime activation, previous-release preservation and reconciliation remain
 next. See `node-deployments.md` for contracts and remaining requirements.
+
+## Persistent health-checked Node routing (2026-09-10)
+
+Added `internal/noderouter` for a dedicated runtime's content route. It pins
+operator-assigned loopback backends, persists the newest activation request before
+probing, and changes the active route only after a successful HTTP health check
+and transactional revision recheck. Failed/pending candidates leave the old route
+serving; rollback uses a new revision. A late healthy candidate cannot overwrite
+a newer route, and the active selection survives reopening the routing database.
+
+Real HTTP-backend/TLS-frontend integration tests passed, including serving during
+pending probes, failure preservation, rollback/restart, cancellation recovery,
+redirect rejection and host/configuration checks. Full race-enabled integration
+tests, vet and builds passed. This is the routing core, not a provisioner or public
+runtime service: launcher identity/isolation, draining, authenticated transport and
+portal activation reconciliation remain. Live deployments were not changed.
