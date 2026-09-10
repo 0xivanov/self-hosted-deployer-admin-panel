@@ -285,3 +285,15 @@ This read produces evidence for reconciliation only. It does not grant hosting a
 Local fake-provider tests cover matching subscriptions, foreign customer/price/invoice identities, live responses, unsupported quantities, incomplete item lists, trial subscriptions without invoices and past-due state. No real Stripe credentials, charges, live database migrations or deployment changes were involved.
 
 Validation: the full race-enabled integration suite, vet, command builds and whitespace checks passed.
+
+## Durable subscription observations
+
+Schema 10 adds a reconciliation generation and provider snapshot to each saved subscription. The trusted reconciliation operation increments the generation before requesting the current subscription with its persisted customer and price. It saves a response only if that generation is still current and the response identity and observation time match the request. A later-started check fences out earlier results, including when the later check fails. Failed checks retain the previous observation and its timestamp.
+
+Workspace owners can read their subscription observation; developers and other workspaces cannot. These internal methods are not mounted as HTTP routes. Snapshots are evidence only: the subscription remains awaiting_reconciliation and no paid access is granted. Provider field validation lives in the authenticated Stripe adapter. Future entitlement policy must account for observation freshness, invoices, refunds and disputes.
+
+Race-enabled tests exercise overlapping reads finishing out of order, failed lookups, foreign identities, stale observations, workspace/role boundaries and persistence after reopening the database. Existing upload migration tests also exercise upgrading an older schema. Schema 10 requires a consistent pre-upgrade backup for rollback to older portal binaries. No live database, credentials or deployments were touched.
+
+Next: wire the billing worker and owner-facing controls, implement the payment/access lifecycle and qualify against Stripe sandbox. Domain resale, merchant sales and isolated Node hosting remain open parts of the goal.
+
+Validation passed: full race-enabled integration suite, including the separate portal/worker/runtime publication flow; vet; all command builds; whitespace checks.
