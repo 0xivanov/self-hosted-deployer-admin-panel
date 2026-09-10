@@ -19,8 +19,20 @@ Validation: `go test -race ./...`, `go vet ./...`, and existing admin-panel buil
 
 ## Not implemented yet
 
-This package is not a public account service. Returned verification/reset tokens are intended only for trusted mail delivery, never browser responses. There is no HTTP signup endpoint or production exposure yet. Endpoint rate limiting and bounded request queues must precede public access; the password-hashing semaphore alone is not sufficient abuse protection.
+This is not a production-ready public account service. Returned verification/reset tokens are intended only for trusted mail delivery, never browser responses. There is no HTTP signup endpoint or production exposure yet. The new HTTP service has per-address login limits and a bounded global request gate. Production proxy behavior, distributed abuse protection and operational qualification remain outstanding.
 
-Next: durable mail outbox, customer HTTP service, session cookies/CSRF/host boundary, signup/login/reset UI, verification delivery, invitations, owner bootstrap, administrator MFA/recovery, account administration and additional authorization tests. Workspaces and project metadata exist; project uploading, builds and publication do not.
+Next: durable mail outbox, signup/reset UI, verification delivery, invitations, owner bootstrap, administrator MFA/recovery, account administration and additional authorization tests. Workspaces and project metadata exist; project uploading, builds and publication do not.
 
 Still outstanding: isolated HTML/Node upload/deployment pipeline and release recovery, Stripe hosting subscriptions, Connect merchant sales, registrar selection/domain resale, full pilot qualification, backup/restore drills and production rollout. See `customer-platform-plan.md` for the unchanged overall scope.
+
+## Customer HTTP portal added
+
+`cmd/customer-portal` is a separate runnable service with no operator or infrastructure credential dependency. It provides login/logout, workspace selection, and creating/listing static or Node project records. The frontend explicitly identifies upload/publication as unfinished.
+
+- Production mode requires HTTPS; the only HTTP exception is explicit disposable localhost demo mode.
+- Secure, HttpOnly, host-only SameSite cookies; session-bound CSRF headers; exact Origin/Host checks; actual TLS required outside development.
+- Login attempts limited by direct peer IP (forwarded IPs are not trusted); eight concurrent API requests maximum; bounded JSON and headers. Proxy-aware limits are future work.
+- Tests verify cross-workspace HTTP reads/writes, CSRF, TLS, DNS rebinding, logout, login throttling, invalid/oversized bodies and closed registration.
+- Browser demo verified login, project creation, reload persistence and sign-out. The live admin panel was not changed.
+
+Run `go run ./cmd/customer-portal --demo`, then open `http://127.0.0.1:8791`. Disposable credentials: `demo@example.test` / `demo-only-password`. Demo data is removed on graceful shutdown. Do not expose the demo through a proxy. No customer email or real accounts are provisioned by this command.

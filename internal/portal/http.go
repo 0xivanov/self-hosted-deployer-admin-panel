@@ -1,0 +1,278 @@
+package portal
+
+import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"embed"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io"
+	"mime"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+)
+
+//go:embed static/*
+var webAssets embed.FS
+
+type HTTPOptions struct {
+	Origin      string
+	Development bool
+}
+type attemptWindow struct {
+	start time.Time
+	count int
+}
+type HTTP struct {
+	store                *Store
+	origin, host, cookie string
+	development          bool
+	slots                chan struct{}
+	mu                   sync.Mutex
+	attempts             map[string]attemptWindow
+}
+
+func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
+	u, err := url.Parse(opts.Origin)
+	if err != nil || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return nil, errors.New("origin must be a complete origin without path or credentials")
+	}
+	if opts.Development {
+		if u.Scheme != "http" || u.Hostname() != "127.0.0.1" {
+			return nil, errors.New("development origin must use HTTP on 127.0.0.1")
+		}
+	} else if u.Scheme != "https" {
+		return nil, errors.New("HTTPS required")
+	}
+	cookie := "__Host-portal-session"
+	if opts.Development {
+		cookie = "portal-dev-session"
+	}
+	return &HTTP{store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+}
+func csrfFor(token string) string {
+	sum := sha256.Sum256([]byte("portal-csrf:" + token))
+	return hex.EncodeToString(sum[:])
+}
+func (h *HTTP) allowLogin(address string) bool {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		host = address
+	}
+	now := time.Now()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for key, value := range h.attempts {
+		if now.Sub(value.start) >= time.Minute {
+			delete(h.attempts, key)
+		}
+	}
+	w, exists := h.attempts[host]
+	if !exists {
+		if len(h.attempts) >= 4096 {
+			return false
+		}
+		w.start = now
+	}
+	if w.count >= 10 {
+		return false
+	}
+	w.count++
+	h.attempts[host] = w
+	return true
+}
+func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+	if r.Host != h.host || (!h.development && r.TLS == nil) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+		httpError(w, 403, "Invalid request origin")
+		return
+	}
+	if origin := r.Header.Get("Origin"); origin != "" && origin != h.origin {
+		httpError(w, 403, "Invalid request origin")
+		return
+	}
+	if r.Method != "GET" && r.Method != "POST" {
+		httpError(w, 405, "Method not allowed")
+		return
+	}
+	if r.Method == "POST" && r.Header.Get("Origin") != h.origin {
+		httpError(w, 403, "Origin required")
+		return
+	}
+	if !strings.HasPrefix(r.URL.Path, "/api/") {
+		if r.Method != "GET" {
+			httpError(w, 405, "Method not allowed")
+			return
+		}
+		name, kind := "", ""
+		switch r.URL.Path {
+		case "/":
+			name = "index.html"
+			kind = "text/html; charset=utf-8"
+		case "/portal.js":
+			name = "portal.js"
+			kind = "text/javascript; charset=utf-8"
+		case "/portal.css":
+			name = "portal.css"
+			kind = "text/css; charset=utf-8"
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		data, err := webAssets.ReadFile("static/" + name)
+		if err != nil {
+			httpError(w, 500, "Page unavailable")
+			return
+		}
+		w.Header().Set("Content-Type", kind)
+		w.Write(data)
+		return
+	}
+	select {
+	case h.slots <- struct{}{}:
+		defer func() { <-h.slots }()
+	default:
+		w.Header().Set("Retry-After", "5")
+		httpError(w, 429, "Please retry shortly")
+		return
+	}
+	if r.URL.Path == "/api/login" && r.Method == "POST" {
+		if !h.allowLogin(r.RemoteAddr) {
+			w.Header().Set("Retry-After", "60")
+			httpError(w, 429, "Too many login attempts; retry in a minute")
+			return
+		}
+		var input struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		session, err := h.store.Login(r.Context(), input.Email, input.Password)
+		if err != nil {
+			if errors.Is(err, ErrCredentials) {
+				httpError(w, 401, "Unable to sign in with these credentials")
+			} else {
+				httpError(w, 500, "Sign-in unavailable")
+			}
+			return
+		}
+		if old, err := r.Cookie(h.cookie); err == nil {
+			if err = h.store.Logout(r.Context(), old.Value); err != nil {
+				h.store.Logout(r.Context(), session.Token)
+				httpError(w, 500, "Sign-in unavailable")
+				return
+			}
+		}
+		http.SetCookie(w, &http.Cookie{Name: h.cookie, Value: session.Token, Path: "/", Secure: !h.development, HttpOnly: true, SameSite: http.SameSiteStrictMode, Expires: session.ExpiresAt, MaxAge: 86400})
+		httpJSON(w, map[string]any{"account": session.Account, "csrf": csrfFor(session.Token)})
+		return
+	}
+	cookie, err := r.Cookie(h.cookie)
+	if err != nil {
+		httpError(w, 401, "Sign in to continue")
+		return
+	}
+	account, err := h.store.Authenticate(r.Context(), cookie.Value)
+	if err != nil {
+		if errors.Is(err, ErrDenied) {
+			httpError(w, 401, "Sign in to continue")
+		} else {
+			httpError(w, 500, "Session unavailable")
+		}
+		return
+	}
+	if r.Method == "POST" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(csrfFor(cookie.Value))) != 1 {
+		httpError(w, 403, "Reload the page and retry")
+		return
+	}
+	switch {
+	case r.URL.Path == "/api/session" && r.Method == "GET":
+		workspaces, err := h.store.Workspaces(r.Context(), cookie.Value)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, map[string]any{"account": account, "workspaces": workspaces, "csrf": csrfFor(cookie.Value)})
+	case r.URL.Path == "/api/logout" && r.Method == "POST":
+		if err := h.store.Logout(r.Context(), cookie.Value); err != nil {
+			h.storeError(w, err)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: h.cookie, Value: "", Path: "/", Secure: !h.development, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1})
+		httpJSON(w, map[string]bool{"ok": true})
+	case r.URL.Path == "/api/projects" && r.Method == "GET":
+		projects, err := h.store.Projects(r.Context(), cookie.Value, r.URL.Query().Get("workspace"))
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, map[string]any{"projects": projects})
+	case r.URL.Path == "/api/projects" && r.Method == "POST":
+		var input struct {
+			Workspace string `json:"workspace"`
+			Name      string `json:"name"`
+			Kind      string `json:"kind"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		project, err := h.store.CreateProject(r.Context(), cookie.Value, input.Workspace, input.Name, input.Kind)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, project)
+	default:
+		httpError(w, 404, "Not found")
+	}
+}
+func (h *HTTP) storeError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrDenied):
+		httpError(w, 403, "Workspace access denied")
+	case errors.Is(err, ErrExists):
+		httpError(w, 409, "A project with this name already exists")
+	case errors.Is(err, ErrInvalid):
+		httpError(w, 400, "Check the project name and type")
+	default:
+		httpError(w, 500, "Operation unavailable")
+	}
+}
+func httpJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(v)
+}
+func httpError(w http.ResponseWriter, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+func httpDecode(w http.ResponseWriter, r *http.Request, v any) bool {
+	typ, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || typ != "application/json" {
+		httpError(w, 415, "JSON required")
+		return false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+	d := json.NewDecoder(r.Body)
+	d.DisallowUnknownFields()
+	if err = d.Decode(v); err != nil {
+		httpError(w, 400, "Invalid request")
+		return false
+	}
+	if err = d.Decode(&struct{}{}); err != io.EOF {
+		httpError(w, 400, "Invalid request")
+		return false
+	}
+	return true
+}

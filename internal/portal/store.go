@@ -400,6 +400,7 @@ func (s *Store) authorize(ctx context.Context, tx *sql.Tx, token, workspace stri
 	return id, nil
 }
 func (s *Store) CreateProject(ctx context.Context, token, workspace, name, kind string) (Project, error) {
+	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 100 || (kind != "static" && kind != "node") {
 		return Project{}, ErrInvalid
 	}
@@ -410,6 +411,14 @@ func (s *Store) CreateProject(ctx context.Context, token, workspace, name, kind 
 	defer tx.Rollback()
 	actor, err := s.authorize(ctx, tx, token, workspace, true)
 	if err != nil {
+		return Project{}, err
+	}
+	var existing string
+	err = tx.QueryRowContext(ctx, "SELECT id FROM projects WHERE workspace_id=? AND name=?", workspace, name).Scan(&existing)
+	if err == nil {
+		return Project{}, ErrExists
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
 		return Project{}, err
 	}
 	p := Project{ID: randomToken(), WorkspaceID: workspace, Name: name, Kind: kind}
@@ -439,4 +448,75 @@ func (s *Store) GetProject(ctx context.Context, token, id string) (Project, erro
 		return Project{}, err
 	}
 	return p, tx.Commit()
+}
+
+type Workspace struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Role string `json:"role"`
+}
+
+func (s *Store) Workspaces(ctx context.Context, token string) ([]Workspace, error) {
+	// Session validation and result selection share one transaction.
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var user string
+	err = tx.QueryRowContext(ctx, `SELECT u.id FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.verified=1 AND u.disabled=0`, digest(token), s.now().Unix()).Scan(&user)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrDenied
+	}
+	if err != nil {
+		return nil, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT w.id,w.name,m.role FROM workspaces w JOIN memberships m ON m.workspace_id=w.id WHERE m.user_id=? ORDER BY w.name,w.id`, user)
+	if err != nil {
+		return nil, err
+	}
+	out := []Workspace{}
+	for rows.Next() {
+		var w Workspace
+		if err = rows.Scan(&w.ID, &w.Name, &w.Role); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	return out, tx.Commit()
+}
+func (s *Store) Projects(ctx context.Context, token, workspace string) ([]Project, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if _, err = s.authorize(ctx, tx, token, workspace, false); err != nil {
+		return nil, err
+	}
+	rows, err := tx.QueryContext(ctx, "SELECT id,workspace_id,name,kind FROM projects WHERE workspace_id=? ORDER BY name,id", workspace)
+	if err != nil {
+		return nil, err
+	}
+	out := []Project{}
+	for rows.Next() {
+		var p Project
+		if err = rows.Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	return out, tx.Commit()
 }
