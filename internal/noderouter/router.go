@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -52,6 +53,11 @@ type State struct {
 	Active *Candidate
 }
 type Router struct {
+	mu        sync.Mutex
+	owner     *os.File
+	ownerPath string
+	closed    bool
+	upstreams int
 	db        *sql.DB
 	config    Config
 	backends  map[string]*url.URL
@@ -139,14 +145,21 @@ func Open(database string, config Config) (*Router, error) {
 	transport.Proxy = nil
 	transport.DialContext = (&net.Dialer{Timeout: 3 * time.Second}).DialContext
 	transport.ResponseHeaderTimeout = 5 * time.Second
-	r := &Router{db: db, config: config, backends: urls, transport: transport, health: &http.Client{Transport: transport, Timeout: 3 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	r := &Router{ownerPath: absolute + ".serve.lock", db: db, config: config, backends: urls, transport: transport, health: &http.Client{Transport: transport, Timeout: 3 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	if err = r.initialize(); err != nil {
 		r.Close()
 		return nil, err
 	}
 	return r, nil
 }
-func (r *Router) Close() error { r.transport.CloseIdleConnections(); return r.db.Close() }
+func (r *Router) Close() error {
+	r.mu.Lock()
+	r.closed = true
+	r.releaseOwnerLocked()
+	r.mu.Unlock()
+	r.transport.CloseIdleConnections()
+	return r.db.Close()
+}
 func (r *Router) initialize() error {
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -220,6 +233,10 @@ func (r *Router) Activate(ctx context.Context, c Candidate) error {
 	if !r.validCandidate(c) {
 		return ErrInvalid
 	}
+	if err := r.beginUpstream(); err != nil {
+		return err
+	}
+	defer r.endUpstream()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -320,6 +337,11 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "unknown host", http.StatusMisdirectedRequest)
 		return
 	}
+	if err := r.beginUpstream(); err != nil {
+		http.Error(w, "site unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	defer r.endUpstream()
 	state, err := r.Snapshot(req.Context())
 	if err != nil || state.Active == nil {
 		http.Error(w, "site unavailable", http.StatusServiceUnavailable)

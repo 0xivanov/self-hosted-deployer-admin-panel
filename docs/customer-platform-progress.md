@@ -956,3 +956,17 @@ connections, restart persistence, active-route protection, replacement serving,
 new-operation backend reuse and migration preserving a schema-1 active route.
 In-flight request draining and complete retirement integration remain. No live
 deployment or customer database changed, and no VM was needed for this step.
+
+## Exclusive Node upstream ownership (2026-09-10)
+
+Added lazy kernel-lock ownership for proxy traffic and health activations. Other
+control handles can inspect and fence retirement, but cannot serve or probe.
+Closing the owner denies new upstream work while retaining the lock until its
+existing requests finish, preventing premature handover to a replacement router.
+Private regular lock files are required; symlinks and hard links are rejected.
+
+A real HTTP test held an old response open across route replacement and owner
+close, verified that another handle remained excluded, then completed the response
+and successfully handed over replacement traffic. Unsafe-lock regression tests
+passed. Per-backend draining and the production retirement adapter remain open.
+No live deployment or customer database changed.

@@ -97,3 +97,21 @@ conflicting identities, active-listener reuse, cancelled-pending recovery, pinne
 configuration, strict host handling, forwarded scheme rewriting, unsafe endpoint
 rejection and non-followed redirects. Full integration tests, vet and command
 builds pass. No customer code or live VPS/Pi deployment was used in these tests.
+
+### Exclusive upstream ownership
+
+The first content request or activation takes an exclusive kernel lock at
+`<database>.serve.lock`. Another Router opened on the same database may inspect
+state or fence retirement, but cannot probe or proxy backends until the owner
+releases it. A conflicting activation returns `ErrServingOwned`; content receives
+503. `Close` rejects new upstream operations immediately but retains ownership
+until every existing proxy request and activation returns. The descriptor is not
+inherited by executed children. Never unlink or replace the lock or database
+while old router processes may still exist; use a private, local filesystem and
+one canonical database path, not copied or aliased routing databases.
+
+This establishes one place to track traffic. It is not yet a per-backend drain
+API or complete `RoutingDetached` evidence. The launcher still must wait for a
+verified drain before stopping or reusing an old backend. Database handles close
+normally, so an activation overlapping `Close` may return a database error and
+must be reconciled from persisted state after the old owner finishes.
