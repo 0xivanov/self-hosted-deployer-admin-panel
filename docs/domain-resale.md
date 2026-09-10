@@ -45,3 +45,21 @@ request rate limiting must be added before public quote endpoints. There is no
 registrar transport or quote HTTP/UI route yet. Future orders must reference a saved
 quote and recheck current availability, price and owner authority before payment and
 registration; an unexpired snapshot alone is insufficient.
+
+### Customer quote API
+
+`HTTPOptions.DomainQuotes` now enables authenticated `POST /api/domains/quote`
+with exactly `workspace` and `domain` in the JSON body. `DomainMarkupMinor` is a
+nonnegative operator setting, never accepted from the request. `GET` on the same
+path takes `workspace` and `id` and returns the saved offer and current expiry.
+The public configuration reports `domain_quotes`; both routes return 404 when no
+reader is configured. No CLI registrar reader is installed yet.
+
+Both routes use the existing host/TLS, session and workspace owner protections;
+POST also requires origin and CSRF validation. Provider failures return a generic
+503 without exposing provider errors. Each authenticated account has five lookup
+attempts per minute across sessions and workspaces, separate from login limits.
+The limiter is process-local with at most 4,096 account entries, so multi-instance
+serving needs a shared limiter. Restarts reset these transient limits. Durable
+quote storage remains capped independently. The earlier HTTP-rate-limit launch
+item is now covered for a single portal process; retention is still outstanding.

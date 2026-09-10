@@ -22,6 +22,8 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
+	DomainQuotes      DomainQuoteReader
+	DomainMarkupMinor int64
 	BillingManagement BillingManagement
 	TestWebhookSecret string
 	TestBilling       bool
@@ -36,6 +38,9 @@ type attemptWindow struct {
 	count int
 }
 type HTTP struct {
+	domainQuotes         DomainQuoteReader
+	domainMarkupMinor    int64
+	domainAttempts       map[string]attemptWindow
 	billingManagement    BillingManagement
 	billingWebhook       http.Handler
 	testBilling          bool
@@ -51,6 +56,9 @@ type HTTP struct {
 }
 
 func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
+	if opts.DomainMarkupMinor < 0 {
+		return nil, errors.New("domain markup cannot be negative")
+	}
 	if opts.BillingManagement != nil && (!opts.TestBilling || opts.Development) {
 		return nil, errors.New("billing management requires HTTPS test billing")
 	}
@@ -94,7 +102,7 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if opts.Development {
 		cookie = "portal-dev-session"
 	}
-	return &HTTP{billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 func csrfFor(token string) string {
 	sum := sha256.Sum256([]byte("portal-csrf:" + token))
@@ -194,7 +202,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/config" && r.Method == "GET" {
-		httpJSON(w, map[string]bool{"signup": h.signup, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
+		httpJSON(w, map[string]bool{"domain_quotes": h.domainQuotes != nil, "signup": h.signup, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
 		return
 	}
 	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {
@@ -250,6 +258,10 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "POST" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(csrfFor(cookie.Value))) != 1 {
 		httpError(w, 403, "Reload the page and retry")
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/domains/") {
+		h.domainHTTP(w, r, cookie.Value, account.ID)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/billing/") {

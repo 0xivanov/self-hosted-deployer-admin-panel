@@ -471,3 +471,16 @@ This is the start of the domain implementation, not a registrar integration or p
   registrar evidence. No live provider, purchases or deployment changes.
 - Validation passed: full integration suite with the race detector, integration
   vet, all command builds and whitespace checks.
+
+### Authenticated domain quote API
+
+- Added opt-in POST/GET quote routes behind existing session, origin/CSRF and
+  workspace-owner protection. Fixed markup comes exclusively from operator options.
+- Added a bounded account-based lookup limiter across sessions/workspaces and
+  generic provider-error responses. Domain quoting remains disabled by default;
+  no purchase route, live registrar configuration or deployment changes.
+- HTTP integration tests cover request tampering, foreign access, saved-offer reads,
+  price injection, disabled configuration, provider-error redaction, cross-session
+  throttling and rate-window expiry. Registrar transport and panel form remain.
+- Validation passed: full integration suite with race detection, integration vet,
+  all command builds and whitespace checks.
