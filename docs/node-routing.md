@@ -45,6 +45,33 @@ active identity on restart. HTTP requests read the current committed route; in-
 flight requests may continue against the previous backend. The launcher must drain
 those requests before stopping or reusing that backend.
 
+## Permanent operation retirement fences
+
+Routing schema 2 adds immutable operation retirement records. `FenceRetirement`
+validates the exact candidate and initially refuses an operation or backend still
+used by the active route. Traffic must move to a replacement first. It can fence
+a pending candidate or an operation whose activation has not arrived yet. A pending
+candidate becomes failed while the old active route remains unchanged.
+
+`Activate` checks retirement both before probing and before committing the result.
+A delayed successful health check or retried activation cannot resurrect a retired
+operation, including after reopening the database. Repeated fencing with the same
+payload confirms the saved tombstone; a conflicting payload is rejected. This
+confirmation is not proof that a backend is currently unused. A newer operation
+may later use that backend after the launcher completes retirement and allocation.
+
+Fencing does not cancel existing HTTP requests, stop services or prove the pool's
+`RoutingDetached` condition. Request draining and protection against concurrent
+backend reuse still need to be connected to the runtime controller. Do not delete
+tombstones while old activation requests could arrive.
+
+Schema-1 migration preserves the existing active route and revision. Immediate
+write transactions serialize competing controllers; full synchronous commits are
+enabled. Older router binaries reject schema 2. Tests cover active-route refusal,
+a retirement racing a real health request on another database connection,
+pre-activation retirement, persisted retry rejection, replacement serving,
+backend reuse under a new operation and migration with an active route.
+
 ## Serving and current boundary
 
 `ServeHTTP` accepts only the configured content host and proxies to the committed

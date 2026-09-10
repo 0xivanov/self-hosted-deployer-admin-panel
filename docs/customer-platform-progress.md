@@ -942,3 +942,17 @@ checks.
 These observations do not yet authorize slot reuse: namespace coverage, restart
 prevention, routing detach/drain and the final retirement adapter remain. No live
 deployments changed; the disposable VM was stopped after testing.
+
+## Permanent Node routing retirement fences (2026-09-10)
+
+Routing schema 2 persists immutable retirement records. Activation checks them
+before and after health probing, so a delayed result or retry cannot resurrect a
+retired operation. Initial retirement refuses active operations/backends and keeps
+the replacement route serving. Pending retired candidates become failed without
+changing the active route.
+
+Real HTTP tests passed a retirement racing a blocked health probe across database
+connections, restart persistence, active-route protection, replacement serving,
+new-operation backend reuse and migration preserving a schema-1 active route.
+In-flight request draining and complete retirement integration remain. No live
+deployment or customer database changed, and no VM was needed for this step.

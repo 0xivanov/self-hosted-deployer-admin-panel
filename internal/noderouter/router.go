@@ -27,6 +27,7 @@ var (
 	ErrConflict  = errors.New("routing revision conflicts with a recorded request")
 	ErrStale     = errors.New("routing revision has been superseded")
 	ErrUnhealthy = errors.New("candidate did not pass its health check")
+	ErrRetired   = errors.New("Node routing operation is permanently retired")
 )
 
 type Config struct {
@@ -126,6 +127,8 @@ func Open(database string, config Config) (*Router, error) {
 	location := url.URL{Scheme: "file", Path: absolute}
 	q := url.Values{}
 	q.Add("_pragma", "busy_timeout(5000)")
+	q.Add("_pragma", "synchronous(FULL)")
+	q.Set("_txlock", "immediate")
 	location.RawQuery = q.Encode()
 	db, err := sql.Open("sqlite", location.String())
 	if err != nil {
@@ -154,11 +157,16 @@ func (r *Router) initialize() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 1 {
+	if version > 2 {
 		return ErrInvalid
 	}
 	if version == 0 {
 		if _, err = tx.Exec("CREATE TABLE node_route(id INTEGER PRIMARY KEY CHECK(id=1),config BLOB NOT NULL,state BLOB NOT NULL); PRAGMA user_version=1"); err != nil {
+			return err
+		}
+	}
+	if version < 2 {
+		if _, err = tx.Exec("CREATE TABLE retired_operations(operation TEXT PRIMARY KEY,candidate BLOB NOT NULL); PRAGMA user_version=2"); err != nil {
 			return err
 		}
 	}
@@ -209,7 +217,7 @@ func (r *Router) Snapshot(ctx context.Context) (State, error) {
 // rollback must use a new revision. A pending identical request can be reprobed
 // after restart, since health probes do not start or mutate application processes.
 func (r *Router) Activate(ctx context.Context, c Candidate) error {
-	if c.ProjectID != r.config.ProjectID || c.RuntimeID != r.config.RuntimeID || c.Revision < 1 || !digestID(c.DeploymentID) || !digestID(c.OperationID) || !digestID(c.ArtifactSHA256) || r.backends[c.Backend] == nil {
+	if !r.validCandidate(c) {
 		return ErrInvalid
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -217,6 +225,9 @@ func (r *Router) Activate(ctx context.Context, c Candidate) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err = rejectRetired(ctx, tx, c.OperationID); err != nil {
+		return err
+	}
 	state, err := readState(tx.QueryRowContext(ctx, "SELECT state FROM node_route WHERE id=1"))
 	if err != nil {
 		return err
@@ -269,6 +280,9 @@ func (r *Router) Activate(ctx context.Context, c Candidate) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err = rejectRetired(ctx, tx, c.OperationID); err != nil {
+		return err
+	}
 	state, err = readState(tx.QueryRowContext(ctx, "SELECT state FROM node_route WHERE id=1"))
 	if err != nil {
 		return err
