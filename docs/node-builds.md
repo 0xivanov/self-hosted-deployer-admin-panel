@@ -155,3 +155,7 @@ artifact or activate hosting. No executor transport or VM was started here.
 A trusted synthetic build/start/stop rehearsal has now passed in a disposable
 ARM64 Linux VM. See [the recorded environment, checks and limitations](node-build-rehearsal.md).
 This does not enable public Node execution or replace the remaining isolation gates.
+
+The first dependency download component is implemented separately in
+[node dependency downloads](node-dependencies.md). It verifies registry tarballs
+without executing npm; offline cache import and worker integration are pending.

@@ -617,3 +617,16 @@ This is the start of the domain implementation, not a registrar integration or p
   remain outstanding; this result covers a trusted dependency-free fixture.
 - Positive and negative live lab runs, Python syntax and whitespace checks passed.
   No test services remained active; all four local VMs were confirmed stopped.
+
+### Registry dependency download validation
+
+- Added source-bound modern npm lockfile download planning, URL deduplication and
+  SHA-512-pinned public-registry tarballs. Rejects alternate sources, local links,
+  weak/missing/conflicting integrity and root shrinkwrap precedence.
+- The HTTP downloader disables proxies/redirects/content decoding, enforces time
+  and per-tarball byte bounds, and returns only verified bytes with generic errors.
+  It does not run npm, unpack packages or execute scripts.
+- Synthetic ZIP/fake-transport tests passed with race detection, along with
+  integration vet, command builds and whitespace checks. No VM/live deployment
+  changes. Offline cache import, aggregate quotas, fetch isolation and worker
+  integration remain; see docs/node-dependencies.md.
