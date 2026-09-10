@@ -78,3 +78,28 @@ Integration tests use disposable local directories and synthetic ZIPs. They cove
 independent extraction paths, content/digest identity, private permissions, nested
 executable helpers, traversal/symlink rejection and cancellation after a file has
 been created. These checks qualify extraction behavior, not VM isolation.
+
+## Durable build requests
+
+Schema 16 adds project-scoped Node build records. `RequestNodeBuild` checks current
+owner/developer access, resolves an upload belonging to that exact Node project,
+revalidates it and saves the generated plan with an operator-assigned toolchain
+SHA-256. It never accepts browser-supplied command text. The future executor must
+match the toolchain content digest as well as the saved Linux architecture.
+
+A request key is unique within the project. Retries return the same saved request;
+changed uploads, effective plans or toolchains conflict. Only one queued/running
+build can exist per project. History is currently capped at 100 records per project.
+Build records retain source uploads even after cancellation; archival and release-
+aware retention must be implemented before public launch. This is deliberately
+bounded rather than silently discarding source identity needed for recovery.
+
+Owners/developers can list build details and cancel queued requests. Cancellation
+is idempotent, but running work cannot be relabelled cancelled through this method.
+The executor must first stop and reconcile its VM before a future cancellation
+protocol can complete. Viewer access to build details is denied.
+
+No HTTP build routes, executor claims/leases, dispatch or runtime activation are
+implemented yet. A queued database record does not mean code is executing. Worker
+permission checks at dispatch, pinned toolchain qualification, durable completion,
+log/artifact storage, cancellation and crash recovery remain required.

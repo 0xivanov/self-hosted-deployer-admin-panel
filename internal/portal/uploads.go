@@ -132,7 +132,7 @@ func (s *Store) DeleteUpload(ctx context.Context, token, project, id string) err
 		return err
 	}
 	var retained int
-	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM publication_jobs WHERE upload_id=? AND project_id=?", id, project).Scan(&retained); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT (SELECT count(*) FROM publication_jobs WHERE upload_id=? AND project_id=?) + (SELECT count(*) FROM node_builds WHERE upload_id=? AND project_id=?)", id, project, id, project).Scan(&retained); err != nil {
 		return err
 	}
 	if retained > 0 {

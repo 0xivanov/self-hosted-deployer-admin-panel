@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var ErrRetained = errors.New("upload retained for publication")
+var ErrRetained = errors.New("upload retained for a build or publication")
 var ErrPublishing = errors.New("a publication is already pending")
 var ErrConflict = errors.New("publication request conflicts with existing request")
 

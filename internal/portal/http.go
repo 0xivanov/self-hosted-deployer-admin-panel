@@ -496,7 +496,7 @@ func (h *HTTP) storeError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrConflict):
 		httpError(w, 409, "Publication request conflicts with an existing operation")
 	case errors.Is(err, ErrRetained):
-		httpError(w, 409, "This upload is retained by publication history")
+		httpError(w, 409, "This upload is retained by build or publication history")
 	case errors.Is(err, ErrQuota):
 		httpError(w, 409, "Workspace upload limit reached (20 archives or 100 MiB). Delete unused uploads first.")
 	case errors.Is(err, ErrArchive):

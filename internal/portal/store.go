@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 15 {
+	if version > 16 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -197,6 +197,12 @@ PRAGMA user_version=1;`)
 	}
 	if version < 15 {
 		if _, err = tx.Exec(`CREATE TABLE domain_quotes(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id),actor_id TEXT NOT NULL REFERENCES users(id),evidence BLOB NOT NULL,offer BLOB NOT NULL,created_at INTEGER NOT NULL); CREATE INDEX domain_quotes_workspace ON domain_quotes(workspace_id); PRAGMA user_version=15;`); err != nil {
+			return err
+		}
+	}
+
+	if version < 16 {
+		if _, err = tx.Exec(`CREATE TABLE node_builds(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),upload_id TEXT NOT NULL REFERENCES uploads(id),actor_id TEXT NOT NULL REFERENCES users(id),request_key TEXT NOT NULL,plan BLOB NOT NULL,toolchain_sha256 TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN ('queued','running','succeeded','failed','cancelled')),created_at INTEGER NOT NULL,UNIQUE(project_id,request_key)); CREATE UNIQUE INDEX node_build_pending ON node_builds(project_id) WHERE state IN ('queued','running'); CREATE INDEX node_build_upload ON node_builds(upload_id); PRAGMA user_version=16;`); err != nil {
 			return err
 		}
 	}

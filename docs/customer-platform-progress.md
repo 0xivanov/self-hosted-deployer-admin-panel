@@ -527,3 +527,19 @@ This is the start of the domain implementation, not a registrar integration or p
   private permissions, independent directories, nested executable helpers,
   traversal/symlinks and cancellation cleanup. Integration vet, command builds
   and whitespace checks also passed. No live deployments were changed.
+
+### Durable Node build requests
+
+- Schema 16 retains Node build plans, exact upload identity and operator-assigned
+  toolchain digests. One pending build per project, idempotent request keys and a
+  100-record history bound prevent duplicate dispatch requests and unbounded history.
+- Current owner/developer authorization applies to request/list/cancel. Foreign
+  project uploads and viewer/outsider access are rejected. Queued cancellation is
+  idempotent; running work is rejected until an executor cancellation protocol exists.
+- Source uploads referenced by builds are protected from deletion, including after
+  cancellation. Recovery-oriented history/retention cleanup is still launch work.
+- Integration tests cover concurrent retries, conflicting plans, foreign uploads,
+  roles, retention, cancellation and restart persistence of a pending specification.
+  HTTP routes, worker claims/execution and runtime activation remain outstanding.
+- Validation passed: full integration suite with race detection, integration vet,
+  all command builds and whitespace checks. Live nodes and databases were unchanged.
