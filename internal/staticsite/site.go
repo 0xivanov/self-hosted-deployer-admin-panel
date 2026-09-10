@@ -246,6 +246,16 @@ func (s *Site) Prune(id string) error {
 	defer dir.Close()
 	return dir.Sync()
 }
+
+// Snapshot reads the active hash and fence in one critical section.
+func (s *Site) Snapshot() (string, int64) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.current == nil {
+		return "", 0
+	}
+	return s.current.id, s.revision
+}
 func (s *Site) Active() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
