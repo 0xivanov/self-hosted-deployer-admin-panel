@@ -917,3 +917,15 @@ rehearsal passed start, crash recovery, stop and rejection of a late start throu
 the gate. The production service manager, toolchain/account checks, routing and
 full recovery remain incomplete. No live deployments changed; the disposable VM
 was stopped and its gate records retained.
+
+## Exact local Node service status (2026-09-10)
+
+Added bounded, read-only systemd status inspection for the assigned unit. Strict
+property parsing rejects incomplete identity/path/PID data; stopped status requires
+no main/control process, queued job or pending reload. The actual VM rehearsal
+verified the running and stopped service through this inspector, while its crash
+recovery and late-start fence checks continued to pass.
+
+This is unit metadata, not complete retirement proof. UID/cgroup and listener
+checks, routing detach/drain and production service-manager integration remain.
+No live deployments changed; the disposable VM was stopped after qualification.

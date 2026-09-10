@@ -196,6 +196,30 @@ not blindly kill a UID that another operation could later reuse. A gate retireme
 record by itself never proves processes or systemd restart paths are gone and must
 not be used alone to release a pool slot.
 
+## Local systemd status inspection
+
+`InspectSystemd` reads only the exact generated unit through a fixed local
+`systemctl show` invocation. It requires Linux/root and the assigned architecture,
+uses a clean environment, caps output at 16 KiB and applies a ten-second deadline.
+The parser requires all selected properties exactly once, validates the unit,
+PID values, cgroup and unit-file paths, and rejects incomplete or unexpected data.
+It timestamps the accepted response locally. It never changes service state.
+
+`SystemdState.UnitStopped` requires an inactive/dead or failed/failed unit, no main
+or control PID, no pending job and no required daemon reload. Unsupported load
+states cannot produce a stopped result. This is deliberately only systemd unit
+metadata: it does not prove the whole UID/cgroup is empty, the port is free,
+the release/toolchain matches the actual process, or routing has detached. A
+retirement adapter must combine those independent checks under the control gate
+before returning complete evidence to the pool.
+
+Parser tests rejected pending jobs, remaining PIDs, reload requirements, malformed
+or missing fields, duplicate properties and foreign identities/paths. The actual
+VM rehearsal on 2026-09-10 validated running and stopped status for operation
+`4fe5aa3cc05843efad2c0b2694c101fc52fdf2b1b7ad42c2b3551c56cc104939`.
+Its HTTP, crash-restart, shutdown and late-start rejection checks also passed.
+The temporary unit was removed and the VM stopped afterward.
+
 `PrivateTmp=no` preserves the explicit bounded temporary mounts. Dynamic users are
 not used because systemd forces private temporary directories for them; see the
 [systemd execution contract](https://raw.githubusercontent.com/systemd/systemd/v255/man/systemd.exec.xml).
