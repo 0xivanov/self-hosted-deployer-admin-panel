@@ -543,3 +543,17 @@ This is the start of the domain implementation, not a registrar integration or p
   HTTP routes, worker claims/execution and runtime activation remain outstanding.
 - Validation passed: full integration suite with race detection, integration vet,
   all command builds and whitespace checks. Live nodes and databases were unchanged.
+
+### Node worker claims and leases
+
+- Schema 17 adds durable execution identity and hashed one-minute leases. Claims
+  require matching project/toolchain/architecture, current submitter permissions
+  and a verified source digest. Source bytes/raw leases are excluded from JSON.
+- Renewals require the correct unexpired lease and current authorization. Expired
+  running jobs cannot be reclaimed; their pending state and execution identity
+  survive restart until the future VM reconciliation path establishes the outcome.
+- Integration coverage checks mismatched targets, changed source bytes, revoked
+  permissions, token rejection, renewal, expiry/restart and one winner among
+  concurrent workers. Actual VM dispatch and completion remain outstanding.
+- Validation passed: full integration suite with race detection, integration vet,
+  all command builds and whitespace checks. Live deployments remain unchanged.

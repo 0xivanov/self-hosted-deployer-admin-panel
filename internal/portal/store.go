@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 16 {
+	if version > 17 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -203,6 +203,12 @@ PRAGMA user_version=1;`)
 
 	if version < 16 {
 		if _, err = tx.Exec(`CREATE TABLE node_builds(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),upload_id TEXT NOT NULL REFERENCES uploads(id),actor_id TEXT NOT NULL REFERENCES users(id),request_key TEXT NOT NULL,plan BLOB NOT NULL,toolchain_sha256 TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN ('queued','running','succeeded','failed','cancelled')),created_at INTEGER NOT NULL,UNIQUE(project_id,request_key)); CREATE UNIQUE INDEX node_build_pending ON node_builds(project_id) WHERE state IN ('queued','running'); CREATE INDEX node_build_upload ON node_builds(upload_id); PRAGMA user_version=16;`); err != nil {
+			return err
+		}
+	}
+
+	if version < 17 {
+		if _, err = tx.Exec(`ALTER TABLE node_builds ADD COLUMN execution_id TEXT NOT NULL DEFAULT ''; ALTER TABLE node_builds ADD COLUMN lease_hash TEXT NOT NULL DEFAULT ''; ALTER TABLE node_builds ADD COLUMN lease_until INTEGER NOT NULL DEFAULT 0; CREATE UNIQUE INDEX node_build_execution ON node_builds(execution_id) WHERE execution_id<>''; PRAGMA user_version=17;`); err != nil {
 			return err
 		}
 	}

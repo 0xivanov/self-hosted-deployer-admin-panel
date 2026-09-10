@@ -99,7 +99,31 @@ is idempotent, but running work cannot be relabelled cancelled through this meth
 The executor must first stop and reconcile its VM before a future cancellation
 protocol can complete. Viewer access to build details is denied.
 
-No HTTP build routes, executor claims/leases, dispatch or runtime activation are
-implemented yet. A queued database record does not mean code is executing. Worker
+No HTTP build routes, VM dispatch or runtime activation are implemented yet.
+Worker claims and leases are described below. A queued database record does not mean code is executing. Worker
 permission checks at dispatch, pinned toolchain qualification, durable completion,
 log/artifact storage, cancellation and crash recovery remain required.
+
+
+## Worker claims and leases
+
+Schema 17 adds a unique execution identity and hashed, expiring lease. Trusted
+workers claim only queued jobs for an operator-assigned project, exact toolchain
+SHA-256 and architecture. The claim checks the original submitter's current verified,
+enabled account and owner/developer membership, and hashes the source bytes again.
+It persists the execution identity before returning the source to the worker.
+Archive contents and the raw lease are excluded from JSON serialization.
+
+Leases last one minute. Renewal requires the exact job, execution identity and
+unexpired lease, and repeats permission checks. Workers must renew immediately
+before dispatch and periodically while working. Losing permission or the lease
+requires stopping and reconciling the VM; a failed renewal alone cannot stop a
+remote process. The executor must use execution identity for durable VM lookup and
+idempotent dispatch, with no undiscoverable fire-and-forget create operation.
+
+Running jobs, including expired ones, are never automatically reclaimed or made
+available for another build. This prevents an uncertain remote VM outcome from
+starting a duplicate. It also means a future reconciliation path is mandatory:
+look up the exact VM execution, establish its terminal state, retain verified
+artifacts or failure evidence, and only then finish/release the pending job.
+There is no VM execution, automatic recovery or completion method yet.
