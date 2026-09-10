@@ -902,3 +902,18 @@ after which start authorization succeeded. Drift, ownership/link errors, stale
 evidence and retirement races were rejected. Service-manager dispatch/fencing,
 toolchain lifecycle and full hosting/pilot qualification remain. No live fleet or
 customer database changed; the disposable VM was stopped after testing.
+
+## Durable Linux service control gate (2026-09-10)
+
+Added per-operation cross-process locking and durable install/start/retirement
+records. Intent commits precede host actions. Failed cleanup retains a permanent
+retirement fence; delayed starts and installations remain blocked. Pool preparation
+and installation recovery can use the same gate through `GatedInstaller`.
+
+Linux tests passed contention, cancellation, process exit, failed/retried cleanup,
+retirement-before-install and record validation. Symlink regression tests exposed
+and verified a fix using direct kernel no-follow opens. The actual Node service
+rehearsal passed start, crash recovery, stop and rejection of a late start through
+the gate. The production service manager, toolchain/account checks, routing and
+full recovery remain incomplete. No live deployments changed; the disposable VM
+was stopped and its gate records retained.

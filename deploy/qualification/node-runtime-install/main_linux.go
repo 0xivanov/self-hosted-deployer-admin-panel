@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/nodeartifact"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/nodelaunch"
@@ -21,8 +22,8 @@ func main() {
 	}
 }
 func run() error {
-	if len(os.Args) != 3 || os.Geteuid() != 0 {
-		return fmt.Errorf("guest root usage: node-runtime-install ZIP SHA256")
+	if len(os.Args) != 4 || os.Geteuid() != 0 {
+		return fmt.Errorf("guest root usage: node-runtime-install ZIP SHA256 OPERATION")
 	}
 	f, err := os.Open(os.Args[1])
 	if err != nil {
@@ -38,7 +39,21 @@ func run() error {
 		return err
 	}
 	defer root.Close()
-	release, err := nodelaunch.InstallRelease(context.Background(), data, os.Args[2], root)
+	if err = os.MkdirAll("/var/lib/deployer-node-lab/control", 0700); err != nil {
+		return err
+	}
+	control, err := os.OpenRoot("/var/lib/deployer-node-lab/control")
+	if err != nil {
+		return err
+	}
+	defer control.Close()
+	gate, err := nodelaunch.OpenControlGate(control)
+	if err != nil {
+		return err
+	}
+	a := nodelaunch.Assignment{UID: 60000, Port: 31877, OperationID: os.Args[3], ProjectID: strings.Repeat("8", 64), RuntimeID: strings.Repeat("7", 64), ArtifactSHA256: os.Args[2], ToolchainSHA256: "5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7", Architecture: "arm64", ReleaseDirectory: "release-" + os.Args[3]}
+	installer := nodelaunch.GatedInstaller{Gate: gate, Installer: nodelaunch.LinuxInstaller{Releases: root}}
+	release, err := installer.InstallNodeRelease(context.Background(), a, data)
 	if err != nil {
 		return err
 	}

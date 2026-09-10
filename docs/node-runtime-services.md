@@ -151,6 +151,51 @@ not a guessed original publication time. This proves this process-exit recovery
 path, not power-loss durability, host compromise resistance or complete runtime
 recovery. Damaged/absent installations still require retirement and a new operation.
 
+## Durable Linux control gate
+
+`ControlGate` uses a permanent per-operation lock file and Linux `flock` to
+serialize mutations across controller processes. Private root-owned JSON records
+retain the exact assignment and installation/start attempts. Each intent is synced
+before invoking the trusted action, so a process exit or lost response cannot
+authorize another installation/start. The gate deliberately records attempts, not
+successful service state. Pool receipts and start authorization remain required.
+
+Retirement commits a permanent fence before invoking cleanup, including when no
+installation has arrived yet. Cleanup can be retried after failure, but delayed
+install/start requests remain rejected. The lock is held through each callback;
+callbacks must honor their deadlines and must not reenter the same operation's
+gate. `GatedInstaller` connects pool preparation and recovery to this gate.
+
+Every controller must share the same durable gate root and use it for these
+mutations. Never delete lock files, prune retirement records or restore an older
+gate snapshot while requests/services could survive. Files require root ownership,
+0600 permissions and one hard link; the gate root requires 0700. Record parsing is
+bounded and strict. A regression test found that `os.Root.OpenFile` followed a
+symlink despite the supplied flag; gate files now use direct `openat` with kernel
+`O_NOFOLLOW` against the pinned root directory descriptor.
+
+Linux-root tests passed controller contention/cancellation, process exit during
+start, repeated/failed cleanup, retirement before install, identity conflicts and
+unsafe record rejection. A separate connected test exercised pool preparation,
+actual read-only installation, start authorization and the retirement gate.
+
+The runtime rehearsal now uses the same gate for actual systemd start/stop. On
+2026-09-10 operation
+`08afd5e301d242e3ab55f4737697c377817ac921a8eb4d32a2eee92b9a6373e6`
+passed HTTP, permissions/resource/network checks, two crash recoveries, restart
+exhaustion, stopped-listener checks and rejection of a later start request.
+The fixture unit was removed. Gate records remain under
+`/var/lib/deployer-node-lab/control` inside the stopped disposable VM.
+
+The qualification adapter is not the production service manager: it uses a fixed
+trusted lab assignment and pre-staged toolchain. The production adapter still needs
+verified toolchain/account provisioning, service-specific stop/mask and queued-job
+settlement, full process/listener observations, routing detach/drain coordination
+and boot recovery. Cleanup must target the immutable operation/service identity,
+not blindly kill a UID that another operation could later reuse. A gate retirement
+record by itself never proves processes or systemd restart paths are gone and must
+not be used alone to release a pool slot.
+
 `PrivateTmp=no` preserves the explicit bounded temporary mounts. Dynamic users are
 not used because systemd forces private temporary directories for them; see the
 [systemd execution contract](https://raw.githubusercontent.com/systemd/systemd/v255/man/systemd.exec.xml).

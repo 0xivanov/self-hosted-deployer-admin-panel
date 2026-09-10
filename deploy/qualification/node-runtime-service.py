@@ -54,9 +54,9 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
             archive_out.write(stage/filename,filename)
     digest=hashlib.sha256(payload.read_bytes()).hexdigest()
     subprocess.run(['sudo','-n','install','-d','-m','755',str(base/'releases')],check=True)
-    installed_release=json.loads(subprocess.check_output(['sudo','-n','/tmp/node-runtime-install',str(payload),digest],text=True))
-    assert installed_release['Manifest']['SHA256']==digest
     operation = uuid.uuid4().hex + uuid.uuid4().hex
+    installed_release=json.loads(subprocess.check_output(['sudo','-n','/tmp/node-runtime-install',str(payload),digest,operation],text=True))
+    assert installed_release['Manifest']['SHA256']==digest
     unit = json.loads(subprocess.check_output(['/tmp/node-runtime-unit',operation,digest,installed_release['Directory']],text=True))
     unit_path = stage/unit['Name'];unit_path.write_text(unit['Unit'])
     tool = base/'toolchains'/toolchain
@@ -72,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
     try:
         subprocess.run(['sudo','-n','systemd-analyze','verify',installed],check=True,timeout=10)
         subprocess.run(['sudo','-n','systemctl','daemon-reload'],check=True,timeout=10)
-        subprocess.run(['sudo','-n','systemctl','start',unit['Name']],check=True,timeout=20)
+        subprocess.run(['sudo','-n','/tmp/node-runtime-control','start',operation,digest,installed_release['Directory']],check=True,timeout=25)
         report=None;deadline=time.monotonic()+12
         while time.monotonic()<deadline:
             try:
@@ -108,12 +108,14 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
         assert Probe.calls==1, 'a restarted runtime bypassed network restriction'
 
     finally:
-        subprocess.run(['sudo','-n','systemctl','stop',unit['Name']],check=True,timeout=10)
+        subprocess.run(['sudo','-n','/tmp/node-runtime-control','retire',operation,digest,installed_release['Directory']],check=True,timeout=25)
         state=subprocess.check_output(['sudo','-n','systemctl','show',unit['Name'],'--property=ActiveState','--property=MainPID'],text=True)
         assert ('ActiveState=inactive' in state or 'ActiveState=failed' in state) and 'MainPID=0' in state,state
         subprocess.run(['sudo','-n','rm',installed],check=True)
         subprocess.run(['sudo','-n','systemctl','daemon-reload'],check=True,timeout=10)
         subprocess.run(['sudo','-n','systemctl','reset-failed',unit['Name']],capture_output=True)
+    late=subprocess.run(['sudo','-n','/tmp/node-runtime-control','start',operation,digest,installed_release['Directory']],capture_output=True,text=True,timeout=25)
+    assert late.returncode!=0 and 'Node reservation conflicts with recorded state' in late.stderr, 'late start was not rejected by the retirement gate'
     with socket.socket() as check: assert check.connect_ex(('127.0.0.1',31877))!=0, 'runtime listener survived stop'
-    print(json.dumps({'runtime_service':'passed','installed_release':installed_release,'unit':unit['Name'],'report':report,'listener_stopped':True,'crash_restart':True,'restart_limit':True}),flush=True)
+    print(json.dumps({'runtime_service':'passed','installed_release':installed_release,'unit':unit['Name'],'report':report,'listener_stopped':True,'crash_restart':True,'restart_limit':True,'late_start_blocked':True}),flush=True)
 server.shutdown();server.server_close();thread.join(timeout=2)
