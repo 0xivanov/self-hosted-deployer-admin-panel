@@ -57,7 +57,9 @@ accounts and ports in that boundary before use.
 
 `Reserve` chooses a free pair and persists the complete immutable assignment.
 An identical operation returns its current state. Conflicting operation payloads
-are rejected, including after retirement. `ClaimStart` changes `reserved` to
+are rejected, including after retirement. New operations cannot alias another
+operation's release directory, even after that operation retires.
+`ClaimStart` requires a matching installation receipt and changes `reserved` to
 `starting` exactly once, before service-manager dispatch. Lost responses and
 expired caller processes do not authorize another claim. `Outstanding` enumerates
 occupied slots on startup without starting anything.
@@ -86,6 +88,36 @@ and permanent retirement history. These tests do not prove disk power-loss
 durability or actual Linux fencing. No production retirement adapter exists yet.
 Do not replace this database with an older backup while any old service or delayed
 request can exist; recovery must first isolate and retire that runtime.
+
+## Installation receipts and interrupted attempts
+
+Pool schema 2 adds an installation-attempt marker and an immutable receipt.
+`PrepareRelease` validates the archive against the reservation, commits the attempt
+before calling the trusted installer, then checks the returned directory and full
+manifest before persisting success. A successful retry returns the same receipt.
+Missing receipts block `ClaimStart`. Timeout, malformed result, provider error or
+process exit after dispatch leaves the attempt recorded and cannot trigger another
+installation. These unknown outcomes retain their slots for recovery/retirement.
+An invalid archive rejected before dispatch does not consume the attempt.
+
+`LinuxInstaller` implements archive installation at the reserved directory with
+the same read-only sealing and no-replace publication as `InstallRelease`. It also
+checks the actual machine architecture. The host manager must still prevent
+delayed installer calls after retirement and protect installed bytes for their
+whole lifetime. The receipt proves installation succeeded; it is not a current
+process observation or a substitute for toolchain/service-manager qualification.
+
+Schema-1 migrations preserve outstanding states. Previously started operations
+remain started without invented receipts and cannot be installed or started again.
+The older binary rejects schema 2; no live customer database was migrated.
+
+Tests passed competing preparation calls, retirement during installation, receipt
+identity/size failures, process exit inside the installer, receipt persistence,
+directory alias rejection and migration of an outstanding schema-1 start. A real
+Linux-root test connected reservation, `LinuxInstaller`, receipt persistence and
+start authorization, and verified that even a direct second installation cannot
+replace the reserved release. Production service-manager dispatch and successful
+reconciliation of unknown installations remain to be connected.
 
 `PrivateTmp=no` preserves the explicit bounded temporary mounts. Dynamic users are
 not used because systemd forces private temporary directories for them; see the

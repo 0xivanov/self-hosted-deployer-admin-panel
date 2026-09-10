@@ -27,9 +27,11 @@ type PoolConfig struct {
 	Slots                                               []Slot
 }
 type Reservation struct {
-	Assignment Assignment
-	State      string
-	Retirement *RetirementObservation
+	Assignment            Assignment
+	State                 string
+	Retirement            *RetirementObservation
+	InstallationAttempted bool
+	Installed             *InstalledRelease
 }
 type Pool struct {
 	db     *sql.DB
@@ -105,7 +107,7 @@ func (p *Pool) initialize() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 1 {
+	if version > 2 {
 		return ErrAssignment
 	}
 	if version == 0 {
@@ -115,6 +117,11 @@ CREATE UNIQUE INDEX live_uid ON reservations(uid) WHERE state!='retired';
 CREATE UNIQUE INDEX live_port ON reservations(port) WHERE state!='retired';
 PRAGMA user_version=1;`)
 		if err != nil {
+			return err
+		}
+	}
+	if version < 2 {
+		if _, err = tx.Exec("ALTER TABLE reservations ADD COLUMN installation_attempted INTEGER NOT NULL DEFAULT 0 CHECK(installation_attempted IN (0,1)); ALTER TABLE reservations ADD COLUMN installed BLOB; PRAGMA user_version=2;"); err != nil {
 			return err
 		}
 	}
@@ -136,8 +143,8 @@ PRAGMA user_version=1;`)
 }
 func readReservation(row interface{ Scan(...any) error }) (Reservation, error) {
 	var r Reservation
-	var raw, evidence []byte
-	if err := row.Scan(&raw, &r.State, &evidence); err != nil {
+	var raw, evidence, installed []byte
+	if err := row.Scan(&raw, &r.State, &evidence, &r.InstallationAttempted, &installed); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			err = ErrNotFound
 		}
@@ -147,13 +154,16 @@ func readReservation(row interface{ Scan(...any) error }) (Reservation, error) {
 	if err == nil && evidence != nil {
 		err = json.Unmarshal(evidence, &r.Retirement)
 	}
+	if err == nil && installed != nil {
+		err = json.Unmarshal(installed, &r.Installed)
+	}
 	return r, err
 }
 func (p *Pool) Lookup(ctx context.Context, operation string) (Reservation, error) {
 	if !id(operation) {
 		return Reservation{}, ErrAssignment
 	}
-	return readReservation(p.db.QueryRowContext(ctx, "SELECT assignment,state,retirement FROM reservations WHERE operation=?", operation))
+	return readReservation(p.db.QueryRowContext(ctx, "SELECT assignment,state,retirement,installation_attempted,installed FROM reservations WHERE operation=?", operation))
 }
 
 // Reserve allocates a slot before any host mutation. UID and Port must be zero;
@@ -174,7 +184,7 @@ func (p *Pool) Reserve(ctx context.Context, a Assignment) (Reservation, error) {
 		return Reservation{}, err
 	}
 	defer tx.Rollback()
-	old, err := readReservation(tx.QueryRowContext(ctx, "SELECT assignment,state,retirement FROM reservations WHERE operation=?", a.OperationID))
+	old, err := readReservation(tx.QueryRowContext(ctx, "SELECT assignment,state,retirement,installation_attempted,installed FROM reservations WHERE operation=?", a.OperationID))
 	if err == nil {
 		a.UID = old.Assignment.UID
 		a.Port = old.Assignment.Port
@@ -185,6 +195,13 @@ func (p *Pool) Reserve(ctx context.Context, a Assignment) (Reservation, error) {
 	}
 	if !errors.Is(err, ErrNotFound) {
 		return Reservation{}, err
+	}
+	var aliases int
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM reservations WHERE json_extract(assignment,'$.ReleaseDirectory')=?", a.ReleaseDirectory).Scan(&aliases); err != nil {
+		return Reservation{}, err
+	}
+	if aliases != 0 {
+		return Reservation{}, ErrConflict
 	}
 	for _, slot := range p.config.Slots {
 		var count int
@@ -208,8 +225,8 @@ func (p *Pool) Reserve(ctx context.Context, a Assignment) (Reservation, error) {
 	return Reservation{}, ErrCapacity
 }
 
-// ClaimStart durably records a single start attempt before calling the service
-// manager. Only the successful caller may dispatch it. A lost response is not
+// ClaimStart requires the matching installation receipt, then durably records a
+// single start attempt. Only the successful caller may dispatch it. A lost response is not
 // permission to retry: reconcile/retire instead. The service manager must also
 // fence delayed starts against retirement; this ledger cannot fence OS calls.
 func (p *Pool) ClaimStart(ctx context.Context, operation string) (Reservation, error) {
@@ -221,11 +238,11 @@ func (p *Pool) ClaimStart(ctx context.Context, operation string) (Reservation, e
 		return Reservation{}, err
 	}
 	defer tx.Rollback()
-	r, err := readReservation(tx.QueryRowContext(ctx, "SELECT assignment,state,retirement FROM reservations WHERE operation=?", operation))
+	r, err := readReservation(tx.QueryRowContext(ctx, "SELECT assignment,state,retirement,installation_attempted,installed FROM reservations WHERE operation=?", operation))
 	if err != nil {
 		return r, err
 	}
-	if r.State != "reserved" {
+	if r.State != "reserved" || !r.InstallationAttempted || r.Installed == nil || r.Installed.Assignment != r.Assignment {
 		return r, ErrConflict
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE reservations SET state='starting' WHERE operation=?", operation); err != nil {
@@ -246,7 +263,7 @@ func (p *Pool) BeginRetirement(ctx context.Context, operation string) (Reservati
 		return Reservation{}, err
 	}
 	defer tx.Rollback()
-	r, err := readReservation(tx.QueryRowContext(ctx, "SELECT assignment,state,retirement FROM reservations WHERE operation=?", operation))
+	r, err := readReservation(tx.QueryRowContext(ctx, "SELECT assignment,state,retirement,installation_attempted,installed FROM reservations WHERE operation=?", operation))
 	if err != nil {
 		return r, err
 	}
@@ -304,7 +321,7 @@ func (p *Pool) ReconcileRetirement(ctx context.Context, operation string, reader
 		return r, err
 	}
 	defer tx.Rollback()
-	current, err := readReservation(tx.QueryRowContext(ctx, "SELECT assignment,state,retirement FROM reservations WHERE operation=?", operation))
+	current, err := readReservation(tx.QueryRowContext(ctx, "SELECT assignment,state,retirement,installation_attempted,installed FROM reservations WHERE operation=?", operation))
 	if err != nil {
 		return r, err
 	}
@@ -329,7 +346,7 @@ func (p *Pool) ReconcileRetirement(ctx context.Context, operation string, reader
 // Outstanding returns all occupied slots for startup reconciliation. Reading this
 // list never authorizes another start attempt.
 func (p *Pool) Outstanding(ctx context.Context) ([]Reservation, error) {
-	rows, err := p.db.QueryContext(ctx, "SELECT assignment,state,retirement FROM reservations WHERE state!='retired' ORDER BY uid")
+	rows, err := p.db.QueryContext(ctx, "SELECT assignment,state,retirement,installation_attempted,installed FROM reservations WHERE state!='retired' ORDER BY uid")
 	if err != nil {
 		return nil, err
 	}

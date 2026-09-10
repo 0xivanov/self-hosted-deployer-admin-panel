@@ -19,7 +19,7 @@ Validation: `go test -race ./...`, `go vet ./...`, and existing admin-panel buil
 
 ## Current remaining work
 
-The customer portal is a development service, not a production-qualified public account service. Signup, encrypted mail delivery, membership management, invitations and validated upload storage are implemented as described below. Publishing/build workers, durable releases and rollback, registrar integration, hosting subscriptions and merchant payments remain outstanding. Account recovery/resend, administrator MFA/bootstrap, production abuse controls, storage capacity operations and recovery qualification also remain.
+The customer portal is a development service, not a production-qualified public account service. Signup, encrypted mail delivery, membership management, invitations, static publication, Node build/runtime components and test-mode hosting billing are implemented to the stages documented below. Remaining work includes the connected production Node lifecycle, paid-plan enforcement and provider qualification, registrar purchases/renewals, merchant payments, account recovery/resend and administrator MFA/bootstrap, production abuse controls, storage operations and full pilot/recovery qualification.
 
 ## Customer HTTP portal added
 
@@ -870,3 +870,20 @@ crash restarts, restart exhaustion and listener shutdown passed again. The VM wa
 stopped after testing. Reservation-to-installation binding, service-manager
 fencing, toolchain installation and recovery qualification remain. No live fleet
 or customer database changes were made.
+
+## Node installation receipts and start authorization (2026-09-10)
+
+Pool schema 2 records an installation attempt before dispatch and retains the
+verified installation receipt. Starting now requires the matching receipt.
+Uncertain/failed attempts cannot be automatically repeated, and late installation
+results cannot make retiring operations startable. Release directory aliases
+across operations are rejected. Existing schema-1 starts retain their state and
+cannot be installed or started again after migration.
+
+Race-enabled tests covered concurrent preparation, process exit inside the
+installer, receipt persistence, incorrect evidence, retirement races and migration.
+A real Linux-root test connected reservation, read-only installation, receipt and
+start authorization, including refusal to replace an existing release. The test
+VM was stopped afterward. Service-manager dispatch/fencing, unknown-installation
+reconciliation and the remaining full MVP requirements are still open. No live
+deployment or customer database changed.

@@ -13,6 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -209,5 +211,50 @@ func TestInstallReleaseRejectsWritableOrUnownedRoot(t *testing.T) {
 	}
 	if _, err := InstallRelease(context.Background(), data, digest, nil); !errors.Is(err, ErrAssignment) {
 		t.Fatal(err)
+	}
+}
+
+func TestInstallReleaseConnectsPoolReceiptAndStartClaim(t *testing.T) {
+	t.Parallel()
+	directory, root := installRoot(t)
+	ctx := context.Background()
+	config := poolConfig()
+	config.Architecture = runtime.GOARCH
+	p := openPool(t, filepath.Join(t.TempDir(), "private", "pool.db"), config)
+	a := poolAssignment(1)
+	a.Architecture = runtime.GOARCH
+	r, err := p.Reserve(ctx, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.ClaimStart(ctx, a.OperationID); !errors.Is(err, ErrConflict) {
+		t.Fatal(err)
+	}
+	r, err = p.PrepareRelease(ctx, a.OperationID, reservationData, LinuxInstaller{Releases: root})
+	if err != nil || r.Installed == nil {
+		t.Fatal(r, err)
+	}
+	info, err := os.Stat(filepath.Join(directory, a.ReleaseDirectory, "package.json"))
+	if err != nil || info.Mode().Perm() != 0444 {
+		t.Fatal(info, err)
+	}
+	claimed, err := p.ClaimStart(ctx, a.OperationID)
+	if err != nil || claimed.Installed == nil {
+		t.Fatal(claimed, err)
+	}
+	service, err := Render(claimed.Assignment)
+	if err != nil || !strings.Contains(service.Unit, "/releases/"+a.ReleaseDirectory) {
+		t.Fatal(service, err)
+	}
+	if _, err = p.PrepareRelease(ctx, a.OperationID, reservationData, LinuxInstaller{Releases: root}); !errors.Is(err, ErrConflict) {
+		t.Fatal("started release reinstalled", err)
+	}
+	// The primitive itself also refuses replacement, even if called outside Pool.
+	if result, err := (LinuxInstaller{Releases: root}).InstallNodeRelease(ctx, claimed.Assignment, reservationData); !errors.Is(err, os.ErrExist) || result.Directory != "" {
+		t.Fatal("existing release replaced", result, err)
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil || len(entries) != 1 {
+		t.Fatal("unexpected installation residue", entries, err)
 	}
 }

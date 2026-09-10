@@ -23,6 +23,8 @@ func poolAssignment(n int) Assignment {
 	a.UID = 0
 	a.Port = 0
 	a.OperationID = fmt.Sprintf("%064x", n)
+	a.ReleaseDirectory = "release-" + a.OperationID
+	a.ArtifactSHA256 = reservationDigest
 	return a
 }
 func openPool(t *testing.T, path string, config PoolConfig) *Pool {
@@ -59,6 +61,7 @@ func TestReservationRestartRetirementAndSlotReuse(t *testing.T) {
 	if _, err = Render(first.Assignment); err != nil {
 		t.Fatal(err)
 	}
+	prepareFixture(t, p, first.Assignment.OperationID)
 	if _, err = p.ClaimStart(ctx, first.Assignment.OperationID); err != nil {
 		t.Fatal(err)
 	}
@@ -217,6 +220,7 @@ func TestPoolConcurrentHandlesCannotDoubleAllocateOrStart(t *testing.T) {
 	if success != 2 {
 		t.Fatal(success)
 	}
+	prepareFixture(t, a, operation)
 	starts := make(chan error, 12)
 	for i := range 12 {
 		wg.Go(func() { _, err := pools[i%2].ClaimStart(ctx, operation); starts <- err })
@@ -329,6 +333,7 @@ func TestPoolSurvivesProcessExitWithoutClose(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		prepareFixture(t, p, r.Assignment.OperationID)
 		if _, err = p.ClaimStart(context.Background(), r.Assignment.OperationID); err != nil {
 			t.Fatal(err)
 		}

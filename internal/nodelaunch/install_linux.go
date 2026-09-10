@@ -9,6 +9,8 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/nodeartifact"
@@ -26,6 +28,13 @@ import (
 // files and parent directory have been synced, not that power-loss recovery or
 // runtime suitability has been qualified. The caller owns orphan cleanup.
 func InstallRelease(ctx context.Context, data []byte, expected string, releases *os.Root) (result nodeartifact.Release, err error) {
+	return installReleaseAt(ctx, data, expected, "", releases)
+}
+
+func installReleaseAt(ctx context.Context, data []byte, expected, destination string, releases *os.Root) (result nodeartifact.Release, err error) {
+	if destination != "" && (!strings.HasPrefix(destination, "release-") || !id(strings.TrimPrefix(destination, "release-"))) {
+		return result, ErrAssignment
+	}
 	if os.Geteuid() != 0 || releases == nil {
 		return result, ErrAssignment
 	}
@@ -74,10 +83,14 @@ func InstallRelease(ctx context.Context, data []byte, expected string, releases 
 		return result, err
 	}
 	defer parent.Close()
-	if err = unix.Renameat2(int(parent.Fd()), stagingName+"/"+extracted.Directory, int(parent.Fd()), extracted.Directory, unix.RENAME_NOREPLACE); err != nil {
+	if destination == "" {
+		destination = extracted.Directory
+	}
+	if err = unix.Renameat2(int(parent.Fd()), stagingName+"/"+extracted.Directory, int(parent.Fd()), destination, unix.RENAME_NOREPLACE); err != nil {
 		return result, err
 	}
 	result = extracted
+	result.Directory = destination
 	// Persist removal from the staging directory as well as insertion into parent.
 	source, err := staging.Open(".")
 	if err != nil {
@@ -143,4 +156,19 @@ func sealRelease(ctx context.Context, root *os.Root) error {
 		}
 	}
 	return nil
+}
+
+// LinuxInstaller installs into the operation's reserved destination. It must be
+// used inside the runtime identified by the pool configuration. The caller keeps
+// the root and installed content protected for the reservation's entire lifetime.
+type LinuxInstaller struct{ Releases *os.Root }
+
+func (i LinuxInstaller) InstallNodeRelease(ctx context.Context, a Assignment, data []byte) (nodeartifact.Release, error) {
+	if _, err := Render(a); err != nil {
+		return nodeartifact.Release{}, err
+	}
+	if a.Architecture != runtime.GOARCH {
+		return nodeartifact.Release{}, ErrAssignment
+	}
+	return installReleaseAt(ctx, data, a.ArtifactSHA256, a.ReleaseDirectory, i.Releases)
 }
