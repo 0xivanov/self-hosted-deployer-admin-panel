@@ -52,6 +52,9 @@ func TestReleasePublishRollbackRestart(t *testing.T) {
 	if err = s.Rollback(t.Context(), one); err != nil {
 		t.Fatal(err)
 	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
 	reopened, err := Open(root)
 	if err != nil || reopened.Active() != one {
 		t.Fatal("rollback did not survive restart", err)
@@ -195,6 +198,7 @@ func TestPrivatePathsAndIntegrity(t *testing.T) {
 	if err = os.Symlink(outside, filepath.Join(root, "active")); err != nil {
 		t.Fatal(err)
 	}
+	s.Close()
 	if _, err = Open(root); err == nil {
 		t.Fatal("symlink active pointer accepted")
 	}
@@ -231,5 +235,108 @@ func TestRetentionAndActiveReleaseProtection(t *testing.T) {
 	}
 	if _, err = s.Publish(t.Context(), archive(t, map[string]string{"index.html": "after prune"})); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRevisionFencingAndRestart(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	root := filepath.Join(t.TempDir(), "site")
+	s, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	first := archive(t, map[string]string{"index.html": "one"})
+	second := archive(t, map[string]string{"index.html": "two"})
+	one, err := s.PublishRevision(ctx, 1, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := s.PublishRevision(ctx, 2, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.PublishRevision(ctx, 1, first); err != ErrStaleRevision {
+		t.Fatal("stale publish", err)
+	}
+	if _, err = s.PublishRevision(ctx, 2, first); err != ErrStaleRevision {
+		t.Fatal("revision payload changed", err)
+	}
+	if got, err := s.PublishRevision(ctx, 2, second); err != nil || got != two {
+		t.Fatal("idempotent retry", got, err)
+	}
+	if _, err = s.Publish(ctx, first); err != ErrStaleRevision {
+		t.Fatal("legacy publish bypassed fencing", err)
+	}
+	if err = s.Rollback(ctx, one); err != ErrStaleRevision {
+		t.Fatal("legacy rollback bypassed fencing", err)
+	}
+	if s.Active() != two || s.Revision() != 2 {
+		t.Fatal("stale worker changed active release")
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err = s.PublishRevision(ctx, 1, first); err != ErrStaleRevision {
+		t.Fatal("fence lost on restart", err)
+	}
+	if got, err := s.PublishRevision(ctx, 3, first); err != nil || got != one || s.Revision() != 3 {
+		t.Fatal("versioned rollback", got, err)
+	}
+}
+func TestExclusiveRuntimeOwner(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join(t.TempDir(), "site")
+	s, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other, err := Open(root); err == nil {
+		other.Close()
+		t.Fatal("second runtime owner admitted")
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.PublishRevision(t.Context(), 1, archive(t, map[string]string{"index.html": "closed"})); err == nil {
+		t.Fatal("closed owner mutated runtime")
+	}
+	other, err := Open(root)
+	if err != nil {
+		t.Fatal("lock not released", err)
+	}
+	defer other.Close()
+}
+func TestConcurrentRevisionFencing(t *testing.T) {
+	t.Parallel()
+	s, err := Open(filepath.Join(t.TempDir(), "site"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	one := archive(t, map[string]string{"index.html": "one"})
+	two := archive(t, map[string]string{"index.html": "two"})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		_, e := s.PublishRevision(t.Context(), 1, one)
+		if e != nil && e != ErrStaleRevision {
+			t.Error(e)
+		}
+	})
+	wg.Go(func() {
+		_, e := s.PublishRevision(t.Context(), 2, two)
+		if e != nil {
+			t.Error(e)
+		}
+	})
+	wg.Wait()
+	if s.Revision() != 2 {
+		t.Fatal("older concurrent worker won")
 	}
 }

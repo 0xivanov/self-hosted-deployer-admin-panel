@@ -8,8 +8,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"io"
 	"net/http"
 	"os"
@@ -25,9 +27,12 @@ const MaxReleases = 20
 const MaxStoredBytes int64 = 100 << 20
 
 type Site struct {
-	root    string
-	mu      sync.RWMutex
-	current *release
+	root     string
+	mu       sync.RWMutex
+	current  *release
+	revision int64
+	lock     *os.File
+	closed   bool
 }
 type release struct {
 	id    string
@@ -51,32 +56,113 @@ func Open(root string) (*Site, error) {
 	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("site directory must be private")
 	}
-	s := &Site{root: root}
-	pointer, err := readPrivate(filepath.Join(root, "active"), 64)
+	fd, err := unix.Open(filepath.Join(root, ".owner.lock"), unix.O_CREAT|unix.O_RDWR|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0600)
+	var lock *os.File
+	if err == nil {
+		lock = os.NewFile(uintptr(fd), ".owner.lock")
+	}
+	if err != nil {
+		return nil, err
+	}
+	lockInfo, statErr := lock.Stat()
+	if statErr != nil || !lockInfo.Mode().IsRegular() || lockInfo.Mode().Perm()&0077 != 0 {
+		lock.Close()
+		return nil, errors.New("invalid runtime owner lock")
+	}
+	if err = unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		lock.Close()
+		return nil, errors.New("site already has a runtime owner")
+	}
+	s := &Site{root: root, lock: lock}
+	success := false
+	defer func() {
+		if !success {
+			s.Close()
+		}
+	}()
+	pointer, err := readPrivate(filepath.Join(root, "active"), 256)
 	if errors.Is(err, os.ErrNotExist) {
+		success = true
 		return s, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	r, err := s.load(context.Background(), string(pointer))
+	id := string(pointer)
+	if len(pointer) != 64 {
+		var state activeState
+		if err = json.Unmarshal(pointer, &state); err != nil || state.Revision < 1 {
+			return nil, errors.New("invalid active release state")
+		}
+		id = state.Release
+		s.revision = state.Revision
+	}
+	r, err := s.load(context.Background(), id)
 	if err != nil {
 		return nil, fmt.Errorf("load active release: %w", err)
 	}
 	s.current = r
+	success = true
 	return s, nil
 }
 
 // Publish validates before changing the active pointer. Source ZIPs are retained
 // unchanged for rollback; file contents are read from ZIPs without extraction.
 // One process owns a site's release mutations.
+type activeState struct {
+	Release  string `json:"release"`
+	Revision int64  `json:"revision"`
+}
+
+var ErrStaleRevision = errors.New("stale or conflicting runtime revision")
+
+func (s *Site) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil
+	}
+	s.closed = true
+	s.current = nil
+	if s.lock != nil {
+		return s.lock.Close()
+	}
+	return nil
+}
+func (s *Site) Revision() int64 { s.mu.RLock(); defer s.mu.RUnlock(); return s.revision }
+
+// PublishRevision fences delayed workers using the project publication revision.
+// Reusing a revision is allowed only for the identical immutable archive.
+func (s *Site) PublishRevision(ctx context.Context, revision int64, data []byte) (string, error) {
+	if revision < 1 {
+		return "", ErrStaleRevision
+	}
+	return s.publish(ctx, revision, data)
+}
 func (s *Site) Publish(ctx context.Context, data []byte) (string, error) {
+	return s.publish(ctx, 0, data)
+}
+func (s *Site) publish(ctx context.Context, revision int64, data []byte) (string, error) {
 	manifest, err := projectarchive.Validate(ctx, data, "static")
 	if err != nil {
 		return "", err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return "", errors.New("site is closed")
+	}
+	if s.revision > 0 && revision <= s.revision {
+		if revision == s.revision && s.current != nil && s.current.id == manifest.SHA256 {
+			dir, e := os.Open(s.root)
+			if e != nil {
+				return "", e
+			}
+			defer dir.Close()
+			return manifest.SHA256, dir.Sync()
+		}
+		return "", ErrStaleRevision
+	}
 	if err = ctx.Err(); err != nil {
 		return "", err
 	}
@@ -113,7 +199,7 @@ func (s *Site) Publish(ctx context.Context, data []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err = s.activate(r); err != nil {
+	if err = s.activate(r, revision); err != nil {
 		return "", err
 	}
 	return r.id, nil
@@ -122,11 +208,17 @@ func (s *Site) Publish(ctx context.Context, data []byte) (string, error) {
 func (s *Site) Rollback(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return errors.New("site is closed")
+	}
+	if s.revision > 0 {
+		return ErrStaleRevision
+	}
 	r, err := s.load(ctx, id)
 	if err != nil {
 		return err
 	}
-	return s.activate(r)
+	return s.activate(r, 0)
 }
 
 // Prune removes an explicitly selected inactive release. Callers must also
@@ -134,6 +226,9 @@ func (s *Site) Rollback(ctx context.Context, id string) error {
 func (s *Site) Prune(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return errors.New("site is closed")
+	}
 	decoded, err := hex.DecodeString(id)
 	if err != nil || len(decoded) != 32 || strings.ToLower(id) != id {
 		return errors.New("invalid release ID")
@@ -159,11 +254,24 @@ func (s *Site) Active() string {
 	}
 	return s.current.id
 }
-func (s *Site) activate(r *release) error {
-	if err := atomicWrite(s.root, filepath.Join(s.root, "active"), []byte(r.id)); err != nil {
+func (s *Site) activate(r *release, revision int64) error {
+	data := []byte(r.id)
+	if revision > 0 {
+		data, _ = json.Marshal(activeState{Release: r.id, Revision: revision})
+	}
+	if err := atomicWrite(s.root, filepath.Join(s.root, "active"), data); err != nil {
+		// A directory-sync error may happen after rename. Reconcile visible state
+		// before returning the uncertain outcome so memory cannot serve an older
+		// revision than disk. The worker must retry/observe before acknowledging.
+		observed, readErr := readPrivate(filepath.Join(s.root, "active"), 256)
+		if readErr == nil && bytes.Equal(observed, data) {
+			s.current = r
+			s.revision = revision
+		}
 		return err
 	}
 	s.current = r
+	s.revision = revision
 	return nil
 }
 func (s *Site) load(ctx context.Context, id string) (*release, error) {

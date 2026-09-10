@@ -126,7 +126,7 @@ func TestPublicationStaticRuntimeAndRollback(t *testing.T) {
 		if err != nil || c == nil {
 			t.Fatal(err)
 		}
-		hash, err := runtime.Publish(ctx, c.Archive)
+		hash, err := runtime.PublishRevision(ctx, c.Job.Revision, c.Archive)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -135,6 +135,7 @@ func TestPublicationStaticRuntimeAndRollback(t *testing.T) {
 		}
 		return j
 	}
+	defer runtime.Close()
 	first := publish(u.ID, "first-release-key")
 	var b bytes.Buffer
 	z := zip.NewWriter(&b)
