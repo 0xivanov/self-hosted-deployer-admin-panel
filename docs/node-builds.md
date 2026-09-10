@@ -151,3 +151,7 @@ The provider interface currently has synthetic integration coverage only. A real
 executor must implement durable operation tombstones/fencing before claiming
 `Retired=true`. The failed-build path cannot mark a build successful, publish an
 artifact or activate hosting. No executor transport or VM was started here.
+
+A trusted synthetic build/start/stop rehearsal has now passed in a disposable
+ARM64 Linux VM. See [the recorded environment, checks and limitations](node-build-rehearsal.md).
+This does not enable public Node execution or replace the remaining isolation gates.

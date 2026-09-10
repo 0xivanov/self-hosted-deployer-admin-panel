@@ -573,3 +573,20 @@ This is the start of the domain implementation, not a registrar integration or p
   needs real provider implementation and qualification; tests use synthetic evidence.
 - Validation passed: full integration suite with race detection, integration vet,
   command builds and whitespace checks.
+
+### Real Linux Node build rehearsal
+
+- Created a separate pinned ARM64 Lima VM and exercised the production plan/source
+  extractor with a trusted synthetic Node app. Node v24.20.0 archive checksum was
+  verified; bundled npm 11.19.0 ran as an unprivileged guest user.
+- Passed install-hook, build output, offline prune, HTTP readiness, disabled prestart,
+  process-group/listener shutdown and broken-build checks. Fixed the discovered
+  npm issue where user/global configuration cannot share the same /dev/null path.
+- Checked in the VM definition, fixture, source/plan helper and guest harness.
+  The new VM was stopped after the rehearsal; existing lab VMs and live VPS/Pis
+  were untouched. Temporary Mac inputs were removed.
+- This is trusted-fixture execution evidence, not untrusted sandbox qualification,
+  real worker dispatch or Node publication. Limits are in docs/node-build-rehearsal.md.
+- Post-rehearsal checks passed: nodebuild integration tests with race detection,
+  helper vet/build, Python syntax and whitespace checks. Lima confirmed all four
+  local VMs stopped after cleanup.
