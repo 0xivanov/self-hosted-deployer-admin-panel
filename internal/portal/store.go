@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 1 {
+	if version > 2 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -127,6 +127,11 @@ CREATE TABLE projects(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES 
 CREATE TABLE audit_events(id TEXT PRIMARY KEY,actor_id TEXT NOT NULL,workspace_id TEXT NOT NULL DEFAULT '',action TEXT NOT NULL,created_at INTEGER NOT NULL);
 PRAGMA user_version=1;`)
 		if err != nil {
+			return err
+		}
+	}
+	if version < 2 {
+		if _, err = tx.Exec(`CREATE TABLE mail_outbox(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), token_hash TEXT NOT NULL, purpose TEXT NOT NULL, payload BLOB NOT NULL, state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','sent','discarded','failed')), attempts INTEGER NOT NULL DEFAULT 0, next_attempt INTEGER NOT NULL, lease_id TEXT NOT NULL DEFAULT '', lease_until INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL); CREATE INDEX mail_outbox_due ON mail_outbox(state,next_attempt,lease_until); PRAGMA user_version=2;`); err != nil {
 			return err
 		}
 	}
@@ -167,6 +172,12 @@ func audit(ctx context.Context, tx *sql.Tx, actor, workspace, action string, now
 // The returned verification token is for a trusted mail outbox, never a signup response.
 // No administrator role can be requested here.
 func (s *Store) Register(ctx context.Context, email, password, workspace string) (Account, string, error) {
+	return s.register(ctx, email, password, workspace, nil)
+}
+
+type enqueueAccountMail func(context.Context, *sql.Tx, string, string, string, string) error
+
+func (s *Store) register(ctx context.Context, email, password, workspace string, queue enqueueAccountMail) (Account, string, error) {
 	email, err := normalizeEmail(email)
 	if err != nil || !validPassword(password) || len(strings.TrimSpace(workspace)) == 0 || len(workspace) > 100 {
 		return Account{}, "", ErrInvalid
@@ -205,6 +216,11 @@ func (s *Store) Register(ctx context.Context, email, password, workspace string)
 		{"INSERT INTO account_tokens VALUES(?,?,'verify',?)", []any{digest(token), a.ID, now + 86400}},
 	} {
 		if _, err = tx.ExecContext(ctx, statement.sql, statement.args...); err != nil {
+			return Account{}, "", err
+		}
+	}
+	if queue != nil {
+		if err = queue(ctx, tx, a.ID, email, token, "verify"); err != nil {
 			return Account{}, "", err
 		}
 	}
@@ -308,6 +324,9 @@ func (s *Store) Logout(ctx context.Context, token string) error {
 // RequestReset returns no token for unknown/disabled accounts. HTTP callers must
 // send the same generic response regardless and deliver tokens only by mail.
 func (s *Store) RequestReset(ctx context.Context, email string) (string, error) {
+	return s.requestReset(ctx, email, nil)
+}
+func (s *Store) requestReset(ctx context.Context, email string, queue enqueueAccountMail) (string, error) {
 	email, err := normalizeEmail(email)
 	if err != nil {
 		return "", nil
@@ -331,6 +350,11 @@ func (s *Store) RequestReset(ctx context.Context, email string) (string, error) 
 	}
 	if _, err = tx.ExecContext(ctx, "INSERT INTO account_tokens VALUES(?,?,'reset',?)", digest(token), id, s.now().Add(30*time.Minute).Unix()); err != nil {
 		return "", err
+	}
+	if queue != nil {
+		if err = queue(ctx, tx, id, email, token, "reset"); err != nil {
+			return "", err
+		}
 	}
 	return token, tx.Commit()
 }

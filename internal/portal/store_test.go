@@ -203,7 +203,7 @@ func TestPrivateDatabaseAndFutureSchema(t *testing.T) {
 	})
 	t.Run("future schema", func(t *testing.T) {
 		s, path := newStore(t)
-		if _, e := s.db.Exec("PRAGMA user_version=2"); e != nil {
+		if _, e := s.db.Exec("PRAGMA user_version=3"); e != nil {
 			t.Fatal(e)
 		}
 		s.Close()
