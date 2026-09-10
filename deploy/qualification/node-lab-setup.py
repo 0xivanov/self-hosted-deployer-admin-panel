@@ -4,6 +4,7 @@ Does not create/start VMs. Installs no host Node packages. No customer inputs.
 """
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -35,7 +36,8 @@ with tempfile.TemporaryDirectory(prefix='node-rehearsal-setup-') as directory:
     packages = stage / 'packages'
     if args.dependency:
         packages.mkdir(mode=0o700)
-        subprocess.run(['go', 'run', './deploy/qualification/node-prefetch', str(archive), digest, str(packages)], cwd=repo, check=True)
+        bundle = json.loads(subprocess.check_output(['go', 'run', './deploy/qualification/node-prefetch', str(archive), digest, str(packages)], cwd=repo, text=True))
+        packages = packages / bundle['Directory']
         files += list(packages.iterdir())
     subprocess.run(['limactl', 'copy', *map(str, files), vm + ':/tmp/'], check=True)
     script = '''set -eu

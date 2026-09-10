@@ -76,3 +76,32 @@ Node v24.20.0/npm 11.19.0. Transitive/native packages, cache corruption/eviction
 production artifact storage/quotas and source-bound worker dispatch remain work.
 Registry signatures/provenance were not verified; SHA-512 only binds downloaded
 bytes to the pinned lockfile. All execution stayed inside the restricted lab VM.
+
+## Durable private bundle storage
+
+`DownloadBundle` now provides the reusable storage stage. It revalidates the source
+and dependency plan, creates a fresh private directory under an operator-owned job
+root, and downloads packages sequentially under a five-minute context. Each returned
+payload is independently SHA-512 checked even when a custom downloader is supplied.
+Tarballs use content-derived filenames and owner-only permissions. The total stored
+payload plus manifest is capped at 100 MiB; per-tarball limits still apply.
+
+Files are synced before a pending manifest is atomically renamed to bundle.json;
+bundle and parent directories are synced before returning its directory name and
+manifest SHA-256. The manifest retains source identity, URLs, content filenames,
+integrity and byte counts. Consumers must bind the returned manifest digest to the
+trusted build record and reverify transferred content before use. The bundle is
+not an npm cache itself, and no package is unpacked or executed by this function.
+
+Ordinary failure/cancellation removes the newly created partial directory.
+Successful retention, aggregate quotas across jobs, ownership mapping and process-
+crash orphan reconciliation remain the worker/storage layer's responsibility.
+A partially created directory must never be considered complete merely because it
+exists. A process/power-loss rehearsal is still required; sync ordering is currently
+covered by implementation review and ordinary reopen/failure tests.
+
+The lab prefetch helper now uses this shared component (with its additional
+10-package fixture limit), replacing its original 50 MiB temporary writer. Its
+restricted offline dependency build passed again after the change. Tests verify
+private permissions, reopened manifest/content identity, missing temporary manifest
+and cleanup after provider errors, bad bytes, quota overruns and cancellation.

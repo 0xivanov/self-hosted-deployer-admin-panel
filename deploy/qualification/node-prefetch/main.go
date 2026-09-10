@@ -3,8 +3,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/npmfetch"
@@ -51,44 +49,9 @@ func run() error {
 	if err != nil || info.Mode().Perm()&0077 != 0 {
 		return fmt.Errorf("private output required")
 	}
-	type item struct {
-		File      string
-		Integrity string
-	}
-	bundle := struct {
-		SourceSHA256 string
-		Tarballs     []item
-	}{SourceSHA256: set.SourceSHA256, Tarballs: []item{}}
-	client := npmfetch.NewClient()
-	total := 0
-	for _, t := range set.Tarballs {
-		payload, e := client.Fetch(ctx, t)
-		if e != nil {
-			return e
-		}
-		total += len(payload)
-		if total > 50<<20 {
-			return fmt.Errorf("fixture download budget exceeded")
-		}
-		sum := sha256.Sum256(payload)
-		name := hex.EncodeToString(sum[:]) + ".tgz"
-		out, e := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if e != nil {
-			return e
-		}
-		_, e = out.Write(payload)
-		closeErr := out.Close()
-		if e != nil {
-			return e
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		bundle.Tarballs = append(bundle.Tarballs, item{name, t.Integrity})
-	}
-	raw, err := json.Marshal(bundle)
+	bundle, err := npmfetch.DownloadBundle(ctx, data, os.Args[2], root, npmfetch.NewClient())
 	if err != nil {
 		return err
 	}
-	return root.WriteFile("bundle.json", raw, 0600)
+	return json.NewEncoder(os.Stdout).Encode(bundle)
 }

@@ -644,3 +644,17 @@ This is the start of the domain implementation, not a registrar integration or p
   scripts ran on the Mac. The lab VM was stopped and live deployments untouched.
 - Production cache/artifact storage, fetch isolation, transitive/native dependency
   qualification and worker/runtime integration remain. Details: docs/node-dependencies.md.
+
+### Reusable dependency bundle store
+
+- Added source-bound private bundle storage with a 100 MiB total byte cap, separate
+  per-tarball bounds, sequential downloads, integrity rechecks and a synced final
+  manifest containing source/content identity. Manifest digest is returned to the
+  future trusted worker; no package code is unpacked/executed by this stage.
+- Failure/cancellation removes partial output. Reopen/private-permission and
+  provider/integrity/quota/cancellation tests passed with race detection. Successful
+  retention and process-crash orphan reconciliation remain worker responsibilities.
+- Replaced the lab-only writer with this shared component and reran the real
+  dependency fixture successfully under the restricted offline VM profile. The
+  lab was stopped afterward; live VPS/Pis were unchanged.
+- Integration vet, command builds, Python syntax and whitespace checks passed.
