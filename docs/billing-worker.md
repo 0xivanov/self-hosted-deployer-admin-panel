@@ -76,3 +76,7 @@ Configure that Stripe test portal to allow payment-method updates, invoices and 
 POST /api/billing/manage accepts only workspace and requires an owner session, origin and CSRF token. The server resolves the saved customer, requests a short-lived management session, rechecks ownership and returns only a validated billing.stripe.com URL. It does not store that URL. Owner revocation after a URL was already issued cannot revoke the external session; Stripe controls its expiry. Cancellation or payment-method changes are completed in Stripe, and resulting events feed reconciliation. Returning to the portal never grants hosting access.
 
 Reference: https://docs.stripe.com/customer-management and https://docs.stripe.com/customer-management/configure-portal. No real sandbox configuration or cancellation has yet been qualified.
+
+## Refund and dispute signals
+
+Supported risk events are charge.refunded, charge.dispute.created, charge.dispute.updated, charge.dispute.closed, charge.dispute.funds_withdrawn and charge.dispute.funds_reinstated. Current charge state is fetched and mapped through its invoice before consuming the event and refreshing the subscription. A failed or ambiguous lookup stays pending for retry/reconciliation. Refund creation requests, detailed dispute outcomes, periodic charge refresh and access policy remain unfinished. The disputed flag alone must not be treated as proof of an unresolved or lost dispute.

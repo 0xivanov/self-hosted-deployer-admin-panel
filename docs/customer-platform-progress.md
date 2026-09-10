@@ -411,3 +411,13 @@ Owner-only store reads enforce the workspace through its saved subscription. The
 Tests cover identity drift, unknown subscriptions, stale responses, concurrent lookup completion order, owner/developer/foreign boundaries and persistence of refund/dispute evidence after reopen. The existing old-schema migration fixture was updated to cover schema 13. A consistent pre-upgrade database backup is required for older-binary rollback; no live database was migrated.
 
 Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks. No live requests, refunds or deployments were made.
+
+## Refund and dispute event worker integration
+
+The worker now discovers charge.refunded and dispute created/updated/closed/funds-withdrawn/funds-reinstated events. Verified object type and test mode are required. The event supplies only the charge lookup identity; current refunded amounts, dispute flags and ownership are retrieved from the authenticated provider and stored through the existing fenced reconciliation method.
+
+After a successful charge lookup, an atomic transaction consumes the receipt, invalidates the linked subscription observation and schedules a fresh subscription read. Failed provider lookups remain pending. Already-processed receipts do not call the provider again. Charge persistence precedes receipt consumption, allowing safe replay after interruption. These changes neither issue refunds nor apply paid-access decisions. Pending risk events and the provider's dispute-history semantics must be considered by future access policy.
+
+Tests send each supported event through signature verification, worker discovery, provider lookup and durable charge storage. They cover failed lookup retry, event payload values differing from current provider state, duplicate receipt handling and subscription refresh scheduling. All provider behavior is synthetic; no live credentials, refunds or deployments were used.
+
+Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.

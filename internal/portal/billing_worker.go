@@ -34,7 +34,7 @@ func (s *Store) BillingWorkOnce(ctx context.Context, provider BillingProvider) (
 	for _, query := range []string{
 		`INSERT OR IGNORE INTO billing_work(kind,reference) SELECT 'customer',request_id FROM billing_customers WHERE customer_id IS NULL`,
 		`INSERT OR IGNORE INTO billing_work(kind,reference) SELECT 'checkout',id FROM billing_checkouts WHERE state='pending'`,
-		`INSERT OR IGNORE INTO billing_work(kind,reference) SELECT 'event',id FROM billing_events WHERE state='pending' AND event_type IN ('checkout.session.completed','checkout.session.expired','customer.subscription.created','customer.subscription.updated','customer.subscription.deleted','invoice.paid','invoice.payment_failed','invoice.payment_action_required','invoice.voided','invoice.marked_uncollectible','invoice.finalized')`,
+		`INSERT OR IGNORE INTO billing_work(kind,reference) SELECT 'event',id FROM billing_events WHERE state='pending' AND event_type IN ('checkout.session.completed','checkout.session.expired','customer.subscription.created','customer.subscription.updated','customer.subscription.deleted','invoice.paid','invoice.payment_failed','invoice.payment_action_required','invoice.voided','invoice.marked_uncollectible','invoice.finalized','charge.refunded','charge.dispute.created','charge.dispute.updated','charge.dispute.closed','charge.dispute.funds_withdrawn','charge.dispute.funds_reinstated')`,
 		`INSERT OR IGNORE INTO billing_work(kind,reference) SELECT 'subscription',id FROM billing_subscriptions`,
 	} {
 		if _, err = tx.ExecContext(ctx, query); err != nil {
@@ -120,6 +120,13 @@ func (s *Store) performBillingWork(ctx context.Context, p BillingProvider, kind,
 		done, err := s.ProcessBillingCheckoutEvent(ctx, reference)
 		if err == nil && !done {
 			done, err = s.ProcessBillingSubscriptionEvent(ctx, reference)
+		}
+		if err == nil && !done {
+			reader, ok := p.(BillingChargeReader)
+			if !ok {
+				return ErrInvalid
+			}
+			done, err = s.ProcessBillingChargeEvent(ctx, reference, reader)
 		}
 		if err != nil {
 			return err
