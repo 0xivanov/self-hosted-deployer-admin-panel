@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 2 {
+	if version > 3 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -132,6 +132,11 @@ PRAGMA user_version=1;`)
 	}
 	if version < 2 {
 		if _, err = tx.Exec(`CREATE TABLE mail_outbox(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), token_hash TEXT NOT NULL, purpose TEXT NOT NULL, payload BLOB NOT NULL, state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','sent','discarded','failed')), attempts INTEGER NOT NULL DEFAULT 0, next_attempt INTEGER NOT NULL, lease_id TEXT NOT NULL DEFAULT '', lease_until INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL); CREATE INDEX mail_outbox_due ON mail_outbox(state,next_attempt,lease_until); PRAGMA user_version=2;`); err != nil {
+			return err
+		}
+	}
+	if version < 3 {
+		if _, err = tx.Exec(`CREATE TABLE invitations(id TEXT PRIMARY KEY,token_hash TEXT NOT NULL UNIQUE,workspace_id TEXT NOT NULL REFERENCES workspaces(id),email TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('owner','developer','viewer')),inviter_id TEXT NOT NULL REFERENCES users(id),expires_at INTEGER NOT NULL,state TEXT NOT NULL CHECK(state IN ('pending','accepted','revoked')),created_at INTEGER NOT NULL); CREATE INDEX invitations_workspace ON invitations(workspace_id,state); PRAGMA user_version=3;`); err != nil {
 			return err
 		}
 	}

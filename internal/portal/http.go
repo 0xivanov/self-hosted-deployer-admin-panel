@@ -228,6 +228,66 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		http.SetCookie(w, &http.Cookie{Name: h.cookie, Value: "", Path: "/", Secure: !h.development, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1})
 		httpJSON(w, map[string]bool{"ok": true})
+	case r.URL.Path == "/api/invitations" && r.Method == "GET":
+		invites, err := h.store.Invitations(r.Context(), cookie.Value, r.URL.Query().Get("workspace"))
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, map[string]any{"invitations": invites})
+	case r.URL.Path == "/api/invitations" && r.Method == "POST":
+		if h.mail == nil {
+			httpError(w, 503, "Invitation email is unavailable")
+			return
+		}
+		if !h.allowLogin(r.RemoteAddr) {
+			httpError(w, 429, "Too many invitations; retry later")
+			return
+		}
+		var input struct {
+			Workspace string `json:"workspace"`
+			Email     string `json:"email"`
+			Role      string `json:"role"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		invite, err := h.mail.Invite(r.Context(), cookie.Value, input.Workspace, input.Email, input.Role)
+		if err != nil {
+			if errors.Is(err, ErrExists) {
+				httpError(w, 409, "This person is already a member")
+			} else {
+				h.storeError(w, err)
+			}
+			return
+		}
+		httpJSON(w, invite)
+	case r.URL.Path == "/api/invitations/revoke" && r.Method == "POST":
+		var input struct {
+			Workspace string `json:"workspace"`
+			ID        string `json:"id"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		if err := h.store.RevokeInvitation(r.Context(), cookie.Value, input.Workspace, input.ID); err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, map[string]bool{"ok": true})
+	case r.URL.Path == "/api/invitations/accept" && r.Method == "POST":
+		var input struct {
+			Token string `json:"token"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		workspace, err := h.store.AcceptInvitation(r.Context(), cookie.Value, input.Token)
+		if err != nil {
+			httpError(w, 403, "Invitation is expired, revoked, already used, or belongs to another email")
+			return
+		}
+		httpJSON(w, map[string]string{"workspace": workspace, "message": "You have joined the workspace."})
 	case r.URL.Path == "/api/members" && r.Method == "GET":
 		members, err := h.store.Members(r.Context(), cookie.Value, r.URL.Query().Get("workspace"))
 		if err != nil {

@@ -102,6 +102,11 @@ func (s *Store) ChangeMember(ctx context.Context, token, workspace, target, role
 	if err != nil {
 		return err
 	}
+	if old == "owner" && role != "owner" {
+		if _, err = tx.ExecContext(ctx, "UPDATE invitations SET state='revoked' WHERE workspace_id=? AND inviter_id=? AND state='pending'", workspace, target); err != nil {
+			return err
+		}
+	}
 	// Revocation also invalidates other open tabs; the next login sees fresh roles.
 	if _, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id=?", target); err != nil {
 		return err

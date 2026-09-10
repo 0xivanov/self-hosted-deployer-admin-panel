@@ -68,6 +68,10 @@ func (m *AccountMail) enqueue(ctx context.Context, tx *sql.Tx, user, email, toke
 		subject = "Reset your Deployer password"
 		action = "reset"
 	}
+	if purpose == "invite" {
+		subject = "Join a Deployer workspace"
+		action = "invite"
+	}
 	// Fragment tokens do not enter HTTP request URLs, proxy logs or referrers.
 	link := m.origin + "/#" + action + "=" + url.QueryEscape(token)
 	message := Mail{ID: id, To: email, Subject: subject, Text: subject + "\n\nOpen this link to continue:\n" + link + "\n\nIf you did not request this, ignore this email.\n"}
@@ -123,7 +127,11 @@ func (m *AccountMail) DeliverOne(ctx context.Context, sender MailSender) (bool, 
 		return err
 	}
 	var valid int
-	err = m.store.db.QueryRowContext(ctx, `SELECT count(*) FROM account_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.user_id=? AND t.purpose=? AND t.expires_at>? AND u.disabled=0`, tokenHash, user, purpose, now).Scan(&valid)
+	if purpose == "invite" {
+		err = m.store.db.QueryRowContext(ctx, `SELECT count(*) FROM invitations i JOIN users u ON u.id=i.inviter_id JOIN memberships m ON m.user_id=u.id AND m.workspace_id=i.workspace_id WHERE i.token_hash=? AND i.inviter_id=? AND i.state='pending' AND i.expires_at>? AND u.disabled=0 AND u.verified=1 AND m.role='owner'`, tokenHash, user, now).Scan(&valid)
+	} else {
+		err = m.store.db.QueryRowContext(ctx, `SELECT count(*) FROM account_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.user_id=? AND t.purpose=? AND t.expires_at>? AND u.disabled=0`, tokenHash, user, purpose, now).Scan(&valid)
+	}
 	if err != nil {
 		return true, err
 	}
