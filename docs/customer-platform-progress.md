@@ -323,3 +323,11 @@ The customer portal can now mount the dedicated Stripe test webhook at /webhooks
 An integration test sends a locally signed checkout completion through the mounted HTTP handler, verifies duplicate acknowledgement and runs the worker to complete the matching saved checkout. Negative cases cover missing signatures, browser origins, plaintext, foreign hosts, GET requests, aliases and unsafe configuration. No provider endpoint was registered and no live deployment or credentials were used. Customer payment screens, operator plan controls, full billing lifecycle and actual sandbox qualification remain next.
 
 Validation passed: full race-enabled integration suite, vet, command builds and whitespace checks.
+
+## Operator plan configuration and owner catalog
+
+Added billing-plan for explicit local plan enable/disable and Stripe test Price mapping against an existing portal database. It requires all values and refuses a missing database file. Existing checkout snapshots remain unchanged and pending worker requests retain plan/price guards. The command makes no provider call; test-account price verification remains part of integration qualification.
+
+The opt-in billing API now exposes enabled plan identifiers to workspace owners, excluding disabled plans and provider Price IDs. This is a catalog of identifiers, not a price quotation. Customer screens still need accurate provider-backed amounts and intervals. Tests exercise the command's enable/disable behavior and invalid arguments, plus owner catalog filtering and developer denial. No live settings or deployments were changed.
+
+Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.

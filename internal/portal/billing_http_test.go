@@ -54,6 +54,13 @@ func TestBillingHTTPAuthorizationAndRequestIdentity(t *testing.T) {
 	if err = s.ConfigureBillingPlan(t.Context(), "starter", "price_http", true); err != nil {
 		t.Fatal(err)
 	}
+	if err = s.ConfigureBillingPlan(t.Context(), "disabled", "price_hidden", false); err != nil {
+		t.Fatal(err)
+	}
+	w = portalRequest(h, "GET", "/api/billing/plans?workspace="+owner.WorkspaceID, "", "", "", cookie)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "starter") || strings.Contains(w.Body.String(), "disabled") || strings.Contains(w.Body.String(), "price_") {
+		t.Fatal("unsafe plan catalog", w.Code, w.Body.String())
+	}
 	w = portalRequest(h, "POST", "/api/billing/checkout", `{"workspace":"`+owner.WorkspaceID+`","plan":"starter"}`, h.origin, csrf, cookie)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
@@ -73,7 +80,7 @@ func TestBillingHTTPAuthorizationAndRequestIdentity(t *testing.T) {
 	if _, err = s.db.Exec("INSERT INTO memberships VALUES(?,?,'developer')", other.ID, owner.WorkspaceID); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/api/billing/customer?workspace=" + owner.WorkspaceID, "/api/billing/checkout?workspace=" + owner.WorkspaceID + "&id=" + checkout.ID, "/api/billing/subscription?workspace=" + owner.WorkspaceID + "&id=sub_missing"} {
+	for _, path := range []string{"/api/billing/plans?workspace=" + owner.WorkspaceID, "/api/billing/customer?workspace=" + owner.WorkspaceID, "/api/billing/checkout?workspace=" + owner.WorkspaceID + "&id=" + checkout.ID, "/api/billing/subscription?workspace=" + owner.WorkspaceID + "&id=sub_missing"} {
 		w = portalRequest(h, "GET", path, "", "", "", foreignCookie)
 		if w.Code != 403 {
 			t.Fatal("developer read", path, w.Code)
