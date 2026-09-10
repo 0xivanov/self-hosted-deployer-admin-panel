@@ -401,3 +401,13 @@ The observation retains the captured amount, refunded amount and disputed flag a
 Local fake-provider tests cover paid charges, partial refunds, disputes, live/uncaptured charges, invalid refund totals, split allocations, foreign payment/customer identities, unexpanded/standalone invoices and multiple/truncated mappings. No real Stripe requests, charges, refunds or live deployment changes were made.
 
 Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.
+
+## Durable charge observations
+
+Schema 13 adds charge observations with durable reconciliation generations and immutable subscription/customer/invoice/PaymentIntent identity. Trusted provider lookups must match a saved subscription customer, valid amount bounds and the current observation window. Later-started lookups fence older results. Once a charge is bound, a later response cannot move it to another invoice, payment or subscription. Failed checks preserve the previous timestamped observation.
+
+Owner-only store reads enforce the workspace through its saved subscription. The records survive database reopen. These methods are not customer mutation routes and do not grant/suspend hosting or issue refunds. Refund/dispute event scheduling and freshness/access policy remain next.
+
+Tests cover identity drift, unknown subscriptions, stale responses, concurrent lookup completion order, owner/developer/foreign boundaries and persistence of refund/dispute evidence after reopen. The existing old-schema migration fixture was updated to cover schema 13. A consistent pre-upgrade database backup is required for older-binary rollback; no live database was migrated.
+
+Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks. No live requests, refunds or deployments were made.

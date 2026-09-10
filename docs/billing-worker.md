@@ -2,7 +2,7 @@
 
 The worker processes persisted owner-authorized customer and checkout requests, verified checkout inbox events and periodic subscription observations. It uses Stripe test keys only. It does not enable paid hosting access or merchant sales.
 
-Build `./cmd/billing-worker` and run with `--database /private/portal.sqlite --config /private/billing-test.json`. Both portal and worker must support the database schema. Back up an existing portal database consistently before upgrading; schema 12 needs a matching binary or restoration of the pre-upgrade backup for rollback.
+Build `./cmd/billing-worker` and run with `--database /private/portal.sqlite --config /private/billing-test.json`. Both portal and worker must support the database schema. Back up an existing portal database consistently before upgrading; schema 13 needs a matching binary or restoration of the pre-upgrade backup for rollback.
 
 The configuration must be a regular private file, with no group/other permissions, at most 16 KiB. Example values are placeholders:
 
