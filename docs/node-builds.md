@@ -126,4 +126,28 @@ available for another build. This prevents an uncertain remote VM outcome from
 starting a duplicate. It also means a future reconciliation path is mandatory:
 look up the exact VM execution, establish its terminal state, retain verified
 artifacts or failure evidence, and only then finish/release the pending job.
-There is no VM execution, automatic recovery or completion method yet.
+There is no VM execution or successful-artifact completion method yet.
+Failed/cancelled execution reconciliation is described below.
+
+
+## Reconciling failed or cancelled executions
+
+Schema 18 retains executor observations for terminal failure/cancellation.
+`ReconcileNodeBuildFailure` is trusted worker access and only inspects running
+jobs with expired leases. A provider observation must be fresh and match the
+execution ID, source digest, toolchain digest and architecture. The executor must
+explicitly attest that the operation is retired, including any delayed create or
+restart. A stopped or missing VM alone cannot satisfy that condition.
+
+A matching retired failure/cancellation is recorded atomically with the terminal
+job state and lease removal. This allows a new explicit build request without
+silently redispatching the old one. Provider errors, stale/mismatched evidence,
+active leases, nonretired operations and success without artifact qualification
+leave the pending build unchanged. Already-recorded outcomes are idempotent and
+remain available across restart. Cleanup reconciliation does not depend on the
+submitter retaining customer access, so a disabled account cannot strand its VM.
+
+The provider interface currently has synthetic integration coverage only. A real
+executor must implement durable operation tombstones/fencing before claiming
+`Retired=true`. The failed-build path cannot mark a build successful, publish an
+artifact or activate hosting. No executor transport or VM was started here.

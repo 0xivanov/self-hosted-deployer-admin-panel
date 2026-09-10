@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 17 {
+	if version > 18 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -209,6 +209,12 @@ PRAGMA user_version=1;`)
 
 	if version < 17 {
 		if _, err = tx.Exec(`ALTER TABLE node_builds ADD COLUMN execution_id TEXT NOT NULL DEFAULT ''; ALTER TABLE node_builds ADD COLUMN lease_hash TEXT NOT NULL DEFAULT ''; ALTER TABLE node_builds ADD COLUMN lease_until INTEGER NOT NULL DEFAULT 0; CREATE UNIQUE INDEX node_build_execution ON node_builds(execution_id) WHERE execution_id<>''; PRAGMA user_version=17;`); err != nil {
+			return err
+		}
+	}
+
+	if version < 18 {
+		if _, err = tx.Exec(`ALTER TABLE node_builds ADD COLUMN result BLOB; PRAGMA user_version=18;`); err != nil {
 			return err
 		}
 	}

@@ -557,3 +557,19 @@ This is the start of the domain implementation, not a registrar integration or p
   concurrent workers. Actual VM dispatch and completion remain outstanding.
 - Validation passed: full integration suite with race detection, integration vet,
   all command builds and whitespace checks. Live deployments remain unchanged.
+
+### Interrupted Node build failure recovery
+
+- Schema 18 retains fresh, identity-bound executor evidence for failed/cancelled
+  executions. Recovery requires an expired lease and explicit retirement of the
+  entire operation, including delayed creates/restarts; a missing VM is insufficient.
+- Terminal state and lease removal are atomic. Provider errors, stale/mismatched
+  evidence, active leases and unqualified success leave the pending build intact.
+  Recovery remains possible after account revocation and is idempotent after commit.
+- Integration tests cover evidence rejection, provider failure, replay, revocation,
+  restart persistence, stale lease rejection and a new explicit build after recovery.
+- Inspected local Lima: the existing control-plane, restore and worker VMs were all
+  stopped. No VM or live deployment was started/changed. Executor retirement still
+  needs real provider implementation and qualification; tests use synthetic evidence.
+- Validation passed: full integration suite with race detection, integration vet,
+  command builds and whitespace checks.
