@@ -331,3 +331,13 @@ Added billing-plan for explicit local plan enable/disable and Stripe test Price 
 The opt-in billing API now exposes enabled plan identifiers to workspace owners, excluding disabled plans and provider Price IDs. This is a catalog of identifiers, not a price quotation. Customer screens still need accurate provider-backed amounts and intervals. Tests exercise the command's enable/disable behavior and invalid arguments, plus owner catalog filtering and developer denial. No live settings or deployments were changed.
 
 Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.
+
+## Provider price verification
+
+The test Stripe adapter can now retrieve the configured plan Price and normalize its fixed amount, currency, recurring interval/count and tax behavior. It verifies the saved price mapping before contacting the provider, expands currency options and rejects live/inactive/deleted prices, wrong identities, one-time or metered prices, fractional minor-unit amounts, tiers, custom amounts, quantity transforms and alternate currency options. A matching expanded default currency is accepted. Amounts retain their currency minor units; no universal two-decimal formatting is assumed.
+
+This is provider verification only, not a final invoice/tax quote or a customer screen. Persisting verified catalog data, refresh/freshness handling and connecting it to the payment UI remain next. Checkout localization and final tax totals also need explicit qualification. The official Stripe price retrieval guidance was checked: https://docs.stripe.com/products-prices/manage-prices?dashboard-or-api=api.
+
+Local fake-provider tests cover valid monthly/free/zero-decimal-currency prices, expanded default currency, unsupported price modes and rejection of configured price drift before network access. No real Stripe request, charge or deployment change was made.
+
+Validation passed: full race-enabled integration suite, vet, command builds and whitespace checks.
