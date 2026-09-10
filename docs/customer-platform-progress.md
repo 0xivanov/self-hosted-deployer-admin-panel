@@ -161,3 +161,11 @@ Fixed permission-revocation recovery: an already-running job whose actor loses w
 Validation: a race-enabled test connects the real portal store, worker, HTTPS transport and static runtime, simulates a lost success response, confirms the job remains pending while content has changed, prevents reuse of an unexpired lease, expires the lease as a test fixture and proves an idempotent retry acknowledges the same revision. Full race-enabled tests, vet and all command builds pass. No live runtime credentials, email or fleet services were used.
 
 Next: standalone management/content runtime executable, assignment provisioning, publishing and release-history controls in the portal, operator reconciliation, platform HTTPS and process-crash qualification. The worker command is implemented but not installed or running on any live node.
+
+## Standalone static runtime process
+
+Added `cmd/static-runtime` and `internal/staticruntime`. The process loads a private bounded JSON config and private TLS keys, owns one site directory, and serves independent content and authenticated management HTTPS listeners. Management binding rejects wildcard, DNS and public addresses; only explicit loopback/private IPs are accepted. Startup binds both listeners before reporting readiness and cleans up if either fails. Read/header/write/idle limits and graceful signal shutdown are configured. Neither listener imports the customer database or fleet APIs.
+
+A real local TLS integration test starts both listeners, verifies the public listener rejects publishing and management requests need credentials, publishes a static ZIP, retrieves its content, stops the process and reopens the runtime directory to verify persistence and lock release. Additional tests reject unsafe management bindings and public/unknown configuration. Full race-enabled tests, vet and command builds pass.
+
+Usage and configuration are documented in `docs/static-runtime.md`. No runtime was installed on a live node and no public certificate or DNS record was provisioned. Remaining: assignment provisioning, publishing/release-history UI, operator reconciliation, certificate automation, Linux crash qualification and production deployment. The four-part goal remains incomplete.
