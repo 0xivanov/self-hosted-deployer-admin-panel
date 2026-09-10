@@ -12,6 +12,7 @@ import threading
 import time
 import urllib.request
 import uuid
+import zipfile
 
 assert os.getuid() != 0 and os.uname().machine == 'aarch64'
 base = Path('/opt/deployer-node')
@@ -45,19 +46,22 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
     (stage/'server.mjs').write_bytes(Path('/tmp/node-runtime-probe.mjs').read_bytes())
     (stage/'package.json').write_text(json.dumps({'name':'runtime-unit-fixture','version':'1.0.0','type':'module','scripts':{'start':'node server.mjs','prestart':'node missing-prestart.mjs'}}))
     (stage/'probe.json').write_text(json.dumps({'host':ip,'port':server.server_port}))
-    # Fixture identity covers the exact staged files; a production release uses
-    # the validated exported archive and a durable operation/UID reservation.
-    digest = hashlib.sha256(b''.join(p.name.encode()+b'\0'+p.read_bytes() for p in sorted(stage.iterdir()))).hexdigest()
+    # Export the exact synthetic fixture and use the production archive installer.
+    # Build provenance and durable operation/UID reservations are separate gates.
+    payload=stage/'release.zip'
+    with zipfile.ZipFile(payload,'w',compression=zipfile.ZIP_DEFLATED) as archive_out:
+        for filename in ['server.mjs','package.json','probe.json']:
+            archive_out.write(stage/filename,filename)
+    digest=hashlib.sha256(payload.read_bytes()).hexdigest()
+    subprocess.run(['sudo','-n','install','-d','-m','755',str(base/'releases')],check=True)
+    installed_release=json.loads(subprocess.check_output(['sudo','-n','/tmp/node-runtime-install',str(payload),digest],text=True))
+    assert installed_release['Manifest']['SHA256']==digest
     operation = uuid.uuid4().hex + uuid.uuid4().hex
-    unit = json.loads(subprocess.check_output(['/tmp/node-runtime-unit',operation,digest],text=True))
+    unit = json.loads(subprocess.check_output(['/tmp/node-runtime-unit',operation,digest,installed_release['Directory']],text=True))
     unit_path = stage/unit['Name'];unit_path.write_text(unit['Unit'])
-    release = base/'releases'/('release-'+digest)
     tool = base/'toolchains'/toolchain
-    subprocess.run(['sudo','-n','install','-d','-m','755',str(release),str(tool)],check=True)
+    subprocess.run(['sudo','-n','install','-d','-m','755',str(tool)],check=True)
     subprocess.run(['sudo','-n','tar','--no-same-owner','--strip-components=1','-xf',str(archive),'-C',str(tool)],check=True)
-    for filename in ['server.mjs','package.json','probe.json']:
-        subprocess.run(['sudo','-n','install','-m','444',str(stage/filename),str(release/filename)],check=True)
-    subprocess.run(['sudo','-n','chmod','555',str(release)],check=True)
     empty=stage/'empty';empty.write_text('')
     for filename in ['empty-user.npmrc','empty-global.npmrc']:
         subprocess.run(['sudo','-n','install','-m','444',str(empty),str(base/filename)],check=True)
@@ -111,5 +115,5 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
         subprocess.run(['sudo','-n','systemctl','daemon-reload'],check=True,timeout=10)
         subprocess.run(['sudo','-n','systemctl','reset-failed',unit['Name']],capture_output=True)
     with socket.socket() as check: assert check.connect_ex(('127.0.0.1',31877))!=0, 'runtime listener survived stop'
-    print(json.dumps({'runtime_service':'passed','unit':unit['Name'],'report':report,'listener_stopped':True,'crash_restart':True,'restart_limit':True}),flush=True)
+    print(json.dumps({'runtime_service':'passed','installed_release':installed_release,'unit':unit['Name'],'report':report,'listener_stopped':True,'crash_restart':True,'restart_limit':True}),flush=True)
 server.shutdown();server.server_close();thread.join(timeout=2)

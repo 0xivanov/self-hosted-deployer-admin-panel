@@ -854,3 +854,19 @@ reopen/retry, conflicts, stale or incomplete retirement evidence and slot reuse
 without resurrecting old operations. Full race-enabled integration tests, vet and
 builds passed. Production service-manager fencing, actual account/port checks and
 connected lifecycle qualification remain. No live deployments changed.
+
+## Verified read-only Node release installation (2026-09-10)
+
+Added a Linux/root-only installer that validates archive identity, privately
+extracts and seals root-owned files, then publishes a fresh release directory with
+an atomic no-replace rename. It syncs files and publication parents, removes
+pre-publication staging on failure and preserves uncertain published results for
+reconciliation. It executes no customer scripts.
+
+Real Linux-root tests passed archive rejection, permissions, internal symlinks,
+cleanup and unprivileged read/write checks. The service rehearsal now installs its
+fixture ZIP through this code before starting Node; resource/network restrictions,
+crash restarts, restart exhaustion and listener shutdown passed again. The VM was
+stopped after testing. Reservation-to-installation binding, service-manager
+fencing, toolchain installation and recovery qualification remain. No live fleet
+or customer database changes were made.

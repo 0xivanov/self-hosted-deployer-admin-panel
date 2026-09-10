@@ -18,6 +18,35 @@ It must also verify artifact/toolchain bytes and actual architecture, seal root-
 release paths, and provision empty npm configuration files before installation.
 These launcher responsibilities are not implemented by the renderer.
 
+## Verified Linux release installation
+
+`InstallRelease` is a Linux/root-only archive installer. It requires a root-owned
+destination that is not group/world writable. It validates the expected archive
+digest and existing Node artifact rules, extracts under a private staging parent,
+then seals regular files to 0444 (0555 for executables) and directories to 0555.
+All extracted entries must be root-owned. Validated internal file symlinks remain
+links; permission changes never follow them. Customer scripts are not executed.
+
+After syncing the sealed tree, installation publishes a fresh random release name
+using Linux `renameat2(RENAME_NOREPLACE)`, then syncs the source and destination
+parents. No existing release is replaced. There is no fallback on filesystems
+without no-replace rename support. Failed pre-publication staging is removed. An
+error after publication returns a nonempty release directory for reconciliation;
+callers must retain it and must not start it based on an error return. A crashed
+installer can leave private staging or an unreferenced release, so orphan recovery
+and durable operation-to-installation binding remain required.
+
+The destination belongs inside the project's dedicated runtime. Read-only Unix
+permissions are not cross-tenant filesystem isolation. Toolchain verification,
+account provisioning and service lifecycle fencing remain separate steps.
+
+Linux-root tests run with `python3 deploy/qualification/node-install-check.py` in
+the already-running disposable VM. On 2026-09-10 they passed ownership/mode and
+symlink checks, two independent installations, invalid digest/path/secret rejection,
+cancelled request cleanup and unsafe destination rejection. Real subprocesses
+running as UID/GID 60000 could read installed files and internal links but could
+neither overwrite a file nor create one in the release directory.
+
 ## Durable service reservations
 
 `OpenPool` opens a separate private SQLite database pinned to one project's
@@ -78,6 +107,16 @@ by the existing Node build rehearsal. It is not a customer deployment entry poin
 Successful operation:
 `7afe94ee130c4e318870d5316dcbcc6e2ecea8883aaf4d7c8149d57d541c812b`.
 
+The connected installer/service rehearsal also passed on 2026-09-10 with operation
+`ba3eaa62f04f48ce90195a262fb5da267c6f81392cbf4f39b5cd67fef9f4d53f`.
+It exported the synthetic fixture to ZIP, installed it through `InstallRelease`,
+then rendered and started the restricted service using the returned release name.
+Artifact SHA256:
+`afd16442fcbc8ee926be68c5d69bd84320d844bc89cc2ec6885902736c7f526d`.
+All runtime checks, two crash recoveries, restart exhaustion and stopped-listener
+checks passed again. This fixture does not prove customer build provenance or
+connect the durable reservation pool to the service manager.
+
 The fixture verified UID/GID 60000, no additional groups or capabilities,
 no-new-privileges, denied release/system writes, denied root-only canary reads,
 writable bounded temporary mounts, and the configured cgroup limits. A reachable
@@ -94,7 +133,7 @@ state, zero main PID and stable state beyond the restart delay instead.
 ## Remaining work
 
 Host account reservation, service installation and service-manager fencing,
-artifact sealing, authenticated activation, observed process identity, routing and
+toolchain verification, authenticated activation, observed process identity, routing and
 draining, bounded tenant log storage, and reboot/power-loss recovery remain.
 This runtime profile still needs hostile workload qualification, including memory
 and process exhaustion and cross-runtime access. Reading limit values is not that
