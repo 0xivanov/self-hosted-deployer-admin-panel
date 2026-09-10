@@ -57,3 +57,24 @@ References checked on 2026-09-10:
 - https://github.com/nodejs/Release (Node 24 LTS release schedule)
 - https://docs.npmjs.com/cli/v11/commands/npm-ci/ (lockfile installs, engine/config
   behavior and the distinction between lifecycle hooks and explicit script commands)
+
+## Source extraction
+
+`nodebuild.ExtractSource` accepts the exact ZIP, its assigned SHA-256 and an open
+operator-controlled private job root. It revalidates the archive before writing,
+creates a random private source directory and confines all writes to Go root
+handles. Files are owner-readable/writable; uploaded executable helpers retain
+owner execution only. Archive ownership and group/other permissions are not imported.
+
+The returned directory is relative to the retained job root. The caller owns
+cleanup after success and must keep the directory inaccessible to customer code
+until extraction completes. Ordinary errors and cancellation remove partial output.
+A process crash can leave a partial directory; the future durable worker must
+reconcile and remove abandoned job directories before retrying. Extraction is not
+a durable publication operation and does not start a VM, install dependencies or
+execute scripts. Source directories must never be publicly served.
+
+Integration tests use disposable local directories and synthetic ZIPs. They cover
+independent extraction paths, content/digest identity, private permissions, nested
+executable helpers, traversal/symlink rejection and cancellation after a file has
+been created. These checks qualify extraction behavior, not VM isolation.

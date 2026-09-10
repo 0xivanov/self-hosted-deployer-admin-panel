@@ -514,3 +514,16 @@ This is the start of the domain implementation, not a registrar integration or p
   not started or modified. See docs/node-builds.md for execution requirements.
 - Validation passed: nodebuild unit tests with race detection, integration vet,
   all command builds, CLI fixture checks and whitespace checks.
+
+### Private Node source extraction
+
+- Added a source extraction stage bound to the assigned upload digest, using a
+  private job root and confined filesystem handles. Each extraction gets a fresh
+  directory; only owner permissions and necessary executable bits are retained.
+- Revalidates ZIP protections before writing. Cancellation and errors clean up
+  partial output; successful-directory and crash-orphan cleanup remain worker
+  responsibilities. No npm commands or uploaded scripts are executed.
+- Disposable filesystem integration tests pass with race detection for identity,
+  private permissions, independent directories, nested executable helpers,
+  traversal/symlinks and cancellation cleanup. Integration vet, command builds
+  and whitespace checks also passed. No live deployments were changed.
