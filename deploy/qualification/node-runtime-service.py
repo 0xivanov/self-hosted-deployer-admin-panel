@@ -85,6 +85,8 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
         assert report['status']=='node-runtime-unit-ok' and all(report['checks'].values()), report
         running_status=json.loads(subprocess.check_output(['sudo','-n','/tmp/node-runtime-control','status',operation,digest,installed_release['Directory']],text=True,timeout=15))
         assert not running_status['UnitStopped'] and running_status['State']['ActiveState']=='active' and running_status['State']['MainPID']>0, running_status
+        running_usage=json.loads(subprocess.check_output(['sudo','-n','/tmp/node-runtime-control','usage',operation,digest,installed_release['Directory']],text=True,timeout=15))
+        assert running_usage['UIDProcessesPresent'] and running_usage['CgroupPopulated'] and running_usage['TCPListenerPresent'], running_usage
         assert Probe.calls==1, 'runtime reached the non-loopback probe server'
         for attempt in range(3):
             previous_pid = report['pid']
@@ -113,6 +115,12 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
         subprocess.run(['sudo','-n','/tmp/node-runtime-control','retire',operation,digest,installed_release['Directory']],check=True,timeout=25)
         stopped_status=json.loads(subprocess.check_output(['sudo','-n','/tmp/node-runtime-control','status',operation,digest,installed_release['Directory']],text=True,timeout=15))
         assert stopped_status['UnitStopped'], stopped_status
+        usage_deadline=time.monotonic()+3
+        while True:
+            stopped_usage=json.loads(subprocess.check_output(['sudo','-n','/tmp/node-runtime-control','usage',operation,digest,installed_release['Directory']],text=True,timeout=15))
+            if not any(stopped_usage[key] for key in ['UIDProcessesPresent','CgroupPopulated','TCPListenerPresent']): break
+            assert time.monotonic()<usage_deadline, stopped_usage
+            time.sleep(.1)
         state=subprocess.check_output(['sudo','-n','systemctl','show',unit['Name'],'--property=ActiveState','--property=MainPID'],text=True)
         assert ('ActiveState=inactive' in state or 'ActiveState=failed' in state) and 'MainPID=0' in state,state
         subprocess.run(['sudo','-n','rm',installed],check=True)
@@ -121,5 +129,5 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
     late=subprocess.run(['sudo','-n','/tmp/node-runtime-control','start',operation,digest,installed_release['Directory']],capture_output=True,text=True,timeout=25)
     assert late.returncode!=0 and 'Node reservation conflicts with recorded state' in late.stderr, 'late start was not rejected by the retirement gate'
     with socket.socket() as check: assert check.connect_ex(('127.0.0.1',31877))!=0, 'runtime listener survived stop'
-    print(json.dumps({'runtime_service':'passed','installed_release':installed_release,'unit':unit['Name'],'report':report,'listener_stopped':True,'crash_restart':True,'restart_limit':True,'late_start_blocked':True,'running_status_verified':True,'stopped_status_verified':True}),flush=True)
+    print(json.dumps({'runtime_service':'passed','installed_release':installed_release,'unit':unit['Name'],'report':report,'listener_stopped':True,'crash_restart':True,'restart_limit':True,'late_start_blocked':True,'running_status_verified':True,'stopped_status_verified':True,'running_usage_verified':True,'stopped_usage_verified':True}),flush=True)
 server.shutdown();server.server_close();thread.join(timeout=2)

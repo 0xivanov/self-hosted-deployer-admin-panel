@@ -929,3 +929,16 @@ recovery and late-start fence checks continued to pass.
 This is unit metadata, not complete retirement proof. UID/cgroup and listener
 checks, routing detach/drain and production service-manager integration remain.
 No live deployments changed; the disposable VM was stopped after qualification.
+
+## Linux runtime usage observations (2026-09-10)
+
+Added independent checks for matching UID processes, service cgroup population and
+IPv4/IPv6 TCP listeners. Unsupported or unreadable kernel data fails observation.
+Real Linux tests detected a process outside the service cgroup and a listener
+owned by another user. The actual Node rehearsal observed usage while running and
+its absence after shutdown, alongside the existing service-status and late-start
+checks.
+
+These observations do not yet authorize slot reuse: namespace coverage, restart
+prevention, routing detach/drain and the final retirement adapter remain. No live
+deployments changed; the disposable VM was stopped after testing.

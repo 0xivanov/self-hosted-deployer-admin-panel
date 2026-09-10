@@ -220,6 +220,39 @@ VM rehearsal on 2026-09-10 validated running and stopped status for operation
 Its HTTP, crash-restart, shutdown and late-start rejection checks also passed.
 The temporary unit was removed and the VM stopped afterward.
 
+## Linux process, cgroup and listener observations
+
+`InspectRuntimeUsage` independently checks processes with any matching real,
+effective, saved or filesystem UID; the exact service cgroup's populated state;
+and IPv4/IPv6 TCP listeners on the assigned port, regardless of address or owner.
+The cgroup-v2 populated flag includes live descendants, as specified by the
+[kernel cgroup documentation](https://docs.kernel.org/admin-guide/cgroup-v2.html#un-populated-notification).
+Listener inspection uses the documented local port/state fields in the
+[kernel TCP tables](https://docs.kernel.org/networking/proc_net_tcp.html).
+
+The reader requires root, the assigned architecture, real procfs/cgroup-v2
+filesystems and readable IPv4/IPv6 tables. Reads, process enumeration and duration
+are bounded. Missing/malformed data or permission errors fail the observation;
+only a process that disappeared during inspection or an absent exact cgroup is
+treated as gone. TCP checks cover listeners, not UDP, bound-but-not-listening
+sockets, established connections or route draining.
+
+The controller must have complete process/network/cgroup visibility on the
+dedicated runtime host. Filesystem-type checks do not establish namespace coverage.
+These are sequential observations, not a fence against future processes/listeners.
+The retirement adapter must combine them with stopped systemd state, durable
+control fencing, restart prevention and routing detach/drain before releasing a
+slot. This reader does not kill processes or mutate network state.
+
+Linux-root tests detected a UID-60002 process outside the assigned service cgroup
+and an independently root-owned TCP listener, then observed both gone after
+cleanup. Parser tests covered all UID fields, cgroup evidence, IPv4/IPv6 listeners
+and malformed data. The Node service rehearsal on 2026-09-10, operation
+`9274e392207f499fbae75632c3e98a02218299b1ee8443498d783df0eb9775c2`,
+observed all three usage signals while running and all clear after retirement.
+The existing restart/status/fencing checks also passed. The VM was stopped after
+qualification; no live fleet or customer database changed.
+
 `PrivateTmp=no` preserves the explicit bounded temporary mounts. Dynamic users are
 not used because systemd forces private temporary directories for them; see the
 [systemd execution contract](https://raw.githubusercontent.com/systemd/systemd/v255/man/systemd.exec.xml).
