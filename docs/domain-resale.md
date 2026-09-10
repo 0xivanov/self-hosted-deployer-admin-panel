@@ -19,7 +19,7 @@ The first domain product accepts ASCII second-level .com, .net and .org names, o
 
 The provider must report availability, an explicit premium classification, registration cost, renewal cost and currency. A quote is usable for at most five minutes. Retail amounts use integer minor units and an operator-defined fixed markup. The quote is not a reservation or a final tax-inclusive charge. Availability and costs must be rechecked before purchase. Future renewal prices must be presented as estimates, with customer consent before charging.
 
-The implemented internal/domains package provides validation and quote arithmetic only. It is not mounted as a purchase endpoint and has no registrar transport yet.
+The internal/domains package provides validation and quote arithmetic. The portal persists quotes and exposes owner-only quote routes and a form when a trusted reader is configured. Registrar transport and purchases are not implemented yet.
 
 ## Next implementation
 
@@ -40,9 +40,8 @@ privately alongside the retail offer. Reads expose only the retail offer and a
 current expiry flag. Quotes do not reserve domains or authorize purchases.
 
 Storage is currently bounded to 1,000 retained quotes per workspace and fails closed
-at that limit, including before provider access. Automated archival/retention and
-request rate limiting must be added before public quote endpoints. There is no
-registrar transport or quote HTTP/UI route yet. Future orders must reference a saved
+at that limit, including before provider access. Automated archival/retention remains launch work. The quote HTTP API has
+process-local request limits as described below. No registrar transport is configured. Future orders must reference a saved
 quote and recheck current availability, price and owner authority before payment and
 registration; an unexpired snapshot alone is insufficient.
 
@@ -63,3 +62,28 @@ The limiter is process-local with at most 4,096 account entries, so multi-instan
 serving needs a shared limiter. Restarts reset these transient limits. Durable
 quote storage remains capped independently. The earlier HTTP-rate-limit launch
 item is now covered for a single portal process; retention is still outstanding.
+
+
+### Customer quote form and provider contract research
+
+The owner-only Find a domain form is controlled by the `domain_quotes` server
+capability. It displays first-year retail cost, estimated renewal, tax uncertainty
+and expiry, clears previous results on workspace changes/sign-out and ignores
+responses from a previous workspace selection. Expiry updates while the page is
+open; purchase-time checks must remain server-side. There is no purchase button.
+
+Rechecked official NameSilo material on 2026-09-10:
+
+- https://www.namesilo.com/api-reference/pages?uid=account/get-prices documents
+  account-specific registration/renewal prices and optional retail/quantity inputs.
+- https://www.namesilo.com/blog/en/building-a-domain-search-tool-with-a-registrar-api
+  describes availability categories and the availability operation, but its sample
+  is simplified and does not establish the explicit premium classification contract.
+- https://www.namesilo.com/api-reference still directs developers to request sandbox
+  credentials through support. A verified sandbox endpoint and actual response
+  samples remain necessary. No support message or provider request was sent.
+
+The form was exercised with a temporary loopback portal and synthetic registrar:
+owner sign-in, EUR registration/renewal display, invalid-name rejection and sign-out.
+The temporary server and test fixture were removed afterward. This is UI evidence,
+not a qualification of NameSilo availability, pricing, tax or registration.

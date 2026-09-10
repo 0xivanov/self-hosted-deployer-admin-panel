@@ -484,3 +484,17 @@ This is the start of the domain implementation, not a registrar integration or p
   throttling and rate-window expiry. Registrar transport and panel form remain.
 - Validation passed: full integration suite with race detection, integration vet,
   all command builds and whitespace checks.
+
+### Customer domain quote form
+
+- Added an owner-only domain form, enabled by the server capability, showing exact
+  retail registration cost, estimated renewal and expiry. Workspace changes and
+  sign-out clear results; late responses from earlier workspace selections are ignored.
+- Browser preview against a synthetic provider verified EUR prices, invalid-name
+  feedback and sign-out. No external registrar requests or purchases occurred.
+- Official provider research narrowed the remaining contract gap: sandbox endpoint,
+  real availability/premium response shape and account pricing qualification are
+  still needed before wiring NameSilo. No speculative registrar adapter was added.
+- Validation passed: portal integration tests with race detection, customer portal
+  build, JavaScript syntax and whitespace checks. The temporary preview process was
+  intentionally stopped after browser checks, then removed before regression tests.

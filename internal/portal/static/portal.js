@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,billingGeneration=0;
+let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,billingGeneration=0,domainQuotes=false,domainExpiryTimer;
 const fragment=new URLSearchParams(location.hash.slice(1));
 let actionToken=fragment.get('verify')||fragment.get('reset')||fragment.get('invite')||'';
 const initialFlow=fragment.has('verify')?'verify':fragment.has('reset')?'reset':fragment.has('invite')?'invite':'';
@@ -8,8 +8,8 @@ let pendingInvite=initialFlow==='invite'?actionToken:'';
 if(location.hash)history.replaceState(null,'',location.pathname+location.search);
 async function api(path,body){const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok){const error=new Error(data.error||'Request failed');error.status=response.status;throw error;}return data;}
 function error(e){$('error').textContent=e.message;$('error').hidden=false;}
-function signedOut(){generation++;billingGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
-async function loadProjects(){const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);billingGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');card.append(name,kind);$('projects').append(card);await projectUploads(card,project,selected.role,version);if(version!==generation)return;}if(!data.projects.length)$('projects').textContent='No projects yet.';if(selected.role==='owner'){await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);}}
+function signedOut(){generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
+async function loadProjects(){const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');card.append(name,kind);$('projects').append(card);await projectUploads(card,project,selected.role,version);if(version!==generation)return;}if(!data.projects.length)$('projects').textContent='No projects yet.';if(selected.role==='owner'){await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);}}
 async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();if(pendingInvite)showFlow('invite');}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;}}
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();});});
@@ -36,7 +36,7 @@ $('account-form').addEventListener('submit',event=>{event.preventDefault();submi
  const data=await api(path,body);$('flow-password').value='';$('account-form').hidden=true;$('flow-copy').textContent=data.message;if(flow==='reset'||flow==='verify')actionToken='';if(flow==='invite'){pendingInvite='';actionToken='';$('account-flow').hidden=true;await loadSession();}
  });});
 async function initialize(){
- const config=await api('/api/config');testBilling=config.test_billing===true;billingManagement=config.billing_management===true;$('open-signup').hidden=!config.signup;$('open-forgot').hidden=!config.account_mail;$('registration-note').textContent=config.signup?'Verify your email before signing in.':'Registration is closed.';
+ const config=await api('/api/config');domainQuotes=config.domain_quotes===true;testBilling=config.test_billing===true;billingManagement=config.billing_management===true;$('open-signup').hidden=!config.signup;$('open-forgot').hidden=!config.account_mail;$('registration-note').textContent=config.signup?'Verify your email before signing in.':'Registration is closed.';
  if(initialFlow==='invite'){try{await loadSession();}catch(e){signedOut();if(e.status===401)error(new Error('Sign in with the invited email to accept. New users must register and verify their email first.'));else throw e;}return;}
  if(initialFlow){if(!config.account_mail)throw new Error('Account recovery is unavailable. Contact the operator.');showFlow(initialFlow);return;}
  try{await loadSession();}catch(e){signedOut();if(e.status!==401)throw e;}
@@ -126,3 +126,41 @@ async function loadBilling(workspace,version){
  }
 }
 $('billing-refresh').addEventListener('click',()=>{const workspace=$('workspace').value;if(testBilling&&workspaces.find(w=>w.id===workspace)?.role==='owner')loadBilling(workspace,generation).catch(error);});
+
+
+function resetDomainPanel(){
+ clearTimeout(domainExpiryTimer);
+ $('domain-result').replaceChildren();
+ $('domain-name').value='';
+}
+function showDomainQuote(quote,version){
+ if(version!==generation)return;
+ clearTimeout(domainExpiryTimer);
+ const content=$('domain-result');content.replaceChildren();
+ const offer=quote.offer;
+ const note=text=>{const p=document.createElement('p');p.textContent=text;content.append(p);};
+ const money=amount=>new Intl.NumberFormat(undefined,{style:'currency',currency:offer.currency.toUpperCase(),minimumFractionDigits:2,maximumFractionDigits:2}).format(amount/100);
+ note(offer.domain);
+ note('First year: '+money(offer.registration_minor));
+ note('Estimated renewal: '+money(offer.renewal_minor)+' per year. Future prices may change.');
+ note('Tax will be confirmed before purchase.');
+ const expiry=document.createElement('p');expiry.className='notice';content.append(expiry);
+ const remaining=Date.parse(offer.expires_at)-Date.now();
+ const expired=()=>{if(version===generation)expiry.textContent='This quote has expired. Search again for a current price.';};
+ if(quote.expired||remaining<=0){expired();}else{
+  expiry.textContent='Quote valid until '+new Date(offer.expires_at).toLocaleTimeString()+'. Availability will be checked again before purchase.';
+  domainExpiryTimer=setTimeout(expired,Math.min(remaining,2147483647));
+ }
+}
+$('domain-form').addEventListener('submit',async event=>{
+ event.preventDefault();
+ const version=generation,workspace=$('workspace').value;
+ if(!domainQuotes||workspaces.find(w=>w.id===workspace)?.role!=='owner')return;
+ const button=event.currentTarget.querySelector('button');button.disabled=true;
+ $('error').hidden=true;clearTimeout(domainExpiryTimer);$('domain-result').textContent='Checking availability and price…';
+ try{
+  const quote=await api('/api/domains/quote',{workspace,domain:$('domain-name').value});
+  if(version===generation)showDomainQuote(quote,version);
+ }catch(e){if(version===generation){$('domain-result').replaceChildren();error(e);}}
+ finally{button.disabled=false;}
+});
