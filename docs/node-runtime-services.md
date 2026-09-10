@@ -18,6 +18,46 @@ It must also verify artifact/toolchain bytes and actual architecture, seal root-
 release paths, and provision empty npm configuration files before installation.
 These launcher responsibilities are not implemented by the renderer.
 
+## Durable service reservations
+
+`OpenPool` opens a separate private SQLite database pinned to one project's
+runtime, architecture, toolchain and 2–16 operator-reserved UID/port pairs. Each
+runtime needs its own isolation boundary; pools do not coordinate host-wide UID
+allocation across unrelated databases. The caller must reserve the configured
+accounts and ports in that boundary before use.
+
+`Reserve` chooses a free pair and persists the complete immutable assignment.
+An identical operation returns its current state. Conflicting operation payloads
+are rejected, including after retirement. `ClaimStart` changes `reserved` to
+`starting` exactly once, before service-manager dispatch. Lost responses and
+expired caller processes do not authorize another claim. `Outstanding` enumerates
+occupied slots on startup without starting anything.
+
+`BeginRetirement` changes an unfinished operation to `retiring` and closes new
+claims. Its slot stays occupied. `ReconcileRetirement` requires a fresh observation
+from a trusted adapter, matching the entire assignment, proving all of:
+
+- A durable service-manager fence rejects even previously claimed, delayed starts.
+- The UID and service cgroup have no surviving processes.
+- The listener is gone.
+- Active, pending and draining routing references are detached.
+
+Only then are the evidence and `retired` state committed together and the slot
+made reusable. Retirement tombstones remain permanently. Later retries for an old
+operation cannot release a newer operation's reused slot. Provider failures,
+cancellation, missing evidence, stale timestamps and mismatched identities keep
+the slot occupied. The adapter must timestamp freshly collected observations on
+the local clock; remote timestamps must not be passed through unverified.
+
+Immediate SQLite write transactions and unique indexes serialize allocation and
+start claims across database handles. Full synchronous commits are enabled. Tests
+cover concurrent competing handles, process exit without closing the database,
+reopening, immutable retries, start authorization, evidence rejection, slot reuse
+and permanent retirement history. These tests do not prove disk power-loss
+durability or actual Linux fencing. No production retirement adapter exists yet.
+Do not replace this database with an older backup while any old service or delayed
+request can exist; recovery must first isolate and retire that runtime.
+
 `PrivateTmp=no` preserves the explicit bounded temporary mounts. Dynamic users are
 not used because systemd forces private temporary directories for them; see the
 [systemd execution contract](https://raw.githubusercontent.com/systemd/systemd/v255/man/systemd.exec.xml).
@@ -53,7 +93,7 @@ state, zero main PID and stable state beyond the restart delay instead.
 
 ## Remaining work
 
-Durable UID/port reservations, service installation and lifecycle records,
+Host account reservation, service installation and service-manager fencing,
 artifact sealing, authenticated activation, observed process identity, routing and
 draining, bounded tenant log storage, and reboot/power-loss recovery remain.
 This runtime profile still needs hostile workload qualification, including memory

@@ -839,3 +839,18 @@ reservations, verified installation, activation transport, routing integration a
 hostile runtime/recovery qualification remain. Loopback access is not tenant
 network isolation. See `node-runtime-services.md` for evidence and caller contracts.
 The live fleet and customer databases were unchanged.
+
+## Durable Node runtime reservations (2026-09-10)
+
+Added a private runtime pool database with immutable operation assignments,
+exclusive UID/port slots, single start claims and permanent retirement tombstones.
+Slots remain occupied until a trusted fresh observation proves delayed starts
+fenced, all processes stopped, listener removed and routing references detached.
+The accepted evidence is retained with retirement. Startup inspection lists all
+outstanding reservations without authorizing repeated starts.
+
+Tests passed for competing database handles, process exit without database close,
+reopen/retry, conflicts, stale or incomplete retirement evidence and slot reuse
+without resurrecting old operations. Full race-enabled integration tests, vet and
+builds passed. Production service-manager fencing, actual account/port checks and
+connected lifecycle qualification remain. No live deployments changed.
