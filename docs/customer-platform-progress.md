@@ -369,3 +369,11 @@ A matching event atomically clears the prior observation, increments its reconci
 Tests cover early delivery, binding/retry, foreign customer rejection, a delayed lookup racing a cancellation signal, duplicate events and current provider state differing from event payload status. Invoice/refund/dispute processing and paid-hosting activation remain incomplete. No live credentials, requests, charges or deployments were involved.
 
 Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.
+
+## Invoice event reconciliation signals
+
+The worker now discovers paid, failed, authentication-required, voided, uncollectible and finalized invoice events. The shared refresh processor validates the explicit test-mode invoice object, its subscription parent and its customer against the saved hosting identity. Standalone invoices, unknown subscriptions, foreign customers and account-scoped customer identities stay unresolved. Neither event amounts nor status can establish workspace ownership or grant access.
+
+Matched invoice events use the existing atomic invalidation and rescheduling path, so a fresh provider observation decides current state. Tests run every supported event through durable intake and worker discovery, including negative identity/mode cases, and verify that subscription access remains awaiting_reconciliation. Refund/dispute accounting, paid-hosting activation and actual Stripe sandbox qualification remain incomplete. No live provider, database or deployment was changed.
+
+Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.
