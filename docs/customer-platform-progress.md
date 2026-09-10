@@ -421,3 +421,11 @@ After a successful charge lookup, an atomic transaction consumes the receipt, in
 Tests send each supported event through signature verification, worker discovery, provider lookup and durable charge storage. They cover failed lookup retry, event payload values differing from current provider state, duplicate receipt handling and subscription refresh scheduling. All provider behavior is synthetic; no live credentials, refunds or deployments were used.
 
 Validation passed: full race-enabled integration suite, vet, all command builds and whitespace checks.
+
+## Current dispute outcomes
+
+Charge retrieval now queries disputes for the exact charge and validates every returned dispute's charge, PaymentIntent, currency, test mode, amount and supported status. It retains dispute IDs, outcomes and amounts plus an explicit DisputesChecked marker. This distinguishes an older observation with no outcome data from a newly verified empty dispute list. A disputed charge without a returned dispute, duplicate IDs, foreign identities, unknown statuses and truncated results are rejected.
+
+The lookup covers warnings, open/review states, won/lost and prevented disputes. The charge's historical disputed flag is still retained but cannot alone determine hosting access. Existing JSON snapshot storage preserves the additional evidence without a schema migration. Tests cover outcome validation and restart persistence; automatic access policy and periodic charge refresh remain unfinished. No real provider requests, disputes or deployments were used.
+
+Validation passed: full race-enabled integration suite, vet and command builds; the extended outcome-persistence test also passed with race detection.

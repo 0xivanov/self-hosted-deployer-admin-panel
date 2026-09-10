@@ -33,7 +33,7 @@ func TestDurableChargeMappingAndFencing(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixture := func(id string) hostingbilling.ChargeObservation {
-		return hostingbilling.ChargeObservation{ChargeID: id, CustomerID: checkout.CustomerID, PaymentIntentID: "pi_saved", InvoiceID: "in_saved", SubscriptionID: "sub_charge", Currency: "eur", AmountCaptured: 1000, AmountRefunded: 250, ObservedAt: time.Now().Unix()}
+		return hostingbilling.ChargeObservation{DisputesChecked: true, Disputes: []hostingbilling.ChargeDispute{{ID: "dp_saved", Status: "under_review", Amount: 1000}}, ChargeID: id, CustomerID: checkout.CustomerID, PaymentIntentID: "pi_saved", InvoiceID: "in_saved", SubscriptionID: "sub_charge", Currency: "eur", AmountCaptured: 1000, AmountRefunded: 250, ObservedAt: time.Now().Unix()}
 	}
 	reader := chargeReaderFunc(func(_ context.Context, id string) (hostingbilling.ChargeObservation, error) { return fixture(id), nil })
 	if err = s.ReconcileBillingCharge(ctx, reader, "ch_saved"); err != nil {
@@ -103,7 +103,7 @@ func TestDurableChargeMappingAndFencing(t *testing.T) {
 	}
 	defer s.Close()
 	observation, err := s.BillingChargeObservation(ctx, session.Token, a.WorkspaceID, "ch_saved")
-	if err != nil || !observation.Disputed || observation.AmountRefunded != 250 || observation.InvoiceID != "in_saved" {
+	if err != nil || !observation.Disputed || observation.AmountRefunded != 250 || observation.InvoiceID != "in_saved" || !observation.DisputesChecked || len(observation.Disputes) != 1 || observation.Disputes[0].Status != "under_review" {
 		t.Fatal(observation, err)
 	}
 }

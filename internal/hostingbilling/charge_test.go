@@ -47,6 +47,15 @@ func TestChargeObservationInvoiceMapping(t *testing.T) {
 				switch r.URL.Path {
 				case "/v1/charges/ch_fixture":
 					json.NewEncoder(w).Encode(charge)
+				case "/v1/disputes":
+					if r.URL.Query().Get("charge") != "ch_fixture" || r.URL.Query().Get("limit") != "100" {
+						t.Error("wrong dispute lookup")
+					}
+					data := []any{}
+					if tc.name == "disputed" {
+						data = append(data, map[string]any{"id": "dp_fixture", "object": "dispute", "livemode": false, "charge": "ch_fixture", "payment_intent": "pi_fixture", "currency": "eur", "amount": 1000, "status": "won"})
+					}
+					json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data, "has_more": false})
 				case "/v1/invoice_payments":
 					q := r.URL.Query()
 					if q.Get("payment[type]") != "payment_intent" || q.Get("payment[payment_intent]") != "pi_fixture" || q.Get("limit") != "2" || q.Get("expand[0]") != "data.invoice" {
@@ -76,7 +85,7 @@ func TestChargeObservationInvoiceMapping(t *testing.T) {
 				if tc.name == "partial refund" && observation.AmountRefunded != 400 {
 					t.Fatal(observation)
 				}
-				if tc.name == "disputed" && !observation.Disputed {
+				if tc.name == "disputed" && (!observation.Disputed || !observation.DisputesChecked || len(observation.Disputes) != 1 || observation.Disputes[0].Status != "won") {
 					t.Fatal(observation)
 				}
 			} else if err == nil {
