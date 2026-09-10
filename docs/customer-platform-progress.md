@@ -261,3 +261,17 @@ Tests cover concurrent request identity, persistence, foreign/developer denial, 
 Next: customer/checkout worker orchestration, verified checkout completion/expiry and subscription/invoice reconciliation, owner billing routes/UI and actual Stripe sandbox qualification. Subscription upgrades/cancellation and retry reconciliation beyond the provider retention window remain outstanding. No paid entitlement logic, automatic expiry or live checkout endpoint was enabled. Schema 8 requires a consistent pre-upgrade backup for older-binary rollback; no live portal database was migrated.
 
 The full race-enabled suite, including separate-process static publishing, passed after schema 8 and checkout snapshot changes.
+
+## Checkout event reconciliation and subscription identity
+
+Schema 9 adds subscription identity records linked to the acknowledged checkout, workspace, customer, saved plan/price and first verified inbox event. `ProcessBillingCheckoutEvent` handles completed/expired checkout events only after raw-signature verification and durable intake. It matches the stored session ID, customer ID and client reference together; event metadata cannot establish workspace ownership. The object must explicitly be a test-mode subscription Checkout Session.
+
+An event arriving before its session acknowledgement remains pending for retry. Completion atomically records the subscription identity, marks the checkout completed and consumes the receipt. Reprocessing the same event is a no-op. Subscription IDs cannot be replaced on a checkout. Recorded subscriptions start as awaiting_reconciliation, with no paid hosting entitlement. Current subscription/price/invoice state must still be fetched and checked before enabling paid access.
+
+Verified expiry marks an open checkout expired and allows a new intent. A delayed expiry cannot downgrade a completed checkout, while a conflicting completion after recorded expiry stays unresolved rather than silently reactivating old checkout data. Other billing event types remain pending for their future processors. No browser redirect is treated as payment confirmation.
+
+Race-enabled tests cover early webhook delivery followed by binding, wrong customer/reference, concurrent duplicate processing with one audit transition, subscription identity retention, delayed expiry, conflicting subscription replacement and expiry followed by a fresh checkout. Focused tests, vet and command builds passed. All provider events in these tests are synthetic and locally signed.
+
+Next: subscription/invoice retrieval and reconciliation, billing worker scheduling/retries, owner billing controls and actual Stripe sandbox tests. Refunds/cancellation, Connect merchant flows, domain resale, Node hosting and remaining deployment qualification are still open. Schema 9 requires the matching portal binary or restoration of a consistent pre-upgrade backup; no live database was upgraded.
+
+The full race-enabled suite, including the separate portal/worker/runtime publication test, also passed after schema 9 and event reconciliation changes.

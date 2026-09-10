@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 8 {
+	if version > 9 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -162,6 +162,11 @@ PRAGMA user_version=1;`)
 	}
 	if version < 8 {
 		if _, err = tx.Exec(`CREATE TABLE billing_plans(id TEXT PRIMARY KEY,price_id TEXT NOT NULL,enabled INTEGER NOT NULL CHECK(enabled IN (0,1))); CREATE TABLE billing_checkouts(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id),actor_id TEXT NOT NULL REFERENCES users(id),customer_id TEXT NOT NULL REFERENCES billing_customers(customer_id),plan_id TEXT NOT NULL REFERENCES billing_plans(id),price_id TEXT NOT NULL,session_id TEXT UNIQUE,checkout_url TEXT NOT NULL DEFAULT '',state TEXT NOT NULL CHECK(state IN ('pending','open','completed','expired')),created_at INTEGER NOT NULL); CREATE UNIQUE INDEX billing_checkout_active ON billing_checkouts(workspace_id) WHERE state IN ('pending','open','completed'); PRAGMA user_version=8;`); err != nil {
+			return err
+		}
+	}
+	if version < 9 {
+		if _, err = tx.Exec(`CREATE TABLE billing_subscriptions(id TEXT PRIMARY KEY,checkout_id TEXT NOT NULL UNIQUE REFERENCES billing_checkouts(id),workspace_id TEXT NOT NULL REFERENCES workspaces(id),customer_id TEXT NOT NULL REFERENCES billing_customers(customer_id),plan_id TEXT NOT NULL REFERENCES billing_plans(id),price_id TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'awaiting_reconciliation',first_event TEXT NOT NULL REFERENCES billing_events(id)); PRAGMA user_version=9;`); err != nil {
 			return err
 		}
 	}
