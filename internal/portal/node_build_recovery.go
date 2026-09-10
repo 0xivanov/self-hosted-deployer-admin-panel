@@ -16,7 +16,7 @@ type NodeExecutionObservation struct {
 	SourceSHA256    string
 	ToolchainSHA256 string
 	Architecture    string
-	Outcome         string // failed or cancelled; success requires future artifact validation
+	Outcome         string // succeeded requires NodeArtifactObservation and archive validation
 	Retired         bool
 	ObservedAt      time.Time
 }

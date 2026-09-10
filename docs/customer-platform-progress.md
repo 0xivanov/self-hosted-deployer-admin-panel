@@ -745,3 +745,17 @@ Full race-enabled integration tests, vet, command builds and Linux cross-build
 passed. No live deployment changed. Production export after proven builder
 termination, durable release records, storage/transfer, activation and rollback
 remain outstanding. See `node-artifacts.md` for the format and limits.
+
+## Persistent Node release records (2026-09-10)
+
+Added schema 21 with bounded, immutable per-build archive retention. Recovery
+requires fresh executor evidence matching execution/source/toolchain/architecture,
+dispatched dependency manifest, successful retirement and artifact digest. Archive
+validation, release insertion and build completion are atomic. Valid output from
+a revoked submitter is discarded with a cancelled build and retained audit evidence.
+
+Added current-owner/developer listing, integrity-checked reading and audited
+idempotent deletion, with 10 releases per project and 500 MiB per workspace limits.
+Tests cover persistence/migration, expired leases, evidence rejection, permissions,
+revocation, concurrent retries, quota recovery and stored corruption. This is
+retention only: no public routes, runtime activation or live fleet changes.

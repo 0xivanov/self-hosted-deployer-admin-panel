@@ -227,7 +227,7 @@ func TestUploadMigrationPreservesExistingAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.db.Exec("DROP TABLE node_builds; DROP TABLE domain_quotes; DROP TABLE billing_charges; DROP TABLE billing_work; DROP TABLE billing_subscriptions; DROP TABLE billing_checkouts; DROP TABLE billing_plans; DROP TABLE billing_customers; DROP TABLE billing_events; DROP TABLE publications; DROP TABLE publication_jobs; DROP TABLE uploads; PRAGMA user_version=3"); err != nil {
+	if _, err = s.db.Exec("DROP TABLE node_releases; DROP TABLE node_builds; DROP TABLE domain_quotes; DROP TABLE billing_charges; DROP TABLE billing_work; DROP TABLE billing_subscriptions; DROP TABLE billing_checkouts; DROP TABLE billing_plans; DROP TABLE billing_customers; DROP TABLE billing_events; DROP TABLE publications; DROP TABLE publication_jobs; DROP TABLE uploads; PRAGMA user_version=3"); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.Close(); err != nil {
