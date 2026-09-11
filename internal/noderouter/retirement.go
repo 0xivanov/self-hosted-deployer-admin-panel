@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strconv"
 )
 
 func (r *Router) validCandidate(c Candidate) bool {
@@ -73,4 +74,13 @@ func (r *Router) FenceRetirement(ctx context.Context, c Candidate) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// BackendPort returns the pinned loopback port for a validated routing candidate.
+// Launchers use it to bind retirement to the exact reserved service listener.
+func (r *Router) BackendPort(c Candidate) (int, error) {
+	if !r.validCandidate(c) {
+		return 0, ErrInvalid
+	}
+	return strconv.Atoi(r.backends[c.Backend].Port())
 }

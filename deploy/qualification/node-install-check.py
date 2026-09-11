@@ -13,4 +13,4 @@ with tempfile.TemporaryDirectory(prefix='node-install-check-') as directory:
                    cwd=repo, env={**os.environ, 'GOOS': 'linux', 'GOARCH': 'arm64', 'CGO_ENABLED': '0'}, check=True)
     subprocess.run(['limactl', 'copy', str(binary), vm + ':/tmp/nodelaunch-install.test'], check=True)
     subprocess.run(['limactl', 'shell', vm, 'sudo', '-n', '/tmp/nodelaunch-install.test',
-                    '-test.run=^(TestInstallRelease|TestControlGate|TestRuntimeUsage)', '-test.v', '-test.timeout=60s'], check=True, timeout=75)
+                    '-test.run=^(TestInstallRelease|TestControlGate|TestRuntimeUsage|TestRoutedRetirement)', '-test.v', '-test.timeout=60s'], check=True, timeout=75)

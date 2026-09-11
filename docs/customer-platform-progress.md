@@ -999,3 +999,18 @@ start rejection passed. Qualified operation:
 `d42b879ac62549fdaeddb02c42972b308ff0d6682bf14295b117a3bc82d419cb`.
 Full portable race tests, vet/build and Linux cross-vet passed. Complete routing
 and reservation retirement integration remains. No live deployments changed.
+
+## Routed retirement and slot release (2026-09-11)
+
+Connected candidate/reservation identity checks, router drain, durable service
+retirement and fresh kernel observations. Reservation release commits while the
+routing guard remains held. Errors keep slots occupied; terminal retries do not
+stop or release a replacement reservation. The controller rejects namespaces that
+differ from its visible PID 1; dedicated-host provisioning remains required.
+
+Real Linux integration verified mismatched identity rejection, an occupied TCP
+listener preventing release, retry after listener removal, durable pool reopen,
+slot reuse and old-operation retry safety while replacement HTTP kept serving.
+The test uses an absent systemd service; live Node service stopping was qualified
+separately. Full live deployment/retirement orchestration qualification remains.
+No live deployment or customer database changed.

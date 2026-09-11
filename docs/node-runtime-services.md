@@ -321,3 +321,23 @@ This adapter alone does not authorize UID/port reuse and is not yet wired into a
 complete routing-drain and retirement-reconciliation workflow. Routing, process,
 cgroup and listener evidence are still required. The fixture exercises this
 adapter, but does not expose it as a customer-facing service manager.
+
+### Routed reservation retirement
+
+`RetireRoutedNode` binds the router candidate's project, runtime, artifact and
+pinned backend port to the pool reservation before mutation. It marks retirement,
+drains the router, masks/stops the unit through its control gate, and checks fresh
+systemd and UID/cgroup/TCP observations. The routing guard stays held through the
+pool's durable retirement commit. Failed checks keep the slot occupied; terminal
+retries return the stored receipt without stopping a reused slot.
+
+Run this only in the dedicated runtime host's namespaces, with this router as the
+only ingress and all launchers sharing the pool and gate. The adapter rejects
+namespace differences from visible PID 1, but provisioning still must establish
+that PID 1 is the intended host manager, reserve UIDs/ports exclusively, and expose
+complete process/network state. It does not establish those deployment facts.
+A stop error may leave an OS job: keep the occupied reservation and reconcile.
+The integrated Linux test uses real HTTP, systemd masking, kernel observations and
+SQLite recovery with an absent service and deliberately occupied listener. The
+separate runtime rehearsal tests stopping a live Node service; the complete live
+Node deployment-to-retirement pilot remains to be qualified.
