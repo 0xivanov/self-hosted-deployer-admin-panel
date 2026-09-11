@@ -1029,3 +1029,16 @@ recovery, resource/network restrictions, masked shutdown and late-start rejectio
 The replacement is a synthetic HTTP service. Public upload/build/deployment
 orchestration, toolchain/account provisioning and full customer pilot remain.
 No live deployment or customer database changed.
+
+## Durable customer deployment handoff (2026-09-11)
+
+Added portal schema 24 and a one-attempt runtime dispatch method. It validates the
+current lease, actor authority, release linkage and archive bytes before saving
+an immutable, credential-free intent and submitting. Acceptance is not reported
+as deployment success. Lost responses and concurrent retries cannot dispatch the
+operation again. Migration fences legacy running work for reconciliation.
+
+Race-enabled tests passed persisted intent before external submission, lost-reply
+reopen, concurrent calls, invalid/expired leases, revoked users, corrupt archives
+and legacy migration. The concrete runtime receiver, worker loop and customer
+upload/build-to-deploy experience remain incomplete. No live deployments changed.

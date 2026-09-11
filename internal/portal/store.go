@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 23 {
+	if version > 24 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -245,6 +245,12 @@ PRAGMA user_version=1;`)
 
 	if version < 23 {
 		if _, err = tx.Exec(`ALTER TABLE node_deployments ADD COLUMN result BLOB; CREATE TABLE node_active_deployments(project_id TEXT PRIMARY KEY REFERENCES projects(id),deployment_id TEXT NOT NULL UNIQUE REFERENCES node_deployments(id),release_id TEXT NOT NULL REFERENCES node_releases(build_id)); PRAGMA user_version=23;`); err != nil {
+			return err
+		}
+	}
+
+	if version < 24 {
+		if _, err = tx.Exec(`ALTER TABLE node_deployments ADD COLUMN dispatch_intent BLOB; UPDATE node_deployments SET dispatch_intent='{"legacy_unreconciled":true}' WHERE state='running'; PRAGMA user_version=24;`); err != nil {
 			return err
 		}
 	}

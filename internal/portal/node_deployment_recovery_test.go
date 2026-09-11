@@ -245,7 +245,7 @@ func TestNodeDeploymentRecoveryMigratesPendingOperation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.db.Exec("DROP TABLE node_active_deployments; ALTER TABLE node_deployments DROP COLUMN result; PRAGMA user_version=22"); err != nil {
+	if _, err = s.db.Exec("DROP TABLE node_active_deployments; ALTER TABLE node_deployments DROP COLUMN result; ALTER TABLE node_deployments DROP COLUMN dispatch_intent; PRAGMA user_version=22"); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.Close(); err != nil {

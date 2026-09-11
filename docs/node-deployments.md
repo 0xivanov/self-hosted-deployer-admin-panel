@@ -94,3 +94,26 @@ and verify failure preservation, expiry/restart recovery, idempotency and archiv
 reference cleanup. Contract tests reject missing/mismatched/stale evidence, verify
 post-activation revocation recording and migrate an outstanding schema-22 operation.
 These tests do not qualify a production Node launcher or artifact/process identity.
+
+### Durable runtime dispatch
+
+Portal schema 24 adds an immutable deployment dispatch intent. Trusted workers
+call `DispatchNodeDeployment` with the current operation and lease. The store
+rechecks authorization, retained release linkage and actual archive integrity,
+then commits the exact operation, deployment, revision, project/runtime and
+artifact/toolchain/architecture pins before one bounded runtime submission.
+Archive bytes travel separately; intent JSON contains neither archive nor lease.
+
+A lost reply, process restart or concurrent call cannot resubmit that operation.
+Acceptance does not mark it deployed. Actual routing and process facts still
+require reconciliation. `ActivateBefore` is a one-minute staging/activation
+boundary, not an expiry for an already healthy website. A concrete runtime
+receiver must enforce this deadline, durable deduplication, artifact/pin checks
+and retirement fences. The provider interface is not yet a runnable production
+transport or worker loop.
+
+Migration preserves existing rows and marks legacy running operations as
+unreconciled rather than assuming they were never dispatched. These cannot be
+submitted by the new method; reconcile them first. Queued operations can acquire
+fresh claims normally. This development migration has not touched live customer
+data, and older binaries reject the newer schema.
