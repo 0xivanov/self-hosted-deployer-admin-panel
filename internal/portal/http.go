@@ -22,6 +22,7 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
+	NodeProjects      map[string]NodeProjectConfig
 	DomainQuotes      DomainQuoteReader
 	DomainMarkupMinor int64
 	BillingManagement BillingManagement
@@ -38,6 +39,7 @@ type attemptWindow struct {
 	count int
 }
 type HTTP struct {
+	nodeProjects         map[string]NodeProjectConfig
 	domainQuotes         DomainQuoteReader
 	domainMarkupMinor    int64
 	domainAttempts       map[string]attemptWindow
@@ -79,6 +81,10 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if opts.Mail != nil && (opts.Mail.store != store || opts.Mail.origin != opts.Origin) {
 		return nil, errors.New("mail and portal must use the same store and origin")
 	}
+	nodeProjects, err := copyNodeProjects(opts.NodeProjects)
+	if err != nil {
+		return nil, err
+	}
 	sites := map[string]string{}
 	for project, origin := range opts.PublicationSites {
 		id, err := hex.DecodeString(project)
@@ -102,7 +108,7 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if opts.Development {
 		cookie = "portal-dev-session"
 	}
-	return &HTTP{domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{nodeProjects: nodeProjects, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 func csrfFor(token string) string {
 	sum := sha256.Sum256([]byte("portal-csrf:" + token))
@@ -258,6 +264,10 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "POST" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(csrfFor(cookie.Value))) != 1 {
 		httpError(w, 403, "Reload the page and retry")
+		return
+	}
+	if r.URL.Path == "/api/node" || strings.HasPrefix(r.URL.Path, "/api/node/") {
+		h.nodeHTTP(w, r, cookie.Value)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/domains/") {

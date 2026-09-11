@@ -42,6 +42,7 @@ func run() error {
 	managementFile := flag.String("test-billing-management-config", "", "private Stripe test customer portal settings")
 	webhookFile := flag.String("test-webhook-secret-file", "", "private Stripe test webhook signing secret file")
 	testBilling := flag.Bool("test-billing", false, "enable owner billing request API for a separately configured Stripe test worker")
+	nodeProjectsFile := flag.String("node-projects", "", "private JSON mapping Node project IDs to assigned build settings and runtimes")
 	publicationFile := flag.String("publication-sites", "", "private JSON mapping assigned static project IDs to HTTPS content origins")
 	signup := flag.Bool("signup", false, "enable public signup when mail is configured")
 	flag.Parse()
@@ -148,6 +149,16 @@ func run() error {
 			return errors.New("invalid publication site mapping")
 		}
 	}
+	nodeProjects := map[string]portal.NodeProjectConfig{}
+	if *nodeProjectsFile != "" {
+		raw, e := privateFile(*nodeProjectsFile)
+		if e != nil {
+			return e
+		}
+		if len(raw) > 65536 || json.Unmarshal(raw, &nodeProjects) != nil {
+			return errors.New("invalid Node project mapping")
+		}
+	}
 	var management *hostingbilling.Management
 	if *managementFile != "" {
 		if !*testBilling || *demo {
@@ -186,7 +197,7 @@ func run() error {
 	if management != nil {
 		managementProvider = management
 	}
-	handler, err := portal.NewHTTP(store, portal.HTTPOptions{BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
+	handler, err := portal.NewHTTP(store, portal.HTTPOptions{NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
 	if err != nil {
 		return err
 	}

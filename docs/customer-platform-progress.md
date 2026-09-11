@@ -1,6 +1,6 @@
 # Customer platform implementation progress
 
-Updated: 2026-09-10. The four-part goal remains active and incomplete. No customer-platform code has been deployed to the live VPS/Pi environment.
+Updated: 2026-09-11. The four-part goal remains active and incomplete. No customer-platform code has been deployed to the live VPS/Pi environment.
 
 ## Implemented and verified
 
@@ -1042,3 +1042,20 @@ Race-enabled tests passed persisted intent before external submission, lost-repl
 reopen, concurrent calls, invalid/expired leases, revoked users, corrupt archives
 and legacy migration. The concrete runtime receiver, worker loop and customer
 upload/build-to-deploy experience remain incomplete. No live deployments changed.
+
+## Feature-first delivery and Node panel controls (2026-09-11)
+
+Updated the delivery plan and 02:30 automation to prioritize usable features and
+focused verification. Broader qualification is deferred until product flows work.
+
+Added customer Node project status, build buttons, queued-operation cancellation,
+saved release deployment/restore/delete controls, deployment history and active
+website links. The HTTP layer chooses pinned runtime/build assignments from private
+operator configuration; browsers cannot supply infrastructure targets. Workspace
+roles and CSRF checks protect mutations. Viewers retain read-only upload listings.
+
+Focused HTTP tests passed build/deploy/cancel flows, retry identity, unassigned
+projects, cross-workspace denial, viewer mutation denial and CSRF. Static publication
+checks, the customer portal build and frontend syntax checks passed. These controls
+queue real stored operations; execution still needs the concrete runtime receiver
+and build/deployment worker loop. No live deployment changed.

@@ -13,6 +13,16 @@ Deliver these four capabilities as one customer hosting MVP:
 
 Preserve the existing VPS/Pi deployments. A visual website builder is excluded. The goal is complete only after implementation, tenant-isolation checks, recovery tests and pilot qualification. Actual purchases require provider setup and transaction authorization; a development goal is not blanket permission to spend money.
 
+## Delivery priority updated 2026-09-11
+
+Prioritize usable customer features and complete product flows. Work first on
+upload, build, deploy and live-site management through the panel, then domain
+purchases and both payment flows. Run focused checks for changed behavior, tenant
+isolation, payments and deployment safety. Defer broad failure simulations,
+repeated regression runs and additional qualification scaffolding until the
+feature flows are usable. Preserve existing deployments and the full goal;
+production qualification still belongs at the release stage.
+
 ## Agreed product scope
 
 Customers register, create a workspace, upload an **HTML/static project or Node.js project**, configure it, and publish it with HTTPS. They can redeploy a new version, inspect build/runtime logs, restore a prior release, connect a domain, manage collaborators, and pay for hosting.

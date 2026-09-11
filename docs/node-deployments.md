@@ -117,3 +117,32 @@ unreconciled rather than assuming they were never dispatched. These cannot be
 submitted by the new method; reconcile them first. Queued operations can acquire
 fresh claims normally. This development migration has not touched live customer
 data, and older binaries reject the newer schema.
+
+### Customer panel controls
+
+Node project cards expose builds, saved releases, deploy/restore actions, queued
+cancellation and deployment history through `/api/node`. Owners and developers
+can manage these operations; viewer accounts keep read-only upload listings.
+A queued deployment is shown as pending, and only a reconciled active deployment
+gets an Open website link.
+
+Enable assigned projects with the customer portal's `--node-projects` private JSON
+file. For each project ID, supply `runtime_id` and `build`, for example:
+
+```json
+{
+  "PROJECT_ID_64_HEX": {
+    "runtime_id": "RUNTIME_ID_64_HEX",
+    "build": {
+      "Settings": {"Architecture": "arm64", "SkipBuild": false},
+      "ToolchainSHA256": "PINNED_TOOLCHAIN_64_HEX"
+    }
+  }
+}
+```
+
+Use `--publication-sites` for the project's assigned HTTPS website origin.
+Configuration is copied and validates exact IDs, architecture and unique runtime
+assignment per project. Omit an assignment until its workers are configured.
+The UI and API enqueue real work but do not execute customer code in the portal;
+the production runtime receiver and worker loop remain under implementation.

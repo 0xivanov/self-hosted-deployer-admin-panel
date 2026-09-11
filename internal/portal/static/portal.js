@@ -70,7 +70,9 @@ async function loadInvitations(workspace,version){
 $('invite-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{await api('/api/invitations',{workspace:$('workspace').value,email:$('invite-email').value,role:$('invite-role').value});$('invite-email').value='';await loadProjects();});});
 
 async function projectUploads(card,project,role,version){
- const [result,publication]=await Promise.all([api('/api/uploads?project='+encodeURIComponent(project.id)),api('/api/publications?project='+encodeURIComponent(project.id))]);if(version!==generation)return;
+ const result=await api('/api/uploads?project='+encodeURIComponent(project.id));if(version!==generation)return;
+ if(project.kind==='node')return nodeProjectUploads(card,project,role,version,result);
+ const publication=await api('/api/publications?project='+encodeURIComponent(project.id));if(version!==generation)return;
  const pending=publication.jobs.some(j=>j.state==='queued'||j.state==='running');const active=publication.jobs.find(j=>j.id===publication.active);
  const status=document.createElement('p');status.textContent=pending?(active?'Publication pending · Current revision '+active.revision:'Publication pending'):active?'Published revision '+active.revision:publication.available?'Ready to publish':'Publishing awaits runtime assignment';card.append(status);
  if(active&&publication.site){const link=document.createElement('a');link.href=publication.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open website';card.append(link);}
@@ -86,6 +88,69 @@ async function projectUploads(card,project,role,version){
  for(const upload of result.uploads){const row=document.createElement('div');const text=document.createElement('p');text.textContent='Validated · '+upload.files+(upload.files===1?' file · ':' files · ')+(upload.compressed_bytes/1024).toFixed(1)+' KiB · '+new Date(upload.created_at*1000).toLocaleString();row.append(text);
  if(publication.available&&role!=='viewer'){const publish=document.createElement('button');const previous=publication.jobs.some(j=>j.upload_id===upload.id&&j.state==='succeeded');const isCurrent=active&&active.upload_id===upload.id;publish.textContent=isCurrent?'Current upload':previous?'Restore this upload':'Publish this upload';publish.disabled=pending||isCurrent;const requestKey=crypto.randomUUID();publish.addEventListener('click',async()=>{publish.disabled=true;try{await api('/api/publications',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await loadProjects();}catch(e){error(e);publish.disabled=false;}});row.append(publish);}
   if(role!=='viewer'){const button=document.createElement('button');button.textContent='Delete upload';button.addEventListener('click',async()=>{if(!confirm('Delete this saved upload?'))return;button.disabled=true;try{await api('/api/uploads/delete',{project:project.id,id:upload.id});if(version===generation)await loadProjects();}catch(e){error(e);button.disabled=false;}});row.append(button);}card.append(row);
+ }
+}
+
+async function nodeProjectUploads(card,project,role,version,result){
+ if(role==='viewer'){
+  const copy=document.createElement('p');copy.textContent='Node.js project status is available to owners and developers. Your saved uploads are shown below.';card.append(copy);
+  return nodeUploadRows(card,project,role,version,result, null);
+ }
+ const node=await api('/api/node?project='+encodeURIComponent(project.id));if(version!==generation)return;
+ const builds=Array.isArray(node.builds)?node.builds:[];
+ const releases=Array.isArray(node.releases)?node.releases:[];
+ const deployments=Array.isArray(node.deployments)?node.deployments:[];
+ const active=node.active||null;
+ const pendingDeployment=deployments.some(item=>item.state==='queued'||item.state==='running');
+ const activeRelease=active&&active.release_id;
+ const status=document.createElement('p');
+ status.textContent=pendingDeployment?'Deployment pending':active?'Live · Revision '+active.revision:node.available?'Ready to deploy':'Hosting setup is pending';
+ card.append(status);
+ if(active&&node.site){
+  const link=document.createElement('a');link.href=node.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open website';card.append(link);
+ }
+ const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh release status';refresh.addEventListener('click',()=>loadProjects().catch(error));card.append(refresh);
+ for(const build of builds){
+  const line=document.createElement('p');line.textContent='Build · '+build.state+' · '+new Date(build.created_at*1000).toLocaleString();card.append(line);
+  if(role!=='viewer'&&build.state==='queued'){
+   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel build';cancel.addEventListener('click',async()=>{cancel.disabled=true;try{await api('/api/node/builds/cancel',{project:project.id,id:build.id});if(version===generation)await loadProjects();}catch(e){error(e);cancel.disabled=false;}});card.append(cancel);
+  }
+ }
+ const releaseHeading=document.createElement('p');releaseHeading.textContent='Saved releases';card.append(releaseHeading);
+ for(const release of releases){
+  const row=document.createElement('div');const label=document.createElement('p');
+  const deployment=deployments.find(item=>item.release_id===release.build_id&&item.state==='succeeded');
+  label.textContent='Release from '+new Date(release.created_at*1000).toLocaleString()+(deployment?' · '+deployment.state:'');row.append(label);
+  if(node.available&&role!=='viewer'){
+   const deploy=document.createElement('button');deploy.type='button';deploy.textContent=release.build_id===activeRelease?'Current':deployment?'Restore':'Deploy';deploy.disabled=pendingDeployment||release.build_id===activeRelease;
+   const requestKey=crypto.randomUUID();deploy.addEventListener('click',async()=>{deploy.disabled=true;try{await api('/api/node/deployments',{project:project.id,release:release.build_id,key:requestKey});if(version===generation)await loadProjects();}catch(e){error(e);deploy.disabled=false;}});row.append(deploy);
+  }
+  const releasePending=deployments.some(item=>item.release_id===release.build_id&&(item.state==='queued'||item.state==='running'));
+  if(role!=='viewer'&&release.build_id!==activeRelease&&!releasePending){
+   const remove=document.createElement('button');remove.type='button';remove.textContent='Delete release';remove.addEventListener('click',async()=>{if(!confirm('Delete this saved release?'))return;remove.disabled=true;try{await api('/api/node/releases/delete',{project:project.id,id:release.build_id});if(version===generation)await loadProjects();}catch(e){error(e);remove.disabled=false;}});row.append(remove);
+  }
+  card.append(row);
+ }
+ const historyHeading=document.createElement('p');historyHeading.textContent='Deployment history';card.append(historyHeading);
+ for(const deployment of deployments){
+  const row=document.createElement('div');const label=document.createElement('p');label.textContent='Revision '+deployment.revision+' · '+deployment.state+(deployment.id===active?.id?' · Current':'');row.append(label);
+  if(role!=='viewer'&&deployment.state==='queued'){const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel deployment';cancel.addEventListener('click',async()=>{cancel.disabled=true;try{await api('/api/node/deployments/cancel',{project:project.id,id:deployment.id});if(version===generation)await loadProjects();}catch(e){error(e);cancel.disabled=false;}});row.append(cancel);}
+  card.append(row);
+ }
+ return nodeUploadRows(card,project,role,version,result,{node,builds,releases});
+}
+
+function nodeUploadRows(card,project,role,version,result,state){
+ const copy=document.createElement('p');copy.textContent='ZIP up to 10 MiB. Include package.json with a start script and package-lock.json at the root. Omit node_modules and secrets.';card.append(copy);
+ if(role!=='viewer'){
+  const form=document.createElement('form');const label=document.createElement('label');label.textContent='Project ZIP';const input=document.createElement('input');input.type='file';input.accept='.zip,application/zip';input.required=true;label.append(input);const button=document.createElement('button');button.textContent='Upload and validate';form.append(label,button);card.append(form);
+  form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{const file=input.files[0];if(!file||file.size>10*1024*1024)throw new Error('Select a ZIP no larger than 10 MiB.');const response=await fetch('/api/uploads?project='+encodeURIComponent(project.id),{method:'POST',headers:{'Content-Type':'application/zip','X-CSRF-Token':csrf},body:file});const data=await response.json();if(!response.ok)throw new Error(data.error||'Upload failed');if(version===generation)await loadProjects();});});
+ }
+ for(const upload of result.uploads){const row=document.createElement('div');const text=document.createElement('p');text.textContent='Validated · '+upload.files+(upload.files===1?' file · ':' files · ')+(upload.compressed_bytes/1024).toFixed(1)+' KiB · '+new Date(upload.created_at*1000).toLocaleString();row.append(text);
+  if(state&&state.node.available&&role!=='viewer'){
+   const build=state.builds.find(item=>item.upload_id===upload.id);const saved=build&&state.releases.some(release=>release.build_id===build.id);const busy=state.builds.some(item=>item.state==='queued'||item.state==='running');const button=document.createElement('button');button.type='button';button.textContent=saved?'Built':build&&build.state==='queued'?'Build queued':build&&build.state==='running'?'Building':build?'Build again':'Build';button.disabled=busy||!!saved;const requestKey=crypto.randomUUID();button.addEventListener('click',async()=>{button.disabled=true;try{await api('/api/node/builds',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await loadProjects();}catch(e){error(e);button.disabled=false;}});row.append(button);
+  }
+  if(role!=='viewer'){const button=document.createElement('button');button.type='button';button.textContent='Delete upload';button.addEventListener('click',async()=>{if(!confirm('Delete this saved upload?'))return;button.disabled=true;try{await api('/api/uploads/delete',{project:project.id,id:upload.id});if(version===generation)await loadProjects();}catch(e){error(e);button.disabled=false;}});row.append(button);}card.append(row);
  }
 }
 
