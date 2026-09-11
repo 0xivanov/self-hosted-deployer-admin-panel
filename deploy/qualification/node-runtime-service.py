@@ -47,7 +47,8 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
     (stage/'package.json').write_text(json.dumps({'name':'runtime-unit-fixture','version':'1.0.0','type':'module','scripts':{'start':'node server.mjs','prestart':'node missing-prestart.mjs'}}))
     (stage/'probe.json').write_text(json.dumps({'host':ip,'port':server.server_port}))
     # Export the exact synthetic fixture and use the production archive installer.
-    # Build provenance and durable operation/UID reservations are separate gates.
+    # The helper reserves the runtime slot and records the installation receipt.
+    # Build provenance remains a separate gate.
     payload=stage/'release.zip'
     with zipfile.ZipFile(payload,'w',compression=zipfile.ZIP_DEFLATED) as archive_out:
         for filename in ['server.mjs','package.json','probe.json']:
@@ -124,6 +125,7 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
                 assert time.monotonic()<live_deadline, 'fixture did not resume before live retirement'
                 time.sleep(.1)
 
+        subprocess.run(['sudo','-n','/tmp/node-runtime-control','retire-routed',operation,digest,installed_release['Directory']],check=True,timeout=25)
     finally:
         subprocess.run(['sudo','-n','/tmp/node-runtime-control','retire',operation,digest,installed_release['Directory']],check=True,timeout=25)
         stopped_status=json.loads(subprocess.check_output(['sudo','-n','/tmp/node-runtime-control','status',operation,digest,installed_release['Directory']],text=True,timeout=15))
@@ -145,5 +147,5 @@ with tempfile.TemporaryDirectory(prefix='runtime-unit-') as directory:
     late=subprocess.run(['sudo','-n','/tmp/node-runtime-control','start',operation,digest,installed_release['Directory']],capture_output=True,text=True,timeout=25)
     assert late.returncode!=0 and 'Node reservation conflicts with recorded state' in late.stderr, 'late start was not rejected by the retirement gate'
     with socket.socket() as check: assert check.connect_ex(('127.0.0.1',31877))!=0, 'runtime listener survived stop'
-    print(json.dumps({'runtime_service':'passed','installed_release':installed_release,'unit':unit['Name'],'report':report,'listener_stopped':True,'crash_restart':True,'restart_limit':True,'late_start_blocked':True,'persistent_mask_verified':True,'direct_start_blocked':True,'retirement_retry_verified':True,'live_service_retired':True,'running_status_verified':True,'stopped_status_verified':True,'running_usage_verified':True,'stopped_usage_verified':True}),flush=True)
+    print(json.dumps({'runtime_service':'passed','installed_release':installed_release,'unit':unit['Name'],'report':report,'listener_stopped':True,'crash_restart':True,'restart_limit':True,'late_start_blocked':True,'persistent_mask_verified':True,'direct_start_blocked':True,'retirement_retry_verified':True,'live_service_retired':True,'routed_pool_retirement_verified':True,'running_status_verified':True,'stopped_status_verified':True,'running_usage_verified':True,'stopped_usage_verified':True}),flush=True)
 server.shutdown();server.server_close();thread.join(timeout=2)

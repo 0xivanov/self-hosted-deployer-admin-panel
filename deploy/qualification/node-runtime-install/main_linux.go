@@ -53,9 +53,24 @@ func run() error {
 	}
 	a := nodelaunch.Assignment{UID: 60000, Port: 31877, OperationID: os.Args[3], ProjectID: strings.Repeat("8", 64), RuntimeID: strings.Repeat("7", 64), ArtifactSHA256: os.Args[2], ToolchainSHA256: "5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7", Architecture: "arm64", ReleaseDirectory: "release-" + os.Args[3]}
 	installer := nodelaunch.GatedInstaller{Gate: gate, Installer: nodelaunch.LinuxInstaller{Releases: root}}
-	release, err := installer.InstallNodeRelease(context.Background(), a, data)
+	pool, err := nodelaunch.OpenPool("/var/lib/deployer-node-lab/pool/state.db", nodelaunch.PoolConfig{ProjectID: a.ProjectID, RuntimeID: a.RuntimeID, ToolchainSHA256: a.ToolchainSHA256, Architecture: a.Architecture, Slots: []nodelaunch.Slot{{UID: 60000, Port: 31877}, {UID: 60001, Port: 31878}}})
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(os.Stdout).Encode(release)
+	defer pool.Close()
+	requested := a
+	requested.UID = 0
+	requested.Port = 0
+	reserved, err := pool.Reserve(context.Background(), requested)
+	if err != nil {
+		return err
+	}
+	if reserved.Assignment != a {
+		return fmt.Errorf("fixture slot remains occupied; reconcile before another rehearsal")
+	}
+	prepared, err := pool.PrepareRelease(context.Background(), a.OperationID, data, installer)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(nodeartifact.Release{Directory: prepared.Assignment.ReleaseDirectory, Manifest: prepared.Installed.Manifest})
 }

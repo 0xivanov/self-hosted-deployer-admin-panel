@@ -1014,3 +1014,18 @@ slot reuse and old-operation retry safety while replacement HTTP kept serving.
 The test uses an absent systemd service; live Node service stopping was qualified
 separately. Full live deployment/retirement orchestration qualification remains.
 No live deployment or customer database changed.
+
+## Connected live Node runtime retirement (2026-09-11)
+
+The Linux rehearsal now connects durable reservation, installed receipt, start
+claim, real restricted Node/systemd execution, routing replacement and verified
+retirement. It reopens the pool, reuses the slot and checks that retrying the old
+operation leaves the new reservation and replacement HTTP response intact. The
+unused replacement reservation is cleaned through the same retirement workflow.
+
+Real ARM64 execution passed for operation
+`c6c6e3a89eb74dac8e7fc8707e75a41a1d1d7db3a45b4a308dba7dd3973deb91`, including crash
+recovery, resource/network restrictions, masked shutdown and late-start rejection.
+The replacement is a synthetic HTTP service. Public upload/build/deployment
+orchestration, toolchain/account provisioning and full customer pilot remain.
+No live deployment or customer database changed.

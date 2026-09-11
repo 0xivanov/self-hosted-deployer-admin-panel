@@ -341,3 +341,22 @@ The integrated Linux test uses real HTTP, systemd masking, kernel observations a
 SQLite recovery with an absent service and deliberately occupied listener. The
 separate runtime rehearsal tests stopping a live Node service; the complete live
 Node deployment-to-retirement pilot remains to be qualified.
+
+### Connected live runtime rehearsal
+
+The disposable ARM64 rehearsal now uses the shared durable lab pool for reserve,
+verified installation receipt and start claim before dispatching the systemd
+fixture. Its retirement helper routes to the live restricted Node service,
+switches to a synthetic HTTP replacement, then uses `RetireRoutedNode` to stop and
+release the old slot. It reopens the pool, reserves the freed slot, retries the
+old operation and verifies the new reservation and replacement response survive.
+The unused new reservation is itself retired through the verified workflow.
+
+Qualified operation (2026-09-11):
+`c6c6e3a89eb74dac8e7fc8707e75a41a1d1d7db3a45b4a308dba7dd3973deb91`.
+The retained receipt recorded starts fenced, processes/listener gone and routing
+detached for UID 60000 / port 31877. The restricted-runtime checks, crash/restart
+limit, persistent mask and late-start rejection also passed. This is a trusted
+fixture, not a public customer upload/build pipeline or a two-Node rollout test.
+Failures retain pool occupancy and must be reconciled before another run; never
+reset this pool while its old services or delayed control requests may exist.

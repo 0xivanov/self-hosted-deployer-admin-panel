@@ -24,7 +24,7 @@ func main() {
 }
 func run() error {
 	if os.Geteuid() != 0 || len(os.Args) != 5 {
-		return fmt.Errorf("guest root usage: node-runtime-control start|retire|status|usage OPERATION SHA256 RELEASE_DIRECTORY")
+		return fmt.Errorf("guest root usage: node-runtime-control start|retire|retire-routed|status|usage OPERATION SHA256 RELEASE_DIRECTORY")
 	}
 	a := nodelaunch.Assignment{UID: 60000, Port: 31877, OperationID: os.Args[2], ProjectID: strings.Repeat("8", 64), RuntimeID: strings.Repeat("7", 64), ArtifactSHA256: os.Args[3], ToolchainSHA256: "5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7", Architecture: "arm64", ReleaseDirectory: os.Args[4]}
 	unit, err := nodelaunch.Render(a)
@@ -63,7 +63,21 @@ func run() error {
 			State       nodelaunch.SystemdState
 			UnitStopped bool
 		}{state, state.UnitStopped()})
+	case "retire-routed":
+		return retireRoutedFixture(ctx, gate, a)
 	case "start":
+		pool, err := openFixturePool(a)
+		if err != nil {
+			return err
+		}
+		defer pool.Close()
+		claimed, err := pool.ClaimStart(ctx, a.OperationID)
+		if err != nil {
+			return err
+		}
+		if claimed.Assignment != a {
+			return fmt.Errorf("fixture start claim mismatch")
+		}
 		return gate.Start(ctx, a, func(context.Context, nodelaunch.Assignment) error {
 			actual, err := os.ReadFile("/run/systemd/system/" + unit.Name)
 			if err != nil {
