@@ -211,7 +211,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpJSON(w, map[string]bool{"domain_quotes": h.domainQuotes != nil, "signup": h.signup, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
 		return
 	}
-	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {
+	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/verification/resend" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {
 		h.accountAction(w, r)
 		return
 	}
@@ -582,6 +582,18 @@ func (h *HTTP) accountAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpJSON(w, map[string]string{"message": "If this email can be registered, a verification link will arrive shortly. Existing users can sign in or reset their password."})
+	case "/api/verification/resend":
+		var input struct {
+			Email string `json:"email"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		if err := h.mail.RequestVerification(r.Context(), input.Email); err != nil {
+			httpError(w, 503, "Verification email unavailable")
+			return
+		}
+		httpJSON(w, map[string]string{"message": "If this account needs verification, a link will arrive shortly. Please wait at least a minute between requests and check your spam folder."})
 	case "/api/password/forgot":
 		var input struct {
 			Email string `json:"email"`

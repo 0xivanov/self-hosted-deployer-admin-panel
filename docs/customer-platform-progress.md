@@ -19,7 +19,7 @@ Validation: `go test -race ./...`, `go vet ./...`, and existing admin-panel buil
 
 ## Current remaining work
 
-The customer portal is a development service, not a production-qualified public account service. Signup, encrypted mail delivery, membership management, invitations, static publication, Node build/runtime components and test-mode hosting billing are implemented to the stages documented below. Remaining work includes the connected production Node lifecycle, paid-plan enforcement and provider qualification, registrar purchases/renewals, merchant payments, account recovery/resend and administrator MFA/bootstrap, production abuse controls, storage operations and full pilot/recovery qualification.
+The customer portal is a development service, not a production-qualified public account service. Signup, encrypted mail delivery, membership management, invitations, static publication, Node build/runtime components and test-mode hosting billing are implemented to the stages documented below. Remaining work includes the connected production Node lifecycle, paid-plan enforcement and provider qualification, registrar purchases/renewals, merchant payments, account recovery operations and administrator MFA/bootstrap, production abuse controls, storage operations and full pilot/recovery qualification.
 
 ## Customer HTTP portal added
 
@@ -1177,3 +1177,18 @@ a failed replacement, settled failure status and continued HTTPS responses from
 the original website (5.19 seconds). Linux vet and the existing routing retirement
 check passed. The committed-activation cleanup recovery branch has code review and
 compile coverage, but no dedicated crash rehearsal yet. No live nodes changed.
+
+
+## Verification email resend (2026-09-12)
+
+Added a login-screen resend flow and `/api/verification/resend`. Eligible
+unverified accounts receive an encrypted queued verification link. Existing valid
+links remain usable. The endpoint returns the same response for unknown,
+verified, disabled and throttled accounts. Requests have the existing peer rate
+limit plus a per-account one-minute cooldown and five-mail daily cap, including
+initial registration mail. Verification still consumes all verification tokens.
+
+The focused HTTP/mail check passed resend delivery, cooldown, generic responses,
+continued validity of the original link, sign-in after verification, no further
+mail to verified users and foreign-Origin rejection. JavaScript syntax and Go vet
+passed. No real email was sent and no live deployment changed.
