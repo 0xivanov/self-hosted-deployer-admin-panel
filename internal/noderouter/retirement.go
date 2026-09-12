@@ -94,3 +94,32 @@ func (r *Router) BackendForPort(port int) (string, error) {
 	}
 	return "", ErrInvalid
 }
+
+// RejectActivation permanently fences an unactivated candidate and publishes
+// its failed revision while retaining the serving route. This also covers a
+// deployment that failed before Activate wrote a pending route.
+func (r *Router) RejectActivation(ctx context.Context, c Candidate) error {
+	if err := r.FenceRetirement(ctx, c); err != nil {
+		return err
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	state, err := readState(tx.QueryRowContext(ctx, "SELECT state FROM node_route WHERE id=1"))
+	if err != nil {
+		return err
+	}
+	if state.Fence.Revision > c.Revision || (state.Fence.Revision == c.Revision && state.Fence != c) {
+		return ErrConflict
+	}
+	if state.Active != nil && (state.Active.OperationID == c.OperationID || state.Active.Backend == c.Backend) {
+		return ErrConflict
+	}
+	state.Fence, state.Status = c, "failed"
+	if err = writeState(ctx, tx, state); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

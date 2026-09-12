@@ -162,4 +162,48 @@ func TestRuntimeServiceAcceptsAndServesNodeArchive(t *testing.T) {
 	if err != nil || response.StatusCode != 200 || string(body) != "runtime feature works" {
 		t.Fatal(response.StatusCode, string(body), err)
 	}
+	response.Body.Close()
+	// A replacement that cannot become ready must settle as failed, free its
+	// reserved slot and keep the previously active website serving.
+	if _, err = rand.Read(entropy[:]); err != nil {
+		t.Fatal(err)
+	}
+	failed := request
+	failed.OperationID = hex.EncodeToString(entropy[:])
+	failed.DeploymentID, failed.ReleaseID = failed.OperationID, failed.OperationID
+	failed.Revision = 2
+	failed.ActivateBefore = time.Now().Add(3 * time.Second).Unix()
+	var broken bytes.Buffer
+	z = zip.NewWriter(&broken)
+	f, _ = z.Create("package.json")
+	f.Write([]byte(`{"scripts":{"start":"node server.js"}}`))
+	f, _ = z.Create("server.js")
+	f.Write([]byte(`process.exit(42)`))
+	z.Close()
+	failed.Archive = broken.Bytes()
+	digest = sha256.Sum256(failed.Archive)
+	failed.ArtifactSHA256 = hex.EncodeToString(digest[:])
+	if err = client.SubmitNodeRuntime(t.Context(), failed); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(12 * time.Second)
+	for {
+		observation, e := client.InspectNodeRuntime(t.Context(), assignment.RuntimeID, assignment.ProjectID, failed.OperationID)
+		if e == nil && observation.Settled && observation.CandidateStopped && observation.Routing.Status == "failed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("failed replacement did not settle: %v", e)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	response, err = browser.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err = io.ReadAll(response.Body)
+	if err != nil || response.StatusCode != 200 || string(body) != "runtime feature works" {
+		t.Fatal("existing website changed", response.StatusCode, string(body), err)
+	}
 }

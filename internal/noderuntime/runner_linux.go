@@ -27,8 +27,8 @@ type Runner struct {
 }
 
 // ProcessNext executes one fresh claim through installation, start and activation.
-// It is not a recovery loop: interrupted processing is surfaced explicitly, and
-// all start/installation attempts remain fenced by their durable local gates.
+// Interrupted work is reconciled after its activation deadline. Installation
+// and start attempts are never repeated during recovery.
 func (r *Runner) ProcessNext(ctx context.Context) (bool, error) {
 	if r == nil || r.Inbox == nil || r.Pool == nil || r.Gate == nil || r.Router == nil || r.Releases == nil {
 		return false, ErrAssignment
@@ -38,7 +38,10 @@ func (r *Runner) ProcessNext(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	if processing != nil {
-		return false, ErrReconciliation
+		if processing.Request.ActivateBefore > time.Now().Unix() {
+			return false, nil
+		}
+		return true, r.recoverProcessing(ctx, processing.Request)
 	}
 	work, err := r.Inbox.Claim(ctx)
 	if err != nil || work == nil {
@@ -60,6 +63,9 @@ func (r *Runner) ProcessNext(ctx context.Context) (bool, error) {
 		return true, err
 	}
 	if request.ActivateBefore <= time.Now().Unix() {
+		if err = r.Router.RejectActivation(ctx, candidate); err != nil {
+			return true, err
+		}
 		if _, err = nodelaunch.RetireRoutedNode(ctx, r.Pool, r.Gate, r.Router, candidate); err != nil {
 			return true, err
 		}

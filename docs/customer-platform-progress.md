@@ -1162,3 +1162,18 @@ Build/vet passed. The caller must stop customer execution and supply an immutabl
 snapshot; an archive manifest is not retirement evidence. VM lifecycle control,
 snapshot acquisition and full worker integration remain unfinished. No live
 deployment changed.
+
+## Automatic runtime deployment recovery (2026-09-12)
+
+The runtime runner now reconciles interrupted processing after its activation
+deadline. It never repeats installation or startup. If routing already committed,
+it preserves the active replacement and finishes retiring older reservations. If
+activation did not commit, it publishes the failed revision, permanently fences
+that attempt, retires it and settles the inbox record. The existing active route
+is preserved. Cleanup that cannot prove safe retirement remains pending.
+
+The focused real Linux service check passed initial HTTPS deployment followed by
+a failed replacement, settled failure status and continued HTTPS responses from
+the original website (5.19 seconds). Linux vet and the existing routing retirement
+check passed. The committed-activation cleanup recovery branch has code review and
+compile coverage, but no dedicated crash rehearsal yet. No live nodes changed.
