@@ -12,6 +12,8 @@ import (
 // never a report from customer code. Retired means the operation cannot start or
 // resume, including a delayed create request. Merely not finding a VM is NOT proof.
 type NodeExecutionObservation struct {
+	// ProjectID is required by the remote executor transport to verify scope.
+	ProjectID       string
 	ExecutionID     string
 	SourceSHA256    string
 	ToolchainSHA256 string

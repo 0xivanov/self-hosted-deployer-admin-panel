@@ -188,3 +188,49 @@ this change; the method is not itself evidence of VM isolation or cancellation.
 Tests cover concurrent submissions, intent durability before provider access,
 lost responses across restart, migration of a prepared schema-19 build, missing or
 corrupted bundles/source, revocation, expiry, wrong execution and cancellation.
+
+
+## Assigned build worker and private HTTPS transport
+
+`cmd/node-build-worker` now advances one project's queue: prepare dependencies,
+submit once, observe running execution and retain its validated completed release.
+Run it with `--database PRIVATE_DATABASE --assignment PRIVATE_JSON`. The assignment
+must be a private regular JSON file, at most 16 KiB, containing:
+
+```json
+{
+  "endpoint": "https://builder.internal.example:9443",
+  "project": "PROJECT_ID",
+  "token": "64_LOWERCASE_HEX_CHARACTERS",
+  "ca_file": "/private/build/executor-ca.pem",
+  "toolchain_sha256": "PINNED_TOOLCHAIN_SHA256",
+  "architecture": "arm64",
+  "dependencies_directory": "/private/build/dependencies"
+}
+```
+
+The dependency directory must already exist with mode 0700. Its immutable bundle
+contents must be accessible to the trusted executor through separately configured
+storage. This transport sends the source ZIP and bundle identity, not tarball
+bytes; it does not create a shared filesystem or grant customer access to storage.
+Registry fetching needs the existing network restriction described in
+`node-dependencies.md`. The worker never executes npm or customer scripts locally.
+
+`internal/nodebuildapi.Handler` wraps a project-assigned `NodeBuildExecutor`.
+Mount it only on a private HTTPS management listener with bounded HTTP read/write
+and header timeouts. Configure `ReadHeaderTimeout=5s`, `ReadTimeout=35s`,
+`WriteTimeout=40s` and `MaxHeaderBytes=16384`; do not expose it as public content.
+The handler limits concurrent operations to four. The provider must retain
+immutable execution identities, enforce deduplication/retirement and own VM
+isolation. Its observations must include the assigned `ProjectID` and fresh
+`ObservedAt` values measured during each inspection call.
+
+The API uses raw bounded source and artifact ZIP bodies, validates source plans,
+archive hashes and completed runtime archives, and binds observations to request
+nonces. The client verifies TLS, refuses redirects/proxies, rejects foreign
+project/toolchain/architecture observations and timestamps accepted observations
+locally. Success still requires a retired executor operation and validated output
+in `RetainNodeRelease`; HTTP acceptance does not mark the build succeeded.
+
+The concrete VM executor and its private service still need implementation and
+provisioning. This command and transport alone do not enable customer build VMs.

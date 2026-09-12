@@ -1192,3 +1192,20 @@ The focused HTTP/mail check passed resend delivery, cooldown, generic responses,
 continued validity of the original link, sign-in after verification, no further
 mail to verified users and foreign-Origin rejection. JavaScript syntax and Go vet
 passed. No real email was sent and no live deployment changed.
+
+
+## Runnable build worker and HTTPS executor transport (2026-09-12)
+
+Added the assigned `cmd/node-build-worker` and reviewed the Luna subagent's private
+HTTPS transport. The worker connects queued builds to preparation, one-time
+submission and release collection. Review removed the alternate JSON submission
+path, added strict metadata/plan validation and archive validation, required
+fresh nonce-bound observations and enforced provider project identity.
+
+Focused TLS checks passed source/status/artifact round trips and rejection of
+wrong credentials, excessive deadlines, stale observations, foreign-project
+observations and browser Origin requests. Existing focused build-worker checks,
+worker build and vet passed. These checks use a fixture executor; the concrete VM
+controller, stopped snapshot acquisition and executor service remain unfinished.
+Dependency bundles require separately configured immutable storage accessible to
+the trusted executor. No live deployment or external customer transaction changed.
