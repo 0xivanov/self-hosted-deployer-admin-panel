@@ -146,3 +146,24 @@ Configuration is copied and validates exact IDs, architecture and unique runtime
 assignment per project. Omit an assignment until its workers are configured.
 The UI and API enqueue real work but do not execute customer code in the portal;
 the production runtime receiver and worker loop remain under implementation.
+
+### Deployment worker command
+
+Run a separate trusted worker with `node-deployment-worker --database PATH
+--assignment PATH`. Its private assignment JSON contains `endpoint` (bare HTTPS
+management origin), `project`, `runtime`, `token`, `toolchain_sha256`, `architecture`
+and optional `ca_file`. The assignment must be a private regular file no larger
+than 16 KiB. Secrets and provider response bodies are not logged.
+
+The worker polls every five seconds. It claims queued work, records its dispatch
+intent and submits the archive to the assigned runtime. Running operations are
+only reconciled from fresh status, including after worker restart or a lost reply.
+Acceptance alone does not mark a website live. Unresolved operations remain pending.
+
+`noderuntimeapi.DeploymentHandler` adds POST `/v1/deployments` alongside the existing
+status API on a private TLS listener. It authenticates project/runtime scope,
+validates bounded ZIP bytes and request identity/deadline, and delegates durable
+acceptance to a trusted runtime provider. The listener must configure read/write
+and header timeouts. The provider must implement persistent deduplication and the
+installation/start/routing workflow; that concrete receiver remains unfinished.
+Do not point workers at a status-only runtime and expect requests to execute.

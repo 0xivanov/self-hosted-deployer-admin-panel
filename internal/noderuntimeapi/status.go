@@ -1,6 +1,6 @@
 // Package noderuntimeapi provides project/runtime-bound management transport.
-// It must use a private listener separate from customer content. It exposes no
-// deployment mutations; the observation provider must verify runtime facts.
+// It must use a private listener separate from customer content. Handler exposes no
+// deployment mutations by default; DeploymentHandler adds trusted submission.
 package noderuntimeapi
 
 import (

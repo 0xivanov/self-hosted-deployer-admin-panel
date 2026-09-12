@@ -1059,3 +1059,17 @@ projects, cross-workspace denial, viewer mutation denial and CSRF. Static public
 checks, the customer portal build and frontend syntax checks passed. These controls
 queue real stored operations; execution still needs the concrete runtime receiver
 and build/deployment worker loop. No live deployment changed.
+
+## Node deployment worker and HTTPS submission (2026-09-12)
+
+Added a runnable assigned deployment worker and authenticated runtime submission
+transport. The worker submits queued requests once and reconciles running work
+without resubmitting. The runtime API verifies project/runtime credentials,
+request identity/deadline and bounded archive bytes before provider acceptance.
+
+Focused TLS tests passed successful transfer, wrong runtime, expired submission
+and wrong credential rejection. A connected store/worker test passed accepted-
+but-lost reply recovery without a duplicate submit and verified the active portal
+pointer. Worker build and focused vet checks passed. The durable runtime receiver
+that calls installation/start/routing remains the next missing execution layer.
+No live deployment changed.
