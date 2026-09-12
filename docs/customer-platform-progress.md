@@ -1085,3 +1085,17 @@ Focused tests passed durable accept/claim/reopen, settled-request replay, next
 revision acceptance and invalid scope/deadline/archive/identity rejection. Runtime
 execution and retired archive cleanup remain to be connected to this inbox.
 No live deployment changed.
+
+## Inbox-to-Linux execution connection (2026-09-12)
+
+Added the runner connecting accepted work to reservation, sealed installation,
+start authorization, real systemd startup, readiness and route switching, followed
+by retirement of the old deployment. Added the reusable guarded service-start
+adapter with receipt/archive/account/unit checks. Interrupted work requires
+reconciliation instead of repeated execution.
+
+The new start adapter passed the real ARM64 runtime rehearsal, including restricted
+execution and retirement. A focused HTTP readiness test verified startup waiting
+without changing the existing route. Linux cross-vet/build checks passed for the
+runner. Full runner execution, recovery/status service integration and public
+upload-to-deploy operation remain unfinished. No live deployment changed.

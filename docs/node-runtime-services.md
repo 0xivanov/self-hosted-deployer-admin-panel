@@ -360,3 +360,17 @@ limit, persistent mask and late-start rejection also passed. This is a trusted
 fixture, not a public customer upload/build pipeline or a two-Node rollout test.
 Failures retain pool occupancy and must be reconciled before another run; never
 reset this pool while its old services or delayed control requests may exist.
+
+### Starting an installed service
+
+`ControlGate.StartInstalledSystemd` requires the exact pool start claim and receipt,
+re-verifies the sealed archive on disk inside the gate, checks that the dedicated
+account has no supplementary groups, publishes or verifies the generated unit,
+and performs a bounded reload/start. Conflicting unit files are never overwritten.
+The toolchain and exclusive runtime allocation remain operator-provisioned.
+Any uncertain result keeps the existing start attempt consumed for reconciliation.
+
+The real ARM64 rehearsal used this start method for operation
+`53cdc8f04e87431ea31ad13a2b33c23e6e82a1cac8ba4beda88311599deac369` on 2026-09-12.
+Runtime restrictions, startup, crash recovery, route replacement, verified
+retirement and old-operation retry checks passed.

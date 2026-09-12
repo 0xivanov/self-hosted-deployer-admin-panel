@@ -183,3 +183,18 @@ trusted bookkeeping after verified activation or retirement, not proof of either
 It retains archives and identity records. The runtime execution loop and retired
 archive retention/cleanup remain to be connected; the inbox alone does not run
 customer code or mark portal deployments live.
+
+### Linux execution connection
+
+`noderuntime.Runner.ProcessNext` now connects a fresh inbox claim to the durable
+slot pool, sealed installation/receipt, start claim, guarded systemd start,
+readiness wait and final route activation. After switching it retires the previous
+route through the verified retirement path before settling inbox work. An expired
+request is retired instead of activated. The operator must provide the assigned
+router, verified toolchain, reserved accounts and private runtime storage.
+
+Interrupted processing returns `ErrReconciliation` rather than reissuing starts.
+Recovery of those runs, a complete runtime status provider and the long-running
+runtime service command remain. The new systemd start path was exercised with a
+real Node fixture; the full inbox runner has cross-build/vet evidence but has not
+yet been exercised as a public upload-to-deploy service.

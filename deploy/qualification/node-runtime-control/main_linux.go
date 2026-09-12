@@ -4,12 +4,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/nodeartifact"
+	"io"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -23,11 +23,11 @@ func main() {
 	}
 }
 func run() error {
-	if os.Geteuid() != 0 || len(os.Args) != 5 {
+	if os.Geteuid() != 0 || (len(os.Args) != 5 && len(os.Args) != 6) {
 		return fmt.Errorf("guest root usage: node-runtime-control start|retire|retire-routed|status|usage OPERATION SHA256 RELEASE_DIRECTORY")
 	}
 	a := nodelaunch.Assignment{UID: 60000, Port: 31877, OperationID: os.Args[2], ProjectID: strings.Repeat("8", 64), RuntimeID: strings.Repeat("7", 64), ArtifactSHA256: os.Args[3], ToolchainSHA256: "5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7", Architecture: "arm64", ReleaseDirectory: os.Args[4]}
-	unit, err := nodelaunch.Render(a)
+	_, err := nodelaunch.Render(a)
 	if err != nil {
 		return err
 	}
@@ -42,11 +42,7 @@ func run() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	command := func(verb string) error {
-		cmd := exec.CommandContext(ctx, "/usr/bin/systemctl", verb, unit.Name)
-		cmd.Env = []string{"PATH=/usr/bin:/bin"}
-		return cmd.Run()
-	}
+
 	switch os.Args[1] {
 	case "usage":
 		usage, err := nodelaunch.InspectRuntimeUsage(ctx, a)
@@ -78,16 +74,25 @@ func run() error {
 		if claimed.Assignment != a {
 			return fmt.Errorf("fixture start claim mismatch")
 		}
-		return gate.Start(ctx, a, func(context.Context, nodelaunch.Assignment) error {
-			actual, err := os.ReadFile("/run/systemd/system/" + unit.Name)
-			if err != nil {
-				return err
-			}
-			if !bytes.Equal(actual, []byte(unit.Unit)) {
-				return fmt.Errorf("fixture unit does not match assignment")
-			}
-			return command("start")
-		})
+		if len(os.Args) != 6 {
+			return fmt.Errorf("start requires the verified archive path")
+		}
+		file, err := os.Open(os.Args[5])
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		archive, err := io.ReadAll(io.LimitReader(file, nodeartifact.MaxCompressed+1))
+		if err != nil {
+			return err
+		}
+		releases, err := os.OpenRoot("/opt/deployer-node/releases")
+		if err != nil {
+			return err
+		}
+		defer releases.Close()
+		return gate.StartInstalledSystemd(ctx, pool, a, archive, releases)
+
 	case "retire":
 		_, err := gate.RetireSystemd(ctx, a)
 		return err

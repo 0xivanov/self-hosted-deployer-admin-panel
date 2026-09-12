@@ -84,3 +84,13 @@ func (r *Router) BackendPort(c Candidate) (int, error) {
 	}
 	return strconv.Atoi(r.backends[c.Backend].Port())
 }
+
+// BackendForPort resolves an operator-pinned slot without accepting a customer URL.
+func (r *Router) BackendForPort(port int) (string, error) {
+	for name, target := range r.backends {
+		if target.Port() == strconv.Itoa(port) {
+			return name, nil
+		}
+	}
+	return "", ErrInvalid
+}
