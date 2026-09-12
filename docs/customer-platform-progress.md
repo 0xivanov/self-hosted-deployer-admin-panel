@@ -1209,3 +1209,19 @@ worker build and vet passed. These checks use a fixture executor; the concrete V
 controller, stopped snapshot acquisition and executor service remain unfinished.
 Dependency bundles require separately configured immutable storage accessible to
 the trusted executor. No live deployment or external customer transaction changed.
+
+
+## Networkless Mac VM lifecycle primitive (2026-09-12)
+
+Added an Apple Virtualization launcher for a dedicated private disk/EFI copy,
+with no VM network interfaces, host shares, sockets or guest-agent channels. It
+persists a one-shot execution attempt before start, records framework startup,
+forces stop at the deadline or operator signal, and records only confirmed stop.
+The calling controller must permanently map each execution to its own directory.
+
+The actual Mac rehearsal started a private clone of the stopped Linux lab and
+stopped it 0.012 seconds after the 15-second deadline. Reusing its execution
+records was rejected. Swift compilation and entitlement signing passed. This is
+VM lifecycle evidence, not customer build success. Builder image preparation,
+payload/output channels and durable executor integration remain unfinished.
+The VPS/Pis and the original lab disks were unchanged.
