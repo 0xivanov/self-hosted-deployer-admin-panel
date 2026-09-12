@@ -1145,3 +1145,20 @@ file in the disposable ARM64 Linux VM as UID 60000, with a private network,
 NoNewPrivileges and memory/task/time limits. The focused check took 0.76 seconds.
 Linux build/vet passed. VM lifecycle orchestration, stopped-volume export and the
 complete customer build-worker command remain unfinished. No live nodes changed.
+
+## Build output archive exporter (2026-09-12)
+
+Added `nodeartifact.Export` and `cmd/node-artifact-export` to package an immutable
+stopped-build snapshot into a validated runtime ZIP. Traversal, file sizes, total
+expanded bytes and compressed output are bounded. It preserves owner executable
+bits and valid internal file links, rejects unsupported paths/types, and reuses
+the runtime archive validator before returning bytes. ZIP output is reproducible.
+The command creates a new private archive without overwriting an existing file,
+syncs it and its directory, then emits its manifest.
+
+Focused checks passed valid build export, repeatability, executable/link retention
+and rejection of escaping/dangling links, secret files and oversized output.
+Build/vet passed. The caller must stop customer execution and supply an immutable
+snapshot; an archive manifest is not retirement evidence. VM lifecycle control,
+snapshot acquisition and full worker integration remain unfinished. No live
+deployment changed.
