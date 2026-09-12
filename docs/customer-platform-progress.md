@@ -1112,3 +1112,17 @@ observed automatic installation/start and healthy settled status, then fetched t
 live website over HTTPS. It passed in 1.82 seconds and cleaned up its service.
 Linux build/vet passed. Interrupted-run recovery, source-build execution and full
 customer portal integration remain unfinished. No live deployment changed.
+
+## Connected Node build worker step (2026-09-12)
+
+Added `Store.WorkNodeBuild` to connect assigned queue claims, dependency fetching,
+durable one-time submission, execution observation and retained release creation.
+Repeated worker calls collect the existing execution instead of resubmitting it.
+Expired preparation with no dispatch intent now fails atomically, allowing a new
+customer build request while preventing the old worker from dispatching it.
+
+Focused integration checks passed normal release collection, accepted-but-lost
+reply recovery without another submission/download, and expired preparation
+recovery without interrupting a live lease. Vet passed. These tests use a fixture
+executor; the concrete isolated VM executor and runnable build-worker command
+remain unfinished. No live deployment changed.
