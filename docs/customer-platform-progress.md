@@ -1126,3 +1126,22 @@ reply recovery without another submission/download, and expired preparation
 recovery without interrupting a live lease. Vet passed. These tests use a fixture
 executor; the concrete isolated VM executor and runnable build-worker command
 remain unfinished. No live deployment changed.
+
+## Offline guest build stage (2026-09-12)
+
+Added Linux-only `cmd/node-build-guest` and `nodebuild.RunGuest`. The stage
+revalidates the uploaded source and allowed plan, verifies every dependency and
+its lockfile binding, extracts fresh source, imports a fresh offline npm cache,
+then runs install/build/prune with a clean environment, bounded logs and deadline.
+It refuses root execution and visible external network interfaces.
+
+The controller must supply a dedicated isolated VM, pinned immutable toolchain,
+private storage, an exclusive user and resource limits. Guest output is untrusted;
+successful npm exit is not execution retirement evidence. The controller must stop
+the whole VM before independently inspecting and exporting its output volume.
+
+A synthetic project passed install/build/prune and produced the expected build
+file in the disposable ARM64 Linux VM as UID 60000, with a private network,
+NoNewPrivileges and memory/task/time limits. The focused check took 0.76 seconds.
+Linux build/vet passed. VM lifecycle orchestration, stopped-volume export and the
+complete customer build-worker command remain unfinished. No live nodes changed.
