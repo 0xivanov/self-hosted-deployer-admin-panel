@@ -1,6 +1,6 @@
 # Customer platform implementation progress
 
-Updated: 2026-09-11. The four-part goal remains active and incomplete. No customer-platform code has been deployed to the live VPS/Pi environment.
+Updated: 2026-09-12. The four-part goal remains active and incomplete. Delivery prioritizes usable features with focused checks, as reaffirmed by the user. No customer-platform code has been deployed to the live VPS/Pi environment.
 
 ## Implemented and verified
 
@@ -1099,3 +1099,16 @@ execution and retirement. A focused HTTP readiness test verified startup waiting
 without changing the existing route. Linux cross-vet/build checks passed for the
 runner. Full runner execution, recovery/status service integration and public
 upload-to-deploy operation remain unfinished. No live deployment changed.
+
+## Runnable Node runtime service (2026-09-12)
+
+Added `cmd/node-runtime`: private authenticated deployment/status HTTPS, separate
+public content HTTPS and continuous inbox polling. Fresh status checks the exact
+request/reservation, service/control state, installed archive and backend health.
+The service uses existing provisioning and does not alter the legacy fleet.
+
+One focused real Linux test submitted a synthetic Node archive through HTTPS,
+observed automatic installation/start and healthy settled status, then fetched the
+live website over HTTPS. It passed in 1.82 seconds and cleaned up its service.
+Linux build/vet passed. Interrupted-run recovery, source-build execution and full
+customer portal integration remain unfinished. No live deployment changed.

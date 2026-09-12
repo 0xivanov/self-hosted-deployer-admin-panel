@@ -1,6 +1,6 @@
 # Customer accounts, project hosting, payments, and domain resale
 
-Date: 2026-09-09. Status: proposed implementation plan. No production changes, purchases, or charges are authorized by this document alone.
+Updated: 2026-09-12. Status: active implementation plan. No production changes, purchases, or charges are authorized by this document alone.
 
 ## Active project goal
 
@@ -22,6 +22,21 @@ isolation, payments and deployment safety. Defer broad failure simulations,
 repeated regression runs and additional qualification scaffolding until the
 feature flows are usable. Preserve existing deployments and the full goal;
 production qualification still belongs at the release stage.
+
+### Resumed delivery order, 2026-09-12
+
+The user reaffirmed feature-first delivery. Finish and commit the runnable Node
+runtime service, then connect the source-build worker to the existing upload,
+build queue and retained releases. Complete the customer upload-to-live-site flow,
+including actionable failures, deployment recovery, logs and restore controls.
+Next finish hosting entitlement enforcement, merchant checkout/onboarding and
+domain purchasing/renewal flows. Provider-dependent work should use sandbox
+adapters until account setup is available; keep moving on independent features.
+
+Use one focused verification pass per changed flow, with extra checks only for a
+failure, a new change or unresolved tenant/payment/deployment risk. Do not make
+broad qualification a prerequisite for implementing the next feature. Keep final
+release qualification as the completion gate for public production readiness.
 
 ## Agreed product scope
 

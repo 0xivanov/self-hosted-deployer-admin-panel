@@ -198,3 +198,48 @@ Recovery of those runs, a complete runtime status provider and the long-running
 runtime service command remain. The new systemd start path was exercised with a
 real Node fixture; the full inbox runner has cross-build/vet evidence but has not
 yet been exercised as a public upload-to-deploy service.
+
+### Running the Node runtime service
+
+Build `cmd/node-runtime` for the assigned Linux architecture and run
+`node-runtime --config /private/runtime.json` as the dedicated host's root
+controller. It exposes separate TLS content and management listeners and polls
+the inbox. Management binding is restricted to loopback or private addresses;
+place the deployment worker where it can reach that private listener. Customer
+content never receives the management token.
+
+Example private configuration (replace all identifiers and paths):
+
+```json
+{
+  "assignment": {
+    "ProjectID": "PROJECT_ID_64_HEX",
+    "RuntimeID": "RUNTIME_ID_64_HEX",
+    "ToolchainSHA256": "VERIFIED_TOOLCHAIN_64_HEX",
+    "Architecture": "arm64"
+  },
+  "state_directory": "/var/lib/deployer-node/project-runtime",
+  "slots": [{"UID": 60000, "Port": 31877}, {"UID": 60001, "Port": 31878}],
+  "content_host": "site.example.com",
+  "content_listen": "0.0.0.0:443",
+  "content_certificate": "/private/content.crt",
+  "content_key": "/private/content.key",
+  "health_path": "/health",
+  "management_host": "runtime.internal.example:9443",
+  "management_listen": "10.0.0.2:9443",
+  "management_certificate": "/private/management.crt",
+  "management_key": "/private/management.key",
+  "management_token": "RANDOM_MANAGEMENT_TOKEN_64_HEX"
+}
+```
+
+The configuration must be a private regular file. State is root-owned mode 0700.
+Toolchains, accounts, release storage and TLS certificates must already be
+provisioned; the service does not purchase infrastructure or bootstrap them.
+
+Fresh status combines the exact inbox request, reservation, control gate,
+systemd state, sealed archive verification and health probing. Route changes
+during observation invalidate the result. Acceptance is never reported as healthy.
+The focused Linux service test passed archive submission, automatic install/start,
+healthy settled status and HTTPS content retrieval. This verifies the prebuilt
+release-to-website path; source-build execution and interrupted-run recovery remain.
