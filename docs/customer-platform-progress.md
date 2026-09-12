@@ -1073,3 +1073,15 @@ but-lost reply recovery without a duplicate submit and verified the active porta
 pointer. Worker build and focused vet checks passed. The durable runtime receiver
 that calls installation/start/routing remains the next missing execution layer.
 No live deployment changed.
+
+## Durable runtime deployment acceptance (2026-09-12)
+
+Added the concrete runtime inbox submission provider. It persists validated
+archive bytes and immutable operation metadata before acceptance, pins project,
+runtime, architecture and toolchain, and prevents replays from launching twice.
+Processing work survives restart for reconciliation rather than being reclaimed.
+
+Focused tests passed durable accept/claim/reopen, settled-request replay, next
+revision acceptance and invalid scope/deadline/archive/identity rejection. Runtime
+execution and retired archive cleanup remain to be connected to this inbox.
+No live deployment changed.

@@ -167,3 +167,19 @@ acceptance to a trusted runtime provider. The listener must configure read/write
 and header timeouts. The provider must implement persistent deduplication and the
 installation/start/routing workflow; that concrete receiver remains unfinished.
 Do not point workers at a status-only runtime and expect requests to execute.
+
+### Runtime acceptance inbox
+
+`internal/noderuntime.Inbox` implements the submission provider with a private
+SQLite database pinned to one project's runtime, toolchain and architecture.
+Accepted ZIP bytes and immutable metadata commit before acknowledgment. Exact
+replays do not create another launch; conflicting identities, expired new work,
+wrong assignments and stale revisions are rejected. The inbox bounds stored work
+to 1,000 records and 200 MiB of archive data.
+
+A request can be claimed once. Processing work remains discoverable after restart
+and blocks another claim until runtime reconciliation settles it. `Settle` is
+trusted bookkeeping after verified activation or retirement, not proof of either.
+It retains archives and identity records. The runtime execution loop and retired
+archive retention/cleanup remain to be connected; the inbox alone does not run
+customer code or mark portal deployments live.
