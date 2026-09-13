@@ -1,0 +1,13 @@
+[Unit]
+Description=Synthetic Node VM disk channel fixture
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/node-disk-channel-probe.py
+TimeoutStartSec=20
+StandardOutput=append:/dev/hvc0
+StandardError=append:/dev/hvc0
+
+[Install]
+WantedBy=multi-user.target

@@ -1225,3 +1225,18 @@ records was rejected. Swift compilation and entitlement signing passed. This is
 VM lifecycle evidence, not customer build success. Builder image preparation,
 payload/output channels and durable executor integration remain unfinished.
 The VPS/Pis and the original lab disks were unchanged.
+
+
+## Networkless VM input/output disks (2026-09-13)
+
+Added optional build disks to the Mac VM launcher: a read-only input ISO up to
+128 MiB and writable output disk from 64 to 512 MiB, with stable device IDs and
+private-file validation. Guest console capture is output-only and capped at 1 MiB.
+No host folders or network devices are exposed.
+
+The focused actual guest check passed in 5.006 seconds. The guest read the input,
+received rejection for an actual write attempt, wrote an output marker and powered
+off. The host verified stopped state, unchanged input SHA-256 and persisted output.
+Swift compilation/signing passed. The lab is stopped. Customer build boot jobs,
+immutable output snapshot/export and durable executor integration remain unfinished.
+Only disposable lab/template files changed; no live hosting node changed.

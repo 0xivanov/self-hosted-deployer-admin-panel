@@ -7,6 +7,37 @@ import Darwin
 struct LauncherError: Error { let message: String }
 func fail(_ message: String) -> LauncherError { LauncherError(message: message) }
 
+// Guest console bytes are untrusted diagnostics, never controller instructions
+// or build evidence. Drain continuously but retain at most one MiB on the host.
+final class ConsoleCapture {
+    let pipe = Pipe()
+    let fd: Int32
+    let lock = NSLock()
+    var remaining = 1024 * 1024
+    init(directory: String) throws {
+        fd = open(directory + "/console.log", O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { throw fail("Private console log unavailable") }
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard let self = self, !data.isEmpty else { return }
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            let kept = data.prefix(self.remaining)
+            kept.withUnsafeBytes { bytes in
+                var offset = 0
+                while offset < bytes.count {
+                    let n = Darwin.write(self.fd, bytes.baseAddress!.advanced(by: offset), bytes.count - offset)
+                    if n < 0 && errno == EINTR { continue }
+                    if n <= 0 { self.remaining = 0; return }
+                    offset += n
+                    self.remaining -= n
+                }
+            }
+        }
+    }
+    deinit { pipe.fileHandleForReading.readabilityHandler = nil; close(fd) }
+}
+
 func checkedPath(_ path: String, directory: Bool) throws {
     var info = stat()
     guard lstat(path, &info) == 0,
@@ -43,15 +74,19 @@ final class Launcher: NSObject, VZVirtualMachineDelegate {
     let directory: String
     let operation: String
     let deadline: Date
+    let buildDisks: Bool
+    let console: ConsoleCapture?
     var timer: DispatchSourceTimer?
     var signals: [DispatchSourceSignal] = []
     var stopping = false
     var stopRequested = false
     var finished = false
 
-    init(directory: String, operation: String, seconds: Int) throws {
+    init(directory: String, operation: String, seconds: Int, buildDisks: Bool) throws {
         self.directory = directory
         self.operation = operation
+        self.buildDisks = buildDisks
+        console = buildDisks ? try ConsoleCapture(directory: directory) : nil
         deadline = Date().addingTimeInterval(Double(seconds))
         let configuration = VZVirtualMachineConfiguration()
         configuration.platform = VZGenericPlatformConfiguration()
@@ -64,12 +99,31 @@ final class Launcher: NSObject, VZVirtualMachineDelegate {
             url: URL(fileURLWithPath: directory + "/disk"), readOnly: false,
             cachingMode: .uncached, synchronizationMode: .full)
         configuration.storageDevices = [VZVirtioBlockDeviceConfiguration(attachment: disk)]
+        if buildDisks {
+            // Stable IDs avoid depending on asynchronous Linux device discovery.
+            let input = try VZDiskImageStorageDeviceAttachment(
+                url: URL(fileURLWithPath: directory + "/input.iso"), readOnly: true)
+            let output = try VZDiskImageStorageDeviceAttachment(
+                url: URL(fileURLWithPath: directory + "/output.disk"), readOnly: false,
+                cachingMode: .uncached, synchronizationMode: .full)
+            let inputDevice = VZVirtioBlockDeviceConfiguration(attachment: input)
+            inputDevice.blockDeviceIdentifier = "deployer-input"
+            let outputDevice = VZVirtioBlockDeviceConfiguration(attachment: output)
+            outputDevice.blockDeviceIdentifier = "deployer-output"
+            configuration.storageDevices.append(inputDevice)
+            configuration.storageDevices.append(outputDevice)
+        }
         configuration.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
         // No NAT, host network, sockets, shared folders, clipboard or guest agent.
         configuration.networkDevices = []
         configuration.directorySharingDevices = []
         configuration.socketDevices = []
         configuration.serialPorts = []
+        if let console = console {
+            let serial = VZVirtioConsoleDeviceSerialPortConfiguration()
+            serial.attachment = VZFileHandleSerialPortAttachment(fileHandleForReading: nil, fileHandleForWriting: console.pipe.fileHandleForWriting)
+            configuration.serialPorts = [serial]
+        }
         try configuration.validate()
         vm = VZVirtualMachine(configuration: configuration)
         super.init()
@@ -77,7 +131,7 @@ final class Launcher: NSObject, VZVirtualMachineDelegate {
     }
 
     func start() throws {
-        try record(directory, "attempt.json", ["operation": operation, "deadline": deadline.timeIntervalSince1970])
+        try record(directory, "attempt.json", ["operation": operation, "deadline": deadline.timeIntervalSince1970, "build_disks": buildDisks])
         for number in [SIGINT, SIGTERM] {
             signal(number, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
@@ -96,7 +150,7 @@ final class Launcher: NSObject, VZVirtualMachineDelegate {
                 terminate("VM start failed; preserve its operation records")
             case .success:
                 do {
-                    try record(directory, "running.json", ["operation": operation, "observed_at": Date().timeIntervalSince1970, "network_devices": 0])
+                    try record(directory, "running.json", ["operation": operation, "observed_at": Date().timeIntervalSince1970, "network_devices": 0, "storage_devices": buildDisks ? 3 : 1])
                 } catch {
                     stopRequested = true
                 }
@@ -143,7 +197,7 @@ func terminate(_ message: String) -> Never {
 }
 
 do {
-    guard CommandLine.arguments.count == 4 else { throw fail("usage: node-vm-macos PRIVATE_OPERATION_DIRECTORY EXECUTION_ID SECONDS") }
+    guard CommandLine.arguments.count == 4 || (CommandLine.arguments.count == 5 && CommandLine.arguments[4] == "--build-disks") else { throw fail("usage: node-vm-macos PRIVATE_OPERATION_DIRECTORY EXECUTION_ID SECONDS [--build-disks]") }
     let directory = CommandLine.arguments[1]
     let operation = CommandLine.arguments[2]
     guard let resolved = realpath(directory, nil) else { throw fail("Operation directory unavailable") }
@@ -154,7 +208,17 @@ do {
     try checkedPath(directory, directory: true)
     try checkedPath(directory + "/disk", directory: false)
     try checkedPath(directory + "/efi", directory: false)
-    let launcher = try Launcher(directory: directory, operation: operation, seconds: seconds)
+    let buildDisks = CommandLine.arguments.count == 5
+    if buildDisks {
+        for (name, minimum, maximum) in [("input.iso", Int64(2048), Int64(128 * 1024 * 1024)), ("output.disk", Int64(64 * 1024 * 1024), Int64(512 * 1024 * 1024))] {
+            try checkedPath(directory + "/" + name, directory: false)
+            var info = stat()
+            guard lstat(directory + "/" + name, &info) == 0,
+                  info.st_size >= minimum, info.st_size <= maximum,
+                  info.st_size % 512 == 0 else { throw fail("Invalid build disk size") }
+        }
+    }
+    let launcher = try Launcher(directory: directory, operation: operation, seconds: seconds, buildDisks: buildDisks)
     try launcher.start()
     withExtendedLifetime(launcher) { RunLoop.main.run() }
 } catch {
