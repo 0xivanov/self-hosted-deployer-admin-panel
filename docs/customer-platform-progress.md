@@ -1,6 +1,6 @@
 # Customer platform implementation progress
 
-Updated: 2026-09-12. The four-part goal remains active and incomplete. Delivery prioritizes usable features with focused checks, as reaffirmed by the user. No customer-platform code has been deployed to the live VPS/Pi environment.
+Updated: 2026-09-13. The four-part goal remains active and incomplete. Delivery prioritizes usable features with focused checks, as reaffirmed by the user. No customer-platform code has been deployed to the live VPS/Pi environment.
 
 ## Implemented and verified
 
@@ -1240,3 +1240,26 @@ off. The host verified stopped state, unchanged input SHA-256 and persisted outp
 Swift compilation/signing passed. The lab is stopped. Customer build boot jobs,
 immutable output snapshot/export and durable executor integration remain unfinished.
 Only disposable lab/template files changed; no live hosting node changed.
+
+
+## Automatic offline VM build boot job (2026-09-13)
+
+Added a trusted guest boot job that reads a bounded UDF input disk, copies the
+source and verified dependency bundle into private guest storage, and runs the
+existing offline Node builder as UID/GID 60000. The transient service has no
+network, a read-only system and input tree, bounded memory/tasks/CPU, private
+temporary storage and a deadline. It writes candidate metadata and capped logs
+to the size-limited ext4 output disk, then requests poweroff.
+
+A focused actual Mac VM rehearsal of a dependency-free synthetic Node project
+reported successful npm install/build/prune. The host independently recorded zero
+network devices and confirmed VM stop about 37.3 seconds after startup. A cleanup
+issue was fixed: systemd may already have collected the completed transient unit.
+Python compilation and diff checks passed. The disposable lab is stopped; live
+VPS and Pi deployments were not changed.
+
+This confirms the automatic guest execution stage only. The guest success record
+is untrusted, and the resulting ext4 output has not been mounted or independently
+exported on the Mac. Still required: immutable stopped-output acquisition and
+isolated export, reproducible builder image provisioning, controller staging and
+durable executor integration. No customer release was retained or activated.

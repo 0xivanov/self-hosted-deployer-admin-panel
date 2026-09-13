@@ -1,0 +1,13 @@
+[Unit]
+Description=Deployer isolated Node build boot job
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/deployer-build/guest-build.py
+TimeoutStartSec=90
+StandardOutput=append:/dev/hvc0
+StandardError=append:/dev/hvc0
+
+[Install]
+WantedBy=multi-user.target

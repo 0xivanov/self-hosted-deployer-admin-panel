@@ -36,10 +36,10 @@ Linux lab's disk and EFI store. The VM started, ran with zero configured network
 devices and stopped 0.012 seconds after its 15-second deadline. A repeat invocation
 was rejected by the persistent attempt record. No live hosting node changed.
 
-Still required: a trusted builder image/boot job, payload staging, immutable output
-snapshot acquisition, safe artifact export and integration with the durable
-executor provider. The optional disk channels described below still need a production guest boot
-job and executor integration; this is not yet a complete `NodeBuildExecutor`.
+Still required: reproducible trusted image provisioning, controller payload staging,
+immutable output snapshot acquisition, safe artifact export and integration with
+the durable executor provider. The boot job below implements guest execution;
+this is not yet a complete `NodeBuildExecutor`.
 
 
 ## Build disk channels
@@ -50,7 +50,7 @@ private owned regular files with one hard link, and sizes divisible by 512.
 The launcher attaches the input read-only and output read/write. Use stable device
 IDs rather than assuming Linux disk-letter order:
 
-- `/dev/disk/by-id/virtio-deployer-input`: read-only build input ISO.
+- `/dev/disk/by-id/virtio-deployer-input`: read-only build input filesystem image.
 - `/dev/disk/by-id/virtio-deployer-output`: size-limited build output disk.
 
 The first configured disk is the disposable operating-system image. In build-disk
@@ -77,3 +77,41 @@ reject an actual block-device write, write the expected output marker and power
 off. The host then confirmed the VM was stopped, the input SHA-256 was unchanged
 and the output marker persisted. An open-for-writing check alone was insufficient
 on Linux, so the fixture now tests the actual write operation.
+
+## Automatic guest build job
+
+Provision `guest-build.py` at `/opt/deployer-build/guest-build.py` (root-owned 0644),
+`guest-build.service` in `/etc/systemd/system/` and enable the service in a trusted
+Linux template. Install the Linux `node-build-guest` binary at
+`/opt/deployer-build/node-build-guest` (root-owned 0755). The template needs Python 3,
+systemd, UDF support, e2fsprogs, a dedicated UID/GID 60000 with no extra groups,
+and the pinned Node toolchain under `/opt/deployer-node/toolchains/<SHA256>/bin`.
+Do not provision credentials into the template. Stop it before cloning.
+
+The job skips normal template boots without the `DEPLOYER_BUILD` input label.
+Build input uses **UDF**, despite the transport filename `input.iso`, to preserve
+long dependency bundle and tarball names. The input root contains `source.zip`,
+the verified `dependencies-<digest>` directory and `request.json`. The request
+contains exactly `ExecutionID`, `Plan`, `ToolchainSHA256`, `Bundle`, and `NotAfter`
+(a Unix deadline at most 60 seconds ahead). Plan and Bundle use the existing Go
+guest helper JSON formats. No request-supplied filesystem paths are accepted.
+
+The job validates device access flags and output capacity, rejects output disks
+with existing filesystem signatures, privately copies bounded regular input files,
+and formats the blank output as ext4. It runs the existing offline Go builder
+under the dedicated user, with no network, a read-only system/input tree, private
+temporary storage, 512 MiB memory, 128 tasks, one CPU worth of time and a deadline.
+A fresh `/var/lib/deployer-build` is required, preventing reuse of a used OS image.
+
+Output contains `work/`, private capped `build.log` and `result.json` identifying
+the execution and candidate source tree. The job requests shutdown on success or
+failure. A completed transient service may already have been collected by systemd;
+this does not replace host-confirmed VM retirement. Logs and result records remain
+untrusted. Only after the host confirms stop may a separate isolated exporter
+inspect an immutable output snapshot and validate a release archive. Never mount
+the output in the Mac host kernel or publish a release based on console text.
+
+The September 13 synthetic Node build reported success using these disk inputs
+and boot job. The host confirmed zero network devices and VM stop roughly 37.3
+seconds after startup. This was a dependency-free project; output artifact content
+was not independently exported or activated. The disposable template is stopped.
