@@ -1530,3 +1530,26 @@ workspace bindings, owner panel, work scheduling, Connect webhooks, sales and
 refunds remain required, followed by actual Stripe sandbox qualification.
 See `docs/merchant-payments.md` for the configuration and integration sequence.
 No provider account, transaction, live database migration or deployment occurred.
+
+## Durable merchant workspace bindings (2026-09-14)
+
+Schema 25 now persists an owner-authorized country and account-request identity
+per workspace. Dispatch checks current initiating-owner authority and commits the
+submitted state before the provider call. A timeout, lost reply or process restart
+cannot silently trigger another creation. Trusted reconciliation validates the
+candidate account ID, country, request metadata and observation freshness before
+binding; one provider account cannot be shared or replaced across workspaces.
+Private request/account/snapshot fields are omitted from customer JSON.
+
+Focused checks passed for duplicate requests, concurrent dispatch, lost replies,
+restart persistence, reconciliation, incorrect candidate identity/country/request
+and stale observations, tenant/developer denial, revoked-owner dispatch and
+cross-workspace account reuse. Existing migration checks passed after their
+synthetic old-schema fixtures were updated to omit the new table. Scoped vet and
+diff checks passed. No live database or deployment changed.
+
+This adds the durable store/coordinator, not the finished merchant panel. Worker
+scheduling, onboarding-link authorization, capability refresh, owner controls,
+sales/refunds and Stripe sandbox qualification remain required. Schema rollback
+requires a consistent pre-upgrade backup rather than opening the new database
+with an older binary. See `docs/merchant-payments.md` for recovery semantics.

@@ -57,6 +57,34 @@ Recheck account capabilities and current permissions before customer checkout.
    onboarding, payments, refunds and disputes in Stripe's sandbox. Obtain approval
    for any real charges and live account configuration.
 
+## Durable account requests implemented
+
+Schema 25 adds a merchant account table separate from hosting customers. An owner
+can persist one immutable country/request per workspace. Repeating that request
+returns its original identity; changing country does not create a second account.
+Dispatch rechecks that the initiating user is still an enabled, verified owner,
+then commits `submitted` before contacting the provider. Each intent can submit
+account creation once. No automatic create retry follows a timeout or lost reply.
+
+Successful provider responses bind a unique account to the exact request and
+country. Unknown outcomes can be reconciled using a trusted provider lookup of a
+candidate account, validating its ID, original metadata and fresh observation.
+The caller must obtain that candidate from provider/operator evidence; arbitrary
+browser-supplied account IDs must not reach this method. Binding does not require
+the old actor to retain access after the external request, because recording its
+result avoids losing a created account. All customer reads still require a
+current owner, and private request/account/snapshot fields are excluded from JSON.
+
+An interrupted request before provider submission may still remain `submitted`.
+This deliberately requires operator investigation rather than assuming no account
+was created. Bound reconciliation currently returns the saved mapping; periodic
+capability observation is a separate remaining step. The store methods are not
+yet exposed by the portal or a running merchant worker.
+
+Schema 25 was tested only with disposable databases. Older binaries reject the
+newer schema. A future rollout needs a consistent pre-upgrade database backup for
+rollback; no live database was migrated.
+
 ## Sources checked 2026-09-14
 
 - [Controller properties and responsibility configuration](https://docs.stripe.com/connect/migrate-to-controller-properties)
