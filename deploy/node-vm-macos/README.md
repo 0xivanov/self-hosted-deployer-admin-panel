@@ -165,3 +165,55 @@ validates the ZIP and digest before exclusively creating the private archive.
 It does not infer VM retirement, resolve tenant ownership, or authorize release
 retention. The durable controller must supply identities from its own assignment,
 not copy them from the returned header, and must enforce both VM stop gates.
+
+## One-shot portal build command
+
+`cmd/node-build-local` connects one queued portal build to both VM stages and
+retains the validated release in the portal. It is an operator command for a
+private Mac lab, not a public build service. No customer code runs on macOS.
+
+Its private pipeline configuration contains absolute paths:
+
+```json
+{
+  "TemplateDirectory": "/private/path/stopped-template",
+  "DependenciesDirectory": "/private/path/dependencies",
+  "Launcher": "/private/path/node-vm-macos",
+  "Importer": "/private/path/node-artifact-import"
+}
+```
+
+Use 0700 directories, 0600 data/configuration and 0700 executables. The template
+contains private `disk` and `efi` copies prepared with both guest boot jobs and
+binaries. The operator must stop the template before copying and prevent writers
+while it is used. The pipeline uses APFS copy-on-write clones; it fails if cloning
+is unavailable. Keep all these paths inaccessible to customer processes.
+
+```sh
+go run ./cmd/node-build-local \
+  --database /private/path/portal.db \
+  --project PROJECT_ID --toolchain TOOLCHAIN_SHA256 \
+  --pipeline-config /private/path/pipeline.json \
+  --pipeline-script /absolute/repo/deploy/node-vm-macos/run-pipeline.py \
+  --executions-directory /private/path/executions
+```
+
+The command prepares dependencies, commits dispatch intent and stages the request
+and source under `executions/EXECUTION_ID`. The pipeline exclusively locks that
+directory, records a permanent one-shot attempt, runs build/export in separate
+fresh VMs, and invokes the raw archive importer. It preserves the builder's
+original deadline; export has its own short deadline and executes no build scripts.
+Only after both confirmed stops and archive validation does it save `result.json`.
+
+`internal/nodepipeline.Reader` excludes an active pipeline using the same directory
+lock. It verifies the saved request, controller result, VM identities/modes/stop
+receipts, source/dependency identities, raw export frame and retained ZIP. The
+portal then applies its existing build, permission, storage and release checks.
+Guest console text never authorizes retention.
+
+Use the same command with `--resume EXECUTION_ID` to retain an already completed
+pipeline after a lost response or portal write interruption. Resume never runs a
+VM or repeats dispatch. Missing/incomplete evidence requires reconciliation; keep
+all records and disks. The command does not automatically recover interrupted
+staging or execution, continuously process a queue, activate the website, or serve
+the remote executor API. Those integrations remain separate work.

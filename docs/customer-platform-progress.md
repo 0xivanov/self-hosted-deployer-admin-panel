@@ -1291,3 +1291,42 @@ Wrong identities, truncated content, invalid padding, unknown header fields,
 invalid disk sizes, changed archive bytes and an escaping ZIP path were rejected.
 Private stopped OS/EFI copies were removed; snapshots, receipts and the synthetic
 release were retained. The original disposable lab is stopped.
+
+## Portal upload to isolated build to retained release (2026-09-14)
+
+Added the one-shot `node-build-local` operator command and `run-pipeline.py`.
+The command claims a queued project build, prepares its dependencies, commits the
+existing portal dispatch intent, and saves a private source/request directory.
+The pipeline permanently fences that execution before running fresh build and
+export VMs, validates the returned archive and durably commits controller results.
+APFS clones keep template copies within the existing short execution deadline.
+
+The new completed-pipeline reader takes a shared directory lock, checks the trusted
+request/result identities, both VM stop receipts and modes, execution ordering,
+raw export frame and retained ZIP. Only then does the existing portal release
+retention logic apply account permissions and storage limits. `--resume` retains
+an already completed operation, or returns its already saved release, without
+another dispatch or VM launch. Interrupted executions remain available for manual
+reconciliation; missing evidence never authorizes success.
+
+Actual local evidence: a synthetic account queued a dependency-free Node project
+through the portal API, then `node-build-local` prepared, built, exported and
+retained its release. Build execution
+`f1368e23d51e5208fab0300db0e135ca83c33882ca335b52a5b1dd80174f68eb`
+produced artifact `96dcb5b1a3ce399f4d54f1280e7aa4014d618c21029ecccb391ae08568908a52`.
+The portal returned the 942-byte release with its generated `built.txt`. A second
+workspace was denied both release listing and archive download. Resume returned
+the same release. A separate pipeline run also rejected execution replay.
+
+Focused integration checks reject missing stop evidence, mismatched project or
+execution identity, modified archive digests, and reads while a pipeline holds
+its exclusive lock. The positive fixture needed private directory permissions;
+the reader correctly rejected the test runner's default 0755 directory. Command
+build/vet, Python syntax and diff checks passed. Only synthetic local data and
+disposable VM copies changed; live VPS/Pi deployments are unchanged.
+
+Remaining Node integration: continuous queue processing/remote executor service,
+automatic interrupted-run reconciliation, production artifact storage and image
+provisioning, and connecting retained releases to the running website lifecycle.
+The local command does not itself activate a website. Domain resale, merchant
+payments and the other remaining requirements of the four-part goal are unchanged.
