@@ -192,11 +192,19 @@ function nodeUploadRows(card,project,role,version,result,state){
  }
 }
 
-function billingPrice(price){
+function billingCurrencyDigits(currency){
+ const code=String(currency||'').toLowerCase();
  const zero=new Set(['bif','clp','djf','gnf','jpy','kmf','krw','mga','pyg','rwf','vnd','vuv','xaf','xof','xpf']);
  const three=new Set(['bhd','jod','kwd','omr','tnd']);
- const digits=zero.has(price.currency)?0:three.has(price.currency)?3:2;
- const amount=new Intl.NumberFormat(undefined,{style:'currency',currency:price.currency.toUpperCase(),minimumFractionDigits:digits,maximumFractionDigits:digits}).format(price.amount_minor/10**digits);
+ return zero.has(code)?0:three.has(code)?3:2;
+}
+function billingAmount(amountMinor,currency){
+ const digits=billingCurrencyDigits(currency);const code=String(currency||'').toUpperCase();
+ if(!code||typeof amountMinor!=='number'||!Number.isFinite(amountMinor))return '';
+ try{return new Intl.NumberFormat(undefined,{style:'currency',currency:code,minimumFractionDigits:digits,maximumFractionDigits:digits}).format(amountMinor/10**digits);}catch(e){return String(amountMinor/10**digits)+' '+code;}
+}
+function billingPrice(price){
+ const amount=billingAmount(price.amount_minor,price.currency);
  return amount+' every '+price.interval_count+' '+price.interval+(price.interval_count===1?'':'s');
 }
 function billingStatusLabel(state){
@@ -214,6 +222,52 @@ function billingDateTime(unix){
 function billingInvoiceLabel(status){
  if(!status)return '';
  return status.replaceAll('_',' ').replace(/\b\w/g,letter=>letter.toUpperCase());
+}
+function renderPaymentHistory(payments){
+ const list=document.createElement('div');
+ for(const payment of payments){
+  const row=document.createElement('div');row.className='project';
+  const title=document.createElement('strong');title.textContent=payment.plan||'Hosting plan';row.append(title);
+  const note=text=>{const p=document.createElement('p');p.textContent=text;row.append(p);};
+  if(payment.pending){note('Payment details are awaiting an update.');list.append(row);continue;}
+  note('Paid '+(billingAmount(payment.amount_captured,payment.currency)||'amount unavailable'));
+  note('Refunded '+(billingAmount(payment.amount_refunded,payment.currency)||'amount unavailable'));
+  const disputes=Array.isArray(payment.dispute_statuses)?payment.dispute_statuses.filter(Boolean):[];
+  if(disputes.length)note('Dispute history: '+disputes.map(billingInvoiceLabel).join(', '));
+  else note(payment.disputed?'Disputed':payment.disputes_checked?'No disputes reported':'Dispute status awaiting an update');
+  const observed=billingDateTime(payment.observed_at);if(observed)note('Last checked '+observed);
+  if(payment.stale)note('Payment details may be out of date.');
+  list.append(row);
+ }
+ return list;
+}
+async function loadPaymentHistory(workspace,version,request,target){
+ const section=document.createElement('section');section.className='billing-history';
+ const heading=document.createElement('h3');heading.textContent='Payment history';section.append(heading);
+ const body=document.createElement('div');section.append(body);
+ const message=document.createElement('p');message.setAttribute('aria-live','polite');section.append(message);
+ const button=document.createElement('button');button.type='button';button.textContent='Load more';button.hidden=true;section.append(button);target.append(section);
+ const state={cursor:'',loading:false,done:false,ids:new Set()};
+ const current=()=>version===generation&&request===billingGeneration&&workspace===$('workspace').value;
+ const loadPage=async()=>{
+  if(state.loading||state.done||!current())return;
+  state.loading=true;button.disabled=true;message.textContent='Loading payment history…';
+  try{
+   const query='/api/billing/payments?workspace='+encodeURIComponent(workspace)+(state.cursor?'&before='+encodeURIComponent(state.cursor):'');
+   const data=await api(query);if(!current())return;
+   const fresh=[];
+   for(const payment of Array.isArray(data.payments)?data.payments:[]){if(payment&&payment.id&&!state.ids.has(payment.id)){state.ids.add(payment.id);fresh.push(payment);}}
+   if(fresh.length)body.append(renderPaymentHistory(fresh));
+   const next=typeof data.next_cursor==='string'?data.next_cursor:'';
+   state.done=!next||next===state.cursor;state.cursor=next;
+   button.hidden=state.done;button.textContent='Load more';
+   message.textContent=state.ids.size?'':'No reconciled payments yet.';
+  }catch(e){
+   if(current()){message.textContent='Payment history is unavailable. Please retry.';button.textContent='Retry payment history';button.hidden=false;}
+  }finally{state.loading=false;button.disabled=false;}
+ };
+ button.addEventListener('click',loadPage);
+ await loadPage();
 }
 function showBillingSubscriptions(content,subscriptions){
  for(const subscription of Array.isArray(subscriptions)?subscriptions:[]){
@@ -233,6 +287,7 @@ async function loadBilling(workspace,version){
  const [catalog,status]=await Promise.all([api('/api/billing/offers?workspace='+encodeURIComponent(workspace)),api('/api/billing/status?workspace='+encodeURIComponent(workspace))]);
  if(version!==generation||request!==billingGeneration)return;
  const content=$('billing-content');content.replaceChildren();
+ loadPaymentHistory(workspace,version,request,content);
  const note=text=>{const p=document.createElement('p');p.textContent=text;content.append(p);};
  const action=(text,fn)=>{const button=document.createElement('button');button.textContent=text;button.addEventListener('click',async()=>{button.disabled=true;try{await fn();if(version===generation)await loadBilling(workspace,version);}catch(e){if(version===generation)error(e);}finally{button.disabled=false;}});content.append(button);};
  if(status.customer_state==='ready'&&billingManagement){action('Manage subscription and payment details',async()=>{

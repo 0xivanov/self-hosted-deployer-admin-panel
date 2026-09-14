@@ -1482,3 +1482,26 @@ cross-workspace denial and developer denial, plus existing billing HTTP controls
 A synthetic DOM check verified lifecycle display, pending and stale messaging,
 and exact checkout association. Production entitlement enforcement, merchant
 sales and refund issuance remain outstanding. Live deployments are unchanged.
+
+## Hosting payment history (2026-09-14)
+
+Owners can now read captured and refunded amounts, dispute history and observation
+freshness from the reconciled hosting-payment records. The test-only payments
+endpoint authorizes every page and joins charges to their workspace's subscription
+and customer mapping. Its bounded 20-record pages use a stable ID cursor, so
+background observation updates do not move records between pages. Ordering is
+not a payment-date claim; the view labels timestamps as last checked.
+
+The panel loads this history separately from subscription and checkout controls.
+It supports loading more and retrying a failed page without discarding earlier
+results. Workspace changes ignore late responses; concurrent page requests and
+duplicate rows are prevented. Pending observations omit unknown amounts, and
+resolved disputes remain visible. Provider customer, invoice, payment-intent and
+dispute IDs are omitted. This displays refund evidence but does not issue refunds.
+
+Focused integration checks passed for pages, stable cursors through refresh,
+refund/dispute fields, pending and stale records, private identifier omission,
+workspace/developer/anonymous denial and disabled-billing rejection. A synthetic
+DOM check covered pagination retries, preserved results, concurrent clicks,
+duplicate records, pending amounts and workspace switching. Syntax and scoped
+Go vet checks passed. No live provider transaction or deployment was performed.
