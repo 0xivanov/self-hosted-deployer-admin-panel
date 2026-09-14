@@ -374,3 +374,29 @@ The real ARM64 rehearsal used this start method for operation
 `53cdc8f04e87431ea31ad13a2b33c23e6e82a1cac8ba4beda88311599deac369` on 2026-09-12.
 Runtime restrictions, startup, crash recovery, route replacement, verified
 retirement and old-operation retry checks passed.
+
+## Connected website example
+
+[`examples/node-website`](../examples/node-website/README.md) is an uploadable
+Node 24 website with no external dependencies, a real build step, an HTTP server
+using the assigned `PORT`, and `/health` readiness. This differs from a source
+fixture that only prints a message: a successfully built release still needs a
+server that stays running and passes runtime readiness.
+
+For a configured project, run the local build worker described in
+[`deploy/node-vm-macos`](../deploy/node-vm-macos/README.md), then run
+`cmd/node-deployment-worker --database PRIVATE_PORTAL_DB --assignment PRIVATE_ASSIGNMENT`.
+Its assignment contains `endpoint`, `project`, `runtime`, `toolchain_sha256`,
+`architecture`, `token`, and optionally `ca_file`. The endpoint is the private
+HTTPS management origin, not the website URL. Keep the assignment private.
+
+The runtime's management Host must match the endpoint's Host, including its port.
+The content Host separately selects the website route. Both certificates must
+validate for their respective TLS connection names. In a disposable Lima demo,
+explicit loopback SSH forwarding can connect the Mac worker to the guest's private
+listeners; it does not make the website publicly available.
+
+After the retained release is selected for deployment, the worker sends the
+archive, the runtime installs/starts it and checks readiness, and the portal only
+marks the site active after observing settled healthy routing. Selecting a saved
+release alone does not establish a live site.

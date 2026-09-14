@@ -1391,3 +1391,37 @@ watcher automatically retained build
 `8fe0feda345e63fb35ab156903cdbb11ca14223cf15db5b4eccfddd6de3b5908`
 with the expected 942-byte artifact. The watcher then exited successfully on
 SIGTERM; it is not left running. No live VPS/Pi deployments changed.
+
+## Uploaded Node website served over HTTPS (2026-09-14)
+
+Added the reusable `examples/node-website` project: no external packages, Node 24,
+a build step producing `dist/index.html`, a persistent HTTP server using its
+assigned port, `/health`, and a small interactive page. It can be zipped at the
+project root and used with the portal's upload/build/deploy controls.
+
+The connected local flow is now demonstrated with an actual HTTP website. Portal
+build `23f78dbc7f2525a940478a20ca3a1d249e4185554b2ff1f34fa2cacbad1d5331`
+ran in isolated execution
+`5d68cc854ab712cb2b8d00ef24cc61fd52aa394c0c1cb676805b35410bb746a4`
+and retained artifact
+`c751e7516616c9bffe0139099d533321bca504a81f20d20362b5060b5628cc15`.
+The portal queued deployment
+`7050463489e8f4e84530495acd8486f75096cf71c84583a62f58608afc671c21`;
+the existing deployment worker sent it over authenticated private HTTPS to the
+Linux runtime. The runtime started it as dedicated UID 60002, passed readiness,
+and activated its content route. The HTTPS content endpoint returned 200 with the
+built page, using a trusted disposable certificate without skipping verification.
+The portal reported the matching deployment/release as active and denied another
+workspace's active-site query.
+
+The demo used explicit loopback SSH forwarding and synthetic private credentials.
+It was never publicly exposed. After verification the deployment worker, Node
+service, runtime and lab VM were stopped, and staged runtime credentials were
+removed from the guest. The frozen build template stayed separate from runtime
+provisioning. Live VPS/Pi deployments are unchanged. The sample server/build syntax
+checks and command builds passed.
+
+This connects the implemented local upload/build/release/deploy path; it does not
+qualify public production hosting. Automatic project/runtime provisioning, public
+DNS/TLS, deployment lifecycle coverage, production storage, logs, and the remaining
+domain/payment/account requirements still need completion and release qualification.
