@@ -126,3 +126,42 @@ backup. No live database has been upgraded.
 Still required: a trusted operator recovery command for uncertain creations,
 automatic capability refresh/Connect webhook handling, real sandbox qualification,
 merchant products/orders/checkout/fulfillment, refunds, and production rollout.
+
+## Direct-charge checkout adapter implemented
+
+`Client.CreateCheckout` and `RetrieveCheckout` operate in the previously bound
+merchant's connected-account scope using the Stripe-Account header. They accept
+an immutable `CheckoutOrder` from trusted server storage, not a browser-supplied
+merchant account or final price. Creation uses `merchant-checkout-<request ID>`
+as its idempotency key and writes the same order reference onto the Session and
+PaymentIntent metadata. Retrieval uses the identical merchant scope.
+
+The first test contract supports a single card-paid item in EUR, USD or GBP, with
+an integer amount from 50 to 99,999,999 minor units. Prices are fixed and inclusive;
+automatic tax, adaptive pricing, shipping and promotions are not enabled. This
+does not calculate or establish a merchant's tax obligations. Production tax and
+pricing policy needs qualification before sales launch. This adapter does not set
+an application fee, transfer destination or hosting Customer ID.
+
+Returned sessions must match the exact order, totals, currency and fixed portal
+success/cancel routes. Live sessions, unsupported payment methods, added discounts,
+shipping/tax adjustments and unsafe redirects are rejected. An open session needs
+a Stripe-hosted checkout URL. Paid observations require a completed session and a
+PaymentIntent reference; completed-but-unpaid sessions are not fulfillment proof.
+The caller must verify, persist and reconcile orders independently of redirects.
+
+This is currently the provider layer. Product/order persistence, price selection,
+public checkout endpoints, return pages, merchant event handling and fulfillment
+are still required. Do not expose it directly to website users before those
+boundaries exist. Unknown checkout creation outcomes need reconciliation before
+resubmission, particularly after Stripe's idempotency retention expires.
+
+Local provider-fixture checks covered direct merchant scope on create/retrieve,
+unchanged retry identities, exact amount/metadata/request fields, paid and expired
+observations, foreign or mismatched responses, unsafe redirects and sanitized
+errors. No actual Stripe checkout session or charge was created.
+
+Sources rechecked 2026-09-14:
+
+- [Direct charges with Stripe-hosted Checkout](https://docs.stripe.com/connect/direct-charges?platform=web&ui=stripe-hosted)
+- [Create Checkout Session](https://docs.stripe.com/api/checkout/sessions/create)

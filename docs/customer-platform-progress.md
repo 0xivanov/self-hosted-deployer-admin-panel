@@ -1579,3 +1579,23 @@ workspace redirects and malformed link rejection. Existing migration tests,
 command build, scoped vet and syntax checks passed. No Stripe account, charge,
 live database or deployed service was changed. Actual provider qualification,
 merchant checkout/fulfillment/refunds and operator recovery tooling remain open.
+
+## Merchant direct-charge checkout adapter (2026-09-14)
+
+Added test Checkout creation and retrieval in the bound merchant's Connect scope,
+separate from hosting subscription billing. The provider request pins a persisted
+order identity, one-item price, currency and quantity, with matching Session and
+PaymentIntent references and stable idempotency. Fixed portal return URLs are
+validated on response. The first contract uses cards and EUR/USD/GBP with no
+adaptive pricing, promotions, shipping or automatic tax calculation.
+
+Response checks reject mismatched orders/totals/currency/return URLs, live sessions,
+unsupported payment methods and inconsistent paid states. Paid observations need
+a completed session and PaymentIntent reference; browser redirects never prove
+payment. No personal customer information is returned by the adapter.
+
+Focused local provider-fixture tests and scoped vet passed. Review found and fixed
+missing returned-success/cancel URL validation before commit. This is the provider
+layer, not a publicly usable purchase flow: product/order storage, public checkout
+and return endpoints, verified merchant events, fulfillment and refunds remain
+required. No Stripe session, charge, live migration or deployment was performed.
