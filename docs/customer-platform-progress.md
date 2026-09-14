@@ -1505,3 +1505,28 @@ workspace/developer/anonymous denial and disabled-billing rejection. A synthetic
 DOM check covered pagination retries, preserved results, concurrent clicks,
 duplicate records, pending amounts and workspace switching. Syntax and scoped
 Go vet checks passed. No live provider transaction or deployment was performed.
+
+## Merchant Connect provider adapter (2026-09-14)
+
+Added a separate test-secret-only Stripe Connect adapter for merchant account
+creation, account observation and single-use hosted onboarding links. It uses
+explicit Accounts v1 controller settings, operator-configured countries and fixed
+HTTPS return URLs. Account response normalization checks the persisted request
+metadata, country, account identity, controller and card-payment capability; it
+does not expose personal/KYC details. Unknown creation outcomes retain their
+original request identity for the future durable coordinator to reconcile.
+
+The HTTP client disables ambient proxies, redirects, retries, SDK logs and
+telemetry, with a bounded request timeout. Onboarding responses require the
+Stripe Connect HTTPS host and a future expiry within an hour. Account return URLs
+do not confer readiness, and hosting Customer IDs are never merchant accounts.
+
+Local provider-fixture checks passed for exact request fields and idempotency,
+account creation/retrieval/link responses, mismatched country/request/account or
+controller rejection, invalid capability rejection, expired/foreign links,
+sanitized provider errors and live-key rejection. Scoped vet and diff checks
+passed. This is a provider adapter, not completed merchant onboarding: durable
+workspace bindings, owner panel, work scheduling, Connect webhooks, sales and
+refunds remain required, followed by actual Stripe sandbox qualification.
+See `docs/merchant-payments.md` for the configuration and integration sequence.
+No provider account, transaction, live database migration or deployment occurred.
