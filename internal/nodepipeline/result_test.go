@@ -44,6 +44,54 @@ func TestReadNodeArtifactCompletedPipeline(t *testing.T) {
 	}
 }
 
+func TestInspectNodeExecutionFailedPipeline(t *testing.T) {
+	t.Parallel()
+	f := newPipelineFixture(t)
+	if err := writeJSON(filepath.Join(f.directory, "result.json"), map[string]any{"ExecutionID": f.request.ExecutionID, "BuildID": f.request.BuildID, "ProjectID": f.request.ProjectID, "SourceSHA256": f.request.Plan.SourceSHA256, "ToolchainSHA256": f.request.ToolchainSHA256, "Architecture": f.request.Plan.Architecture, "DependencyManifestSHA256": f.request.Bundle.ManifestSHA256, "ArtifactSHA256": "", "SnapshotSHA256": f.snapshot, "ExportOperationID": f.exportID, "Outcome": "failed"}); err != nil {
+		t.Fatal(err)
+	}
+	obs, err := (Reader{Root: f.root, Request: f.request}).InspectNodeExecution(t.Context(), f.request.ExecutionID)
+	if err != nil || obs.Outcome != "failed" || !obs.Retired {
+		t.Fatalf("unexpected failed observation: %+v, %v", obs, err)
+	}
+	if _, _, err = (Reader{Root: f.root, Request: f.request}).ReadNodeArtifact(t.Context(), f.request.ExecutionID); err == nil {
+		t.Fatal("failed pipeline returned an artifact")
+	}
+}
+
+func TestFailedPipelineRequiresBothStoppedVMsAndReleasedLock(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"build", "export", "active controller"} {
+		t.Run(name, func(t *testing.T) {
+			f := newPipelineFixture(t)
+			var outcome result
+			if err := decode(f.root, "result.json", &outcome); err != nil {
+				t.Fatal(err)
+			}
+			outcome.Outcome = "failed"
+			outcome.ArtifactSHA256 = ""
+			if err := writeJSON(filepath.Join(f.directory, "result.json"), outcome); err != nil {
+				t.Fatal(err)
+			}
+			if name == "active controller" {
+				lock, err := os.Open(f.directory)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer lock.Close()
+				if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.Remove(filepath.Join(f.directory, name, "stopped.json")); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := (Reader{Root: f.root, Request: f.request}).InspectNodeExecution(t.Context(), f.request.ExecutionID); err == nil {
+				t.Fatal("unconfirmed failed execution retired")
+			}
+		})
+	}
+}
+
 func TestReadNodeArtifactRejectsIncompleteOrClaimedEvidence(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

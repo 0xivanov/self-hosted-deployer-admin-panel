@@ -210,10 +210,22 @@ def run(args):
         export_id = secrets.token_hex(32)
         subprocess.run([config["Launcher"], str(export), export_id, "45", "--export-disks"], check=True, timeout=60)
         verify_receipts(export, export_id, 4)
-        result = subprocess.run([config["Importer"], str(export / "output.disk"), str(execution / "release.zip"), execution_id, source, snapshot_hash], check=True, capture_output=True, text=True, timeout=60)
-        manifest = json.loads(result.stdout)
-        artifact = digest(manifest["SHA256"])
-        output = {"ExecutionID": execution_id, "BuildID": request["BuildID"], "ProjectID": request["ProjectID"], "SourceSHA256": source, "ToolchainSHA256": request["ToolchainSHA256"], "Architecture": plan["architecture"], "DependencyManifestSHA256": bundle["ManifestSHA256"], "ArtifactSHA256": artifact, "SnapshotSHA256": snapshot_hash, "ExportOperationID": export_id, "Outcome": "succeeded"}
+        # At this point both VMs are confirmed stopped and this permanent
+        # pipeline attempt excludes another launch. A rejected/missing archive
+        # can now become a terminal failed build, not an uncertain execution.
+        artifact = ""
+        outcome = "failed"
+        try:
+            imported = subprocess.run([config["Importer"], str(export / "output.disk"), str(execution / "release.zip"), execution_id, source, snapshot_hash], check=True, capture_output=True, text=True, timeout=60)
+            require(len(imported.stdout) <= 16384, "invalid importer response")
+            manifest = json.loads(imported.stdout)
+            artifact = digest(manifest["SHA256"])
+            outcome = "succeeded"
+        except (subprocess.SubprocessError, OSError, ValueError, KeyError, TypeError):
+            # Preserve disks and diagnostics for the operator. No raw guest
+            # output is interpreted as retirement or exposed to the customer.
+            pass
+        output = {"ExecutionID": execution_id, "BuildID": request["BuildID"], "ProjectID": request["ProjectID"], "SourceSHA256": source, "ToolchainSHA256": request["ToolchainSHA256"], "Architecture": plan["architecture"], "DependencyManifestSHA256": bundle["ManifestSHA256"], "ArtifactSHA256": artifact, "SnapshotSHA256": snapshot_hash, "ExportOperationID": export_id, "Outcome": outcome}
         sync_file(execution / "result.json", json.dumps(output, sort_keys=True, separators=(",", ":")).encode())
     finally:
         os.close(lock)

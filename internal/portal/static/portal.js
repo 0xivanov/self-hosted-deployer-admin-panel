@@ -114,6 +114,7 @@ async function nodeProjectUploads(card,project,role,version,result){
  const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh release status';refresh.addEventListener('click',()=>loadProjects().catch(error));card.append(refresh);
  for(const build of builds){
   const line=document.createElement('p');line.textContent='Build · '+build.state+' · '+new Date(build.created_at*1000).toLocaleString();card.append(line);
+  if(build.state==='failed'){const hint=document.createElement('p');hint.textContent=role==='viewer'?'Build failed.':'Build failed. Check your build script and uploaded files, then upload a corrected version or choose Build again.';card.append(hint);}
   if(role!=='viewer'&&build.state==='queued'){
    const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel build';cancel.addEventListener('click',async()=>{cancel.disabled=true;try{await api('/api/node/builds/cancel',{project:project.id,id:build.id});if(version===generation)await loadProjects();}catch(e){error(e);cancel.disabled=false;}});card.append(cancel);
   }

@@ -1361,3 +1361,33 @@ worker was rejected by the execution-root lock. The portal returned the new
 release to its workspace and denied another workspace's archive request. The
 watcher then exited successfully on SIGTERM while idle. It is not left running.
 Command build/vet and diff checks passed. No live VPS/Pi changes were made.
+
+## Failed local build reconciliation (2026-09-14)
+
+The isolated pipeline now records a terminal failure when both VMs have confirmed
+stop receipts and the archive importer rejects the output. No artifact identity
+is accepted for a failed result. The completed-pipeline reader exposes execution
+observations for this case while preserving all original identity, private-lock,
+permanent-attempt, VM-mode, stop-time and ordering checks. Artifact reads remain
+rejected for a failed build.
+
+The local worker applies the portal's existing failure reconciliation after lease
+expiry, freeing the project for a corrected build. The project panel explains
+that the failed build can be corrected and retried. Missing retirement evidence
+or an incomplete controller run remains an uncertain outcome, not a failed build.
+
+Focused integration checks cover a valid failed result, rejecting artifact reads,
+missing build/export stop receipts and an active exclusive controller lock. All
+passed, along with command build/vet, Python syntax and frontend syntax checks.
+
+Actual failure/retry evidence: synthetic build
+`6bc9c74146b665d6d256aadf0ef03cd0b5cb9bc268a528d5e6f8d2b9581b703a`
+ran a deliberate nonzero build script in isolated execution
+`8273760c094c348c484996f434cb0e8536424ef071badd62d81d5516b7daa85b`.
+After both VMs stopped, the watcher reconciled it to failed without retaining an
+artifact. Previous releases remained available and another workspace could not
+read the build history. A corrected upload was accepted immediately and the same
+watcher automatically retained build
+`8fe0feda345e63fb35ab156903cdbb11ca14223cf15db5b4eccfddd6de3b5908`
+with the expected 942-byte artifact. The watcher then exited successfully on
+SIGTERM; it is not left running. No live VPS/Pi deployments changed.

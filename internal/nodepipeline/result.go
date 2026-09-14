@@ -78,7 +78,20 @@ func decode(root *os.Root, name string, target any) error {
 	}
 	return nil
 }
+
+// InspectNodeExecution accepts terminal failure only after the same controller
+// identity, permanent attempt, directory lock and two-VM retirement checks used
+// for success. A failed build never returns an archive.
+func (r Reader) InspectNodeExecution(ctx context.Context, id string) (portal.NodeExecutionObservation, error) {
+	observation, _, err := r.read(ctx, id, true)
+	return observation.NodeExecutionObservation, err
+}
+
 func (r Reader) ReadNodeArtifact(ctx context.Context, id string) (portal.NodeArtifactObservation, []byte, error) {
+	return r.read(ctx, id, false)
+}
+
+func (r Reader) read(ctx context.Context, id string, allowFailure bool) (portal.NodeArtifactObservation, []byte, error) {
 	var empty portal.NodeArtifactObservation
 	q := r.Request
 	if r.Root == nil || id != q.ExecutionID || !validID(id) || !validID(q.ProjectID) || !validID(q.BuildID) || !validID(q.ToolchainSHA256) || !validID(q.Plan.SourceSHA256) || !validID(q.Bundle.ManifestSHA256) {
@@ -112,7 +125,7 @@ func (r Reader) ReadNodeArtifact(ctx context.Context, id string) (portal.NodeArt
 		return empty, nil, ErrEvidence
 	}
 	var out result
-	if decode(r.Root, "result.json", &out) != nil || out.Outcome != "succeeded" || out.ExecutionID != id || out.ProjectID != q.ProjectID || out.BuildID != q.BuildID || out.SourceSHA256 != q.Plan.SourceSHA256 || out.ToolchainSHA256 != q.ToolchainSHA256 || out.Architecture != q.Plan.Architecture || out.DependencyManifestSHA256 != q.Bundle.ManifestSHA256 || !validID(out.ArtifactSHA256) || !validID(out.SnapshotSHA256) || !validID(out.ExportOperationID) || out.ExportOperationID == id {
+	if decode(r.Root, "result.json", &out) != nil || (out.Outcome != "succeeded" && out.Outcome != "failed") || out.ExecutionID != id || out.ProjectID != q.ProjectID || out.BuildID != q.BuildID || out.SourceSHA256 != q.Plan.SourceSHA256 || out.ToolchainSHA256 != q.ToolchainSHA256 || out.Architecture != q.Plan.Architecture || out.DependencyManifestSHA256 != q.Bundle.ManifestSHA256 || (out.Outcome == "succeeded" && !validID(out.ArtifactSHA256)) || (out.Outcome == "failed" && out.ArtifactSHA256 != "") || !validID(out.SnapshotSHA256) || !validID(out.ExportOperationID) || out.ExportOperationID == id {
 		return empty, nil, ErrEvidence
 	}
 	now := float64(time.Now().UnixNano()) / 1e9
@@ -137,6 +150,13 @@ func (r Reader) ReadNodeArtifact(ctx context.Context, id string) (portal.NodeArt
 		} else if running.ObservedAt < buildStopped {
 			return empty, nil, ErrEvidence
 		}
+	}
+	if out.Outcome == "failed" {
+		if !allowFailure {
+			return empty, nil, ErrEvidence
+		}
+		observation := portal.NodeExecutionObservation{ProjectID: q.ProjectID, ExecutionID: id, SourceSHA256: q.Plan.SourceSHA256, ToolchainSHA256: q.ToolchainSHA256, Architecture: q.Plan.Architecture, Outcome: "failed", Retired: true, ObservedAt: time.Now()}
+		return portal.NodeArtifactObservation{NodeExecutionObservation: observation, DependencyManifestSHA256: q.Bundle.ManifestSHA256}, nil, nil
 	}
 	// Validate the raw export again against trusted identities and compare its
 	// bytes with the archive committed by the importer. Do not mount any disk.

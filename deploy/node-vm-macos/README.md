@@ -237,3 +237,18 @@ SIGINT/SIGTERM stops further claims and lets the current bounded iteration finis
 awake while processing; this is a local operator worker, not a deployed hosting
 service. Watch mode cannot be combined with `--resume` and does not automatically
 activate a retained release.
+
+### Failed builds and retries
+
+If both VMs have confirmed stop receipts but the importer rejects the export, the
+controller saves a terminal `failed` result with no artifact digest. This covers
+ordinary failing build scripts and rejected output. The watcher rechecks both
+stop records and the permanent attempt before using the portal's failure
+reconciliation, after the dispatch lease expires. The customer can then queue a
+corrected upload or request another build. Existing saved releases remain intact.
+
+A failed result never permits artifact retrieval or deployment. Missing VM stop
+records, incomplete staging or an interrupted controller before a terminal result
+remain uncertain and require reconciliation. Neither an importer error alone nor
+a guest-reported failure proves retirement. The same directory lock excludes
+reading failure evidence while the pipeline is still active.

@@ -196,7 +196,19 @@ func retainRequest(ctx context.Context, store *portal.Store, executions *os.Root
 		return nil, err
 	}
 	defer root.Close()
-	release, err := store.RetainNodeRelease(ctx, nodepipeline.Reader{Root: root, Request: request}, project, request.BuildID)
+	reader := nodepipeline.Reader{Root: root, Request: request}
+	observation, err := reader.InspectNodeExecution(ctx, request.ExecutionID)
+	if err != nil {
+		return nil, err
+	}
+	if observation.Outcome == "failed" {
+		_, err := store.ReconcileNodeBuildFailure(ctx, reader, project, request.BuildID)
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New("Node build failed; a corrected upload can now be queued")
+	}
+	release, err := store.RetainNodeRelease(ctx, reader, project, request.BuildID)
 	if err != nil {
 		return nil, err
 	}
