@@ -195,3 +195,37 @@ catalog bound, together with existing migration checks. Synthetic UI checks
 covered decimal parsing, retry identity, edit preservation and revision updates.
 Only disposable databases were migrated. Use a consistent pre-upgrade backup for
 rollback; older binaries reject schema 27.
+
+## Durable orders
+
+Schema 28 separates orders from mutable products. An order records its product
+revision, name, amount/currency and merchant account before checkout submission.
+The buyer supplies the revision shown on the purchase page; a stale revision
+requires showing the current price again. Buyers never supply the final amount
+or connected-account identity. Subsequent product price edits do not rewrite an
+already agreed order. A disabled product blocks an undispatched checkout.
+
+The order layer uses a hashed buyer token separate from portal owner sessions.
+The future public purchase route must mint that unpredictable token securely and
+keep it in a protected buyer cookie. Order IDs alone do not authorize buyer reads.
+Owner order history uses current workspace-owner authorization. Private checkout
+URLs, provider IDs and buyer/request identities are excluded from ordinary JSON.
+
+Order requests require a currently bound, recently observed merchant account with
+submitted details, enabled charges/payouts and active card payments. Dispatch
+rechecks those conditions before committing the submitted state and making a
+single provider creation attempt. Unknown creation outcomes remain submitted;
+operator/provider evidence must identify the original session for reconciliation.
+Never treat a missing reply as permission to create another payment session.
+
+Reconciliation retrieves the exact session in the pinned merchant scope with the
+original order payload. A durable observation generation fences delayed reads.
+Mapped sessions cannot be replaced, paid status cannot regress to unpaid, and a
+closed checkout cannot reopen through older evidence. Payment observations alone
+do not provide a durable fulfillment mechanism, refund policy or delivery service.
+
+Storage currently caps 10,000 orders per workspace and 20 new requests per buyer
+per minute. Public-route abuse controls, order retention and complete paginated
+owner reporting remain launch work. The store/coordinator is not a public purchase
+endpoint; buyer-cookie handling, the purchase/consent page, return pages and
+merchant event/fulfillment integration still need to be connected.

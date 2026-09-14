@@ -1615,3 +1615,23 @@ Focused authorization, pricing, duplicate/revision, validation and migration tes
 passed, along with a synthetic UI behavior check, scoped vet and command build.
 No live service or database changed. Public order creation, price-consent checks,
 checkout dispatch, payment confirmation, fulfillment and refunds remain required.
+
+## Durable merchant orders (2026-09-14)
+
+Schema 28 adds persisted buyer orders with an immutable product revision, price,
+currency and merchant account. Buyer lookup requires a private token stored only
+as a hash. Owner order history remains scoped to the owner's workspace. New orders
+and checkout dispatch require an active product and fresh payment-ready merchant
+account; price edits cannot alter an already accepted order.
+
+Dispatch records submission before contacting the provider. An uncertain reply
+cannot trigger another creation, including after restart. Reconciliation checks
+session identity and observation generation, preserves completed/paid states and
+payment references, and rejects older in-flight responses. Root review corrected
+an observation-generation race and strengthened provider ID validation.
+
+Focused checks passed for buyer/owner isolation, price consent, product disabling,
+merchant readiness, restart recovery, concurrent dispatch, out-of-order provider
+responses and schema migrations. Public purchase routes, buyer cookies/checkout
+pages, provider events, fulfillment and refunds are still required. These changes
+are local implementation only; no live migration, checkout or deployment occurred.
