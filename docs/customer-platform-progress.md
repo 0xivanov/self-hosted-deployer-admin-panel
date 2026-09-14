@@ -1460,3 +1460,25 @@ deployment controls, retained file selection, the website link, stable retry key
 mutation protection, late workspace responses, partial batch failures and expired
 sessions. It passed, as did frontend syntax and the focused Node HTTP controls /
 workspace-boundary tests. No live rollout was performed.
+
+## Customer subscription lifecycle view (2026-09-14)
+
+The owner-only billing status endpoint now includes workspace-scoped subscription
+views from reconciled provider snapshots. The panel shows the hosting plan,
+subscription state, billing-period end, scheduled cancellation, paused collection,
+invoice status and observation time. Observations at least five minutes old are
+marked stale; missing snapshots are shown as awaiting a billing update. This is
+display information and does not grant hosting access or promise a future charge.
+
+Completed checkout messaging matches the subscription's persisted checkout ID,
+so it no longer claims reconciliation is pending after a subscription update is
+available. Provider customer, price, invoice and payment identifiers are omitted
+from the view. Existing test-mode gating and owner authorization remain in place.
+No schema change or provider write was required.
+
+Focused integration checks passed for subscription states, cancellation and
+collection flags, stale and missing observations, private identifier omission,
+cross-workspace denial and developer denial, plus existing billing HTTP controls.
+A synthetic DOM check verified lifecycle display, pending and stale messaging,
+and exact checkout association. Production entitlement enforcement, merchant
+sales and refund issuance remain outstanding. Live deployments are unchanged.

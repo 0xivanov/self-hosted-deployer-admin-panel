@@ -199,6 +199,35 @@ function billingPrice(price){
  const amount=new Intl.NumberFormat(undefined,{style:'currency',currency:price.currency.toUpperCase(),minimumFractionDigits:digits,maximumFractionDigits:digits}).format(price.amount_minor/10**digits);
  return amount+' every '+price.interval_count+' '+price.interval+(price.interval_count===1?'':'s');
 }
+function billingStatusLabel(state){
+ const labels={pending:'Awaiting billing update',active:'Active',trialing:'Trial',past_due:'Past due',unpaid:'Unpaid',canceled:'Canceled',incomplete:'Incomplete',incomplete_expired:'Incomplete and expired',paused:'Paused'};
+ return labels[state]||state||'Unknown';
+}
+function billingDate(unix){
+ if(typeof unix!=='number'||!Number.isFinite(unix)||unix<=0)return '';
+ const date=new Date(unix*1000);return Number.isNaN(date.getTime())?'':date.toLocaleDateString();
+}
+function billingDateTime(unix){
+ if(typeof unix!=='number'||!Number.isFinite(unix)||unix<=0)return '';
+ const date=new Date(unix*1000);return Number.isNaN(date.getTime())?'':date.toLocaleString();
+}
+function billingInvoiceLabel(status){
+ if(!status)return '';
+ return status.replaceAll('_',' ').replace(/\b\w/g,letter=>letter.toUpperCase());
+}
+function showBillingSubscriptions(content,subscriptions){
+ for(const subscription of Array.isArray(subscriptions)?subscriptions:[]){
+  const row=document.createElement('div');row.className='project';
+  const title=document.createElement('strong');title.textContent=(subscription.plan||'Hosting plan')+' · '+billingStatusLabel(subscription.state);row.append(title);
+  const periodEnd=billingDate(subscription.period_end);if(periodEnd){const period=document.createElement('p');period.textContent='Billing period ends '+periodEnd;row.append(period);}
+  if(subscription.cancel_at_period_end){const cancellation=document.createElement('p');cancellation.textContent='Cancellation scheduled for end of billing period'+(periodEnd?' ('+periodEnd+')':'');row.append(cancellation);}
+  if(subscription.collection_paused){const paused=document.createElement('p');paused.textContent='Collection paused';row.append(paused);}
+  const invoice=billingInvoiceLabel(subscription.invoice_status);if(invoice){const invoiceLine=document.createElement('p');invoiceLine.textContent='Invoice status: '+invoice;row.append(invoiceLine);}
+  const observed=billingDateTime(subscription.observed_at);if(observed){const checked=document.createElement('p');checked.textContent='Last checked '+observed;row.append(checked);}
+  if(subscription.stale===true&&observed){const stale=document.createElement('p');stale.textContent='Billing status may be out of date. Awaiting a background update.';row.append(stale);}
+  content.append(row);
+ }
+}
 async function loadBilling(workspace,version){
  const request=++billingGeneration;
  const [catalog,status]=await Promise.all([api('/api/billing/offers?workspace='+encodeURIComponent(workspace)),api('/api/billing/status?workspace='+encodeURIComponent(workspace))]);
@@ -212,9 +241,12 @@ async function loadBilling(workspace,version){
   const url=new URL(result.url);if(url.protocol!=='https:'||url.host!=='billing.stripe.com'||url.username||url.password)throw new Error('Invalid billing management link');
   location.assign(url.href);
  });}
+ const subscriptions=Array.isArray(status.subscriptions)?status.subscriptions:[];
+ showBillingSubscriptions(content,subscriptions);
  if(status.checkout){
   const checkout=status.checkout;
-  note(checkout.state==='completed'?'Checkout completed. Hosting activation is awaiting billing reconciliation.':checkout.state==='open'?'Your test checkout is ready. Review the final amount on Stripe.':'Preparing your test checkout. Refresh shortly.');
+  const matchedSubscription=subscriptions.some(subscription=>subscription.checkout_id===checkout.id);
+  note(checkout.state==='completed'?(matchedSubscription?'Checkout completed. Subscription status is shown above.':'Checkout completed. Billing status is awaiting reconciliation.') :checkout.state==='open'?'Your test checkout is ready. Review the final amount on Stripe.':'Preparing your test checkout. Refresh shortly.');
   note('Selected plan: '+checkout.plan);
   if(checkout.state==='open'&&checkout.url){const url=new URL(checkout.url);if(url.protocol==='https:'&&url.host==='checkout.stripe.com'&&!url.username&&!url.password){const link=document.createElement('a');link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open Stripe test checkout';content.append(link);}}
   return;
