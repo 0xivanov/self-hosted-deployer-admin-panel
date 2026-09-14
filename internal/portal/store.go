@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 26 {
+	if version > 27 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -263,6 +263,12 @@ PRAGMA user_version=1;`)
 
 	if version < 26 {
 		if _, err = tx.Exec(`ALTER TABLE merchant_accounts ADD COLUMN observation_generation INTEGER NOT NULL DEFAULT 0; PRAGMA user_version=26;`); err != nil {
+			return err
+		}
+	}
+
+	if version < 27 {
+		if _, err = tx.Exec(`CREATE TABLE merchant_products(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id),request_key TEXT NOT NULL,name TEXT NOT NULL,currency TEXT NOT NULL CHECK(currency IN ('eur','usd','gbp')),amount_minor INTEGER NOT NULL CHECK(amount_minor BETWEEN 50 AND 99999999),active INTEGER NOT NULL CHECK(active IN (0,1)),revision INTEGER NOT NULL CHECK(revision>0),created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,UNIQUE(workspace_id,request_key)); CREATE INDEX merchant_products_workspace ON merchant_products(workspace_id,id); PRAGMA user_version=27;`); err != nil {
 			return err
 		}
 	}

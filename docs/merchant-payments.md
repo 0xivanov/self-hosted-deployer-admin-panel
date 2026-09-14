@@ -165,3 +165,33 @@ Sources rechecked 2026-09-14:
 
 - [Direct charges with Stripe-hosted Checkout](https://docs.stripe.com/connect/direct-charges?platform=web&ui=stripe-hosted)
 - [Create Checkout Session](https://docs.stripe.com/api/checkout/sessions/create)
+
+## Owner product catalog implemented
+
+Schema 27 stores products per workspace with name, currency, integer minor-unit
+price, active state and revision. Current support matches test Checkout's
+EUR/USD/GBP price range. The catalog permits up to 100 retained products per
+workspace. Owners may create products before finishing merchant onboarding;
+catalog availability alone does not enable payment acceptance.
+
+`GET/POST /api/merchant/products` is available only with merchant configuration,
+current owner authorization and the portal's normal HTTPS/session/CSRF checks.
+Create request keys prevent repeated unchanged requests from creating duplicate
+products. Edits require the exact revision read by the client; conflicts must be
+refreshed rather than overwriting a newer price. Disabling a product preserves its
+record. Order creation must later check that state and snapshot the selected
+product revision and price before any provider request.
+
+The panel supports creating, editing and disabling catalog entries with decimal
+price input. It retains form values on errors and preserves other product edits
+when a save succeeds. A lost create acknowledgement retains the original key;
+changing that request requires checking the saved catalog first. Product loading
+has independent workspace/request guards and is not reset by account-status
+refresh. There is no Buy button or public sales endpoint yet.
+
+Focused checks passed for exact prices, duplicate requests, stale edits,
+workspace/developer denial, CSRF, validation, disabled feature behavior and the
+catalog bound, together with existing migration checks. Synthetic UI checks
+covered decimal parsing, retry identity, edit preservation and revision updates.
+Only disposable databases were migrated. Use a consistent pre-upgrade backup for
+rollback; older binaries reject schema 27.

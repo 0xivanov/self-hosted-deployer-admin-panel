@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,billingGeneration=0,merchantEnabled=false,merchantCountries=[],merchantGeneration=0,domainQuotes=false,domainExpiryTimer;
+let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,billingGeneration=0,merchantEnabled=false,merchantCountries=[],merchantGeneration=0,productGeneration=0,domainQuotes=false,domainExpiryTimer;
 let nodeStatusCards=new Map(),nodeStatusState=null;
 const nodeStatusInterval=5000;
 const fragment=new URLSearchParams(location.hash.slice(1));
@@ -11,8 +11,8 @@ if(location.hash)history.replaceState(null,'',location.pathname+location.search)
 async function api(path,body,signal){const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined,signal});const data=await response.json();if(!response.ok){const error=new Error(data.error||'Request failed');error.status=response.status;throw error;}return data;}
 function error(e){$('error').textContent=e.message;$('error').hidden=false;}
 function stopNodeStatusRefresh(){const state=nodeStatusState;nodeStatusCards.clear();if(!state)return;state.stopped=true;clearTimeout(state.timer);state.timer=null;if(state.controller)state.controller.abort();if(nodeStatusState===state)nodeStatusState=null;nodeStatusCards.clear();}
-function signedOut(){stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
-async function loadProjects(){stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');card.append(name,kind);$('projects').append(card);await projectUploads(card,project,selected.role,version);if(version!==generation)return;}if(!data.projects.length)$('projects').textContent='No projects yet.';if(selected.role==='owner'){await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled)await loadMerchant(workspace,version);}if(version===generation)startNodeStatusRefresh(version,workspace);}
+function signedOut(){stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
+async function loadProjects(){stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');card.append(name,kind);$('projects').append(card);await projectUploads(card,project,selected.role,version);if(version!==generation)return;}if(!data.projects.length)$('projects').textContent='No projects yet.';if(selected.role==='owner'){await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
 async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();if(pendingInvite)showFlow('invite');}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;}}
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();});});
@@ -270,6 +270,51 @@ async function loadPaymentHistory(workspace,version,request,target){
  await loadPage();
 }
 function merchantDate(unix){return billingDateTime(unix);}
+function parseMerchantPrice(raw){const value=String(raw||'').trim();if(!/^(?:0|[1-9]\d{0,5})(?:\.\d{1,2})?$/.test(value))return null;const parts=value.split('.');const minor=Number(parts[0])*100+Number((parts[1]||'').padEnd(2,'0'));return Number.isSafeInteger(minor)&&minor>=50&&minor<=99999999?minor:null;}
+function merchantProductError(message){const p=document.createElement('p');p.textContent=message;p.className='muted';return p;}
+function renderMerchantProducts(workspace,version,request,products){
+ const content=$('product-content');content.replaceChildren();
+ const current=()=>version===generation&&request===productGeneration&&workspace===$('workspace').value;
+ const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh catalog';refresh.addEventListener('click',()=>{if(current()&&confirm('Reload the catalog? Unsaved edits will be discarded.'))loadMerchantProducts(workspace,version);});content.append(refresh);
+ const label=(text,control)=>{const el=document.createElement('label');el.textContent=text;el.append(control);return el;};
+ function productForm(product){
+  const creating=!product;let intent=null,busy=false;
+  const form=document.createElement('form');form.className='project';
+  const heading=document.createElement('strong');heading.textContent=creating?'New product':'Edit product';form.append(heading);
+  const name=document.createElement('input');name.required=true;name.maxLength=120;name.value=product?.name||'';
+  const currency=document.createElement('select');for(const code of ['eur','usd','gbp']){const option=document.createElement('option');option.value=code;option.textContent=code.toUpperCase();currency.append(option);}currency.value=product?.currency||'eur';
+  const price=document.createElement('input');price.required=true;price.inputMode='decimal';price.value=product?(product.amount_minor/100).toFixed(2):'';price.placeholder='12.50';
+  const active=document.createElement('input');active.type='checkbox';active.checked=product?product.active===true:true;
+  const button=document.createElement('button');button.type='submit';button.textContent=creating?'Create product':'Save changes';
+  const message=document.createElement('p');message.setAttribute('role','status');
+  form.append(label('Product name',name),label('Currency',currency),label('Price',price),label('Active in catalog',active),button,message);
+  form.addEventListener('submit',async event=>{
+   event.preventDefault();if(busy||!current())return;message.textContent='';
+   const clean=name.value.trim(),amount=parseMerchantPrice(price.value);
+   if(!clean||new TextEncoder().encode(clean).length>120||[...clean].some(ch=>/\p{Cc}/u.test(ch))||amount===null){message.textContent='Enter a name and a price from 0.50 to 999999.99.';return;}
+   const payload={workspace,name:clean,currency:currency.value,amount_minor:amount,active:active.checked};
+   if(creating){const fingerprint=JSON.stringify(payload);if(intent&&intent.fingerprint!==fingerprint){message.textContent='Refresh the catalog to check the earlier request before changing it.';return;}if(!intent)intent={fingerprint,key:crypto.randomUUID()};payload.key=intent.key;}
+   else{payload.id=product.id;payload.revision=product.revision;}
+   busy=true;button.disabled=true;for(const control of [name,currency,price,active])control.disabled=true;
+   try{
+    const saved=await api('/api/merchant/products',payload);if(!current())return;
+    if(creating){content.append(productForm(saved));name.value='';price.value='';intent=null;}
+    else{Object.assign(product,saved);}
+    message.textContent='Product saved.';
+   }catch(e){if(current()){message.textContent=e.status===409?'Product changed, request conflicts, or catalog is full. Refresh before retrying.':'Unable to save. Retry unchanged values or refresh the catalog to check the result.';if(creating&&e.status===400)intent=null;}}
+   finally{busy=false;button.disabled=false;for(const control of [name,currency,price,active])control.disabled=false;}
+  });
+  return form;
+ }
+ content.append(productForm(null));
+ for(const product of Array.isArray(products)?products:[])content.append(productForm(product));
+}
+async function loadMerchantProducts(workspace,version){
+ if(version!==generation||workspace!==$('workspace').value)return;
+ const request=++productGeneration;
+ try{const data=await api('/api/merchant/products?workspace='+encodeURIComponent(workspace));if(version===generation&&request===productGeneration&&workspace===$('workspace').value)renderMerchantProducts(workspace,version,request,data.products);}
+ catch(e){if(version===generation&&request===productGeneration&&workspace===$('workspace').value)$('product-content').replaceChildren(merchantProductError('Product catalog is unavailable. Refresh the workspace to retry.'));}
+}
 function merchantAccountLabel(state){return {not_started:'Not started',requested:'Setup in progress',submitted:'Needs reconciliation',bound:'Account created'}[state]||'Unknown';}
 function merchantRequestValid(version,request,workspace){return version===generation&&request===merchantGeneration&&workspace===$('workspace').value;}
 function renderMerchantAccount(workspace,version,request,account){

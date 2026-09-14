@@ -23,6 +23,36 @@ func (h *HTTP) merchantHTTP(w http.ResponseWriter, r *http.Request, token string
 			httpError(w, 503, "Merchant service unavailable. Refresh status before retrying.")
 		}
 	}
+	if r.URL.Path == "/api/merchant/products" {
+		if r.Method == "GET" {
+			products, err := h.store.MerchantProducts(r.Context(), token, r.URL.Query().Get("workspace"))
+			if err != nil {
+				fail(err)
+				return
+			}
+			httpJSON(w, map[string]any{"products": products})
+			return
+		}
+		if r.Method == "POST" {
+			var input MerchantProductInput
+			if !httpDecode(w, r, &input) {
+				return
+			}
+			product, err := h.store.SaveMerchantProduct(r.Context(), token, input)
+			if errors.Is(err, ErrMerchantProductConflict) {
+				httpError(w, 409, "Product changed, request conflicts, or the 100-product limit was reached. Refresh the catalog before retrying.")
+				return
+			}
+			if err != nil {
+				fail(err)
+				return
+			}
+			httpJSON(w, product)
+			return
+		}
+		httpError(w, 405, "Method not allowed")
+		return
+	}
 	if r.Method == "GET" && r.URL.Path == "/api/merchant/account" {
 		status, err := h.store.MerchantStatus(r.Context(), token, r.URL.Query().Get("workspace"))
 		if err != nil {

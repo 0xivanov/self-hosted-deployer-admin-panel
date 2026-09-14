@@ -1599,3 +1599,19 @@ missing returned-success/cancel URL validation before commit. This is the provid
 layer, not a publicly usable purchase flow: product/order storage, public checkout
 and return endpoints, verified merchant events, fulfillment and refunds remain
 required. No Stripe session, charge, live migration or deployment was performed.
+
+## Merchant product management (2026-09-14)
+
+Added the owner product catalog API and panel with server-stored prices,
+EUR/USD/GBP currency selection and active/disabled products. Schema 27 gives each
+product a workspace identity and revision. Duplicate unchanged creates retain
+one product; stale edits cannot overwrite newer prices. Disabling retains the
+record for future order references. Catalogs are bounded to 100 products.
+
+The UI parses decimal prices into exact minor units, preserves unsaved edits in
+other forms and retains create identities after uncertain errors. Product refresh
+is independent of account refresh and guarded against stale workspace responses.
+Focused authorization, pricing, duplicate/revision, validation and migration tests
+passed, along with a synthetic UI behavior check, scoped vet and command build.
+No live service or database changed. Public order creation, price-consent checks,
+checkout dispatch, payment confirmation, fulfillment and refunds remain required.
