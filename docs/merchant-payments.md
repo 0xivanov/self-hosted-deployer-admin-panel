@@ -92,3 +92,37 @@ rollback; no live database was migrated.
 - [Connect testing](https://docs.stripe.com/connect/testing)
 
 No provider account, customer charge or real merchant onboarding was performed.
+
+## Owner panel and onboarding links implemented
+
+The HTTPS customer portal accepts `--test-merchant-config /private/merchant.json`.
+The private JSON contains exactly `secret_key` (a Stripe test secret) and
+`countries` (an operator-approved array of uppercase country codes). Return and
+refresh URLs are derived from the portal origin as `/merchant/return` and
+`/merchant/refresh`. No user-supplied redirect is accepted. Keep this configuration
+separate from hosting billing, and never check it into Git.
+
+When enabled, owners see a Merchant setup panel. They can request their account,
+continue a persisted but undispatched creation, open Stripe hosted onboarding,
+and explicitly refresh account status. A submitted account with an unknown
+outcome shows operator-reconciliation guidance. Page returns only load status;
+they never create accounts or declare onboarding complete. The panel displays
+capability flags, not a promise that website checkout has been implemented.
+
+Onboarding records a fresh link request in the audit before provider access and
+reauthorizes the session/owner and account binding after the provider responds.
+The single-use URL is only returned to that authorized caller; it is not stored
+or audited. Lost or expired links may be replaced with another link request for
+the same bound account. Link and account-refresh requests share a durable
+five-per-minute owner limit across workspaces.
+
+Schema 26 adds a generation to merchant observations. Each refresh increments it
+before provider access; a delayed earlier read cannot replace the newer result.
+The refresh rechecks account identity and current owner permission. Existing
+migration checks and focused merchant HTTP/recovery checks passed on disposable
+databases. An older binary requires restoration of a consistent pre-upgrade
+backup. No live database has been upgraded.
+
+Still required: a trusted operator recovery command for uncertain creations,
+automatic capability refresh/Connect webhook handling, real sandbox qualification,
+merchant products/orders/checkout/fulfillment, refunds, and production rollout.

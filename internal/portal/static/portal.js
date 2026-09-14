@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,billingGeneration=0,domainQuotes=false,domainExpiryTimer;
+let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,billingGeneration=0,merchantEnabled=false,merchantCountries=[],merchantGeneration=0,domainQuotes=false,domainExpiryTimer;
 let nodeStatusCards=new Map(),nodeStatusState=null;
 const nodeStatusInterval=5000;
 const fragment=new URLSearchParams(location.hash.slice(1));
@@ -11,8 +11,8 @@ if(location.hash)history.replaceState(null,'',location.pathname+location.search)
 async function api(path,body,signal){const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined,signal});const data=await response.json();if(!response.ok){const error=new Error(data.error||'Request failed');error.status=response.status;throw error;}return data;}
 function error(e){$('error').textContent=e.message;$('error').hidden=false;}
 function stopNodeStatusRefresh(){const state=nodeStatusState;nodeStatusCards.clear();if(!state)return;state.stopped=true;clearTimeout(state.timer);state.timer=null;if(state.controller)state.controller.abort();if(nodeStatusState===state)nodeStatusState=null;nodeStatusCards.clear();}
-function signedOut(){stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
-async function loadProjects(){stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');card.append(name,kind);$('projects').append(card);await projectUploads(card,project,selected.role,version);if(version!==generation)return;}if(!data.projects.length)$('projects').textContent='No projects yet.';if(selected.role==='owner'){await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);}if(version===generation)startNodeStatusRefresh(version,workspace);}
+function signedOut(){stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
+async function loadProjects(){stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');card.append(name,kind);$('projects').append(card);await projectUploads(card,project,selected.role,version);if(version!==generation)return;}if(!data.projects.length)$('projects').textContent='No projects yet.';if(selected.role==='owner'){await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled)await loadMerchant(workspace,version);}if(version===generation)startNodeStatusRefresh(version,workspace);}
 async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();if(pendingInvite)showFlow('invite');}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;}}
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();});});
@@ -41,7 +41,7 @@ $('account-form').addEventListener('submit',event=>{event.preventDefault();submi
  const data=await api(path,body);$('flow-password').value='';$('account-form').hidden=true;$('flow-copy').textContent=data.message;if(flow==='reset'||flow==='verify')actionToken='';if(flow==='invite'){pendingInvite='';actionToken='';$('account-flow').hidden=true;await loadSession();}
  });});
 async function initialize(){
- const config=await api('/api/config');domainQuotes=config.domain_quotes===true;testBilling=config.test_billing===true;billingManagement=config.billing_management===true;$('open-signup').hidden=!config.signup;$('open-forgot').hidden=!config.account_mail;$('open-resend').hidden=!config.account_mail;$('registration-note').textContent=config.signup?'Verify your email before signing in.':'Registration is closed.';
+ const config=await api('/api/config');domainQuotes=config.domain_quotes===true;testBilling=config.test_billing===true;billingManagement=config.billing_management===true;merchantEnabled=config.merchant===true;merchantCountries=Array.isArray(config.merchant_countries)?config.merchant_countries.filter(country=>typeof country==='string'):[];$('open-signup').hidden=!config.signup;$('open-forgot').hidden=!config.account_mail;$('open-resend').hidden=!config.account_mail;$('registration-note').textContent=config.signup?'Verify your email before signing in.':'Registration is closed.';
  if(initialFlow==='invite'){try{await loadSession();}catch(e){signedOut();if(e.status===401)error(new Error('Sign in with the invited email to accept. New users must register and verify their email first.'));else throw e;}return;}
  if(initialFlow){if(!config.account_mail)throw new Error('Account recovery is unavailable. Contact the operator.');showFlow(initialFlow);return;}
  try{await loadSession();}catch(e){signedOut();if(e.status!==401)throw e;}
@@ -269,6 +269,51 @@ async function loadPaymentHistory(workspace,version,request,target){
  button.addEventListener('click',loadPage);
  await loadPage();
 }
+function merchantDate(unix){return billingDateTime(unix);}
+function merchantAccountLabel(state){return {not_started:'Not started',requested:'Setup in progress',submitted:'Needs reconciliation',bound:'Account created'}[state]||'Unknown';}
+function merchantRequestValid(version,request,workspace){return version===generation&&request===merchantGeneration&&workspace===$('workspace').value;}
+function renderMerchantAccount(workspace,version,request,account){
+ const content=$('merchant-content');content.replaceChildren();let busy=false;
+ const note=text=>{const p=document.createElement('p');p.textContent=text;content.append(p);};
+ const current=()=>merchantRequestValid(version,request,workspace);
+ if(!account||!account.state){note('Merchant account status is unavailable.');return;}
+ note('Status: '+merchantAccountLabel(account.state));
+ if(account.country)note('Business country: '+account.country);
+ if(account.state==='bound'){
+  for(const [label,value] of [['Details submitted',account.details_submitted],['Charges enabled',account.charges_enabled],['Payouts enabled',account.payouts_enabled],['Card payments',account.card_payments]])note(label+': '+(typeof value==='boolean'?(value?'Yes':'No'):String(value||'Not available')));
+  const observed=merchantDate(account.observed_at);if(observed)note('Last checked '+observed);
+  if(account.stale)note('Merchant account status may be out of date. Refresh it to check.');
+ }
+ const action=(button,fn)=>async()=>{
+  if(busy||!current())return;busy=true;button.disabled=true;
+  try{await fn();}catch(e){if(current()){error(e);await loadMerchant(workspace,version);}}
+  finally{busy=false;button.disabled=false;}
+ };
+ const post=async(path,body)=>{const result=await api(path,body);return current()?result:null;};
+ const create=async country=>{const result=await post('/api/merchant/account',{workspace,country});if(result)renderMerchantAccount(workspace,version,request,result);};
+ if(account.state==='not_started'){
+  if(!merchantCountries.length){note('No merchant countries are configured.');return;}
+  const form=document.createElement('form'),label=document.createElement('label'),select=document.createElement('select');label.textContent='Business country';
+  for(const country of merchantCountries){const option=document.createElement('option');option.value=country;option.textContent=country;select.append(option);}label.append(select);
+  const button=document.createElement('button');button.textContent='Create test merchant account';form.append(label,button);content.append(form);
+  form.addEventListener('submit',event=>{event.preventDefault();action(button,()=>create(select.value))();});
+ }else if(account.state==='requested'){
+  const button=document.createElement('button');button.type='button';button.textContent='Continue account creation';button.addEventListener('click',action(button,()=>create(account.country)));content.append(button);
+ }else if(account.state==='submitted')note('Account setup needs reconciliation. Contact the operator.');
+ else if(account.state==='bound'){
+  const button=document.createElement('button');button.type='button';button.textContent='Continue Stripe setup';button.addEventListener('click',action(button,async()=>{
+   const result=await post('/api/merchant/onboarding',{workspace});if(!result)return;
+   const url=new URL(result.url);if(url.protocol!=='https:'||url.host!=='connect.stripe.com'||url.username||url.password||url.hash)throw new Error('Invalid merchant onboarding link');
+   if(typeof result.expires_at!=='number'||result.expires_at<=Math.floor(Date.now()/1000))throw new Error('Expired merchant onboarding link');
+   if(current())location.assign(url.href);
+  }));content.append(button);
+ }
+ const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh account status';refresh.addEventListener('click',action(refresh,async()=>{
+  if(account.state==='bound'){const result=await post('/api/merchant/refresh',{workspace});if(result)renderMerchantAccount(workspace,version,request,result);}
+  else await loadMerchant(workspace,version);
+ }));content.append(refresh);
+}
+async function loadMerchant(workspace,version){const request=++merchantGeneration;try{const account=await api('/api/merchant/account?workspace='+encodeURIComponent(workspace));if(merchantRequestValid(version,request,workspace))renderMerchantAccount(workspace,version,request,account);}catch(e){if(merchantRequestValid(version,request,workspace)){const content=$('merchant-content');content.replaceChildren();const p=document.createElement('p');p.textContent='Merchant account status is unavailable.';content.append(p);error(e);}}}
 function showBillingSubscriptions(content,subscriptions){
  for(const subscription of Array.isArray(subscriptions)?subscriptions:[]){
   const row=document.createElement('div');row.className='project';

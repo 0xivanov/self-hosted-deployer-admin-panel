@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
@@ -11,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/hostingbilling"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/merchantbilling"
 	"io"
 	"net"
 	"net/http"
@@ -39,6 +41,7 @@ func run() error {
 	key := flag.String("tls-key", "", "HTTPS private key")
 	smtpFile := flag.String("smtp-config", "", "private JSON SMTP settings")
 	mailKeyFile := flag.String("mail-key-file", "", "private file containing 32-byte hex mail encryption key")
+	merchantFile := flag.String("test-merchant-config", "", "private Stripe test Connect settings with secret_key and countries")
 	managementFile := flag.String("test-billing-management-config", "", "private Stripe test customer portal settings")
 	webhookFile := flag.String("test-webhook-secret-file", "", "private Stripe test webhook signing secret file")
 	testBilling := flag.Bool("test-billing", false, "enable owner billing request API for a separately configured Stripe test worker")
@@ -197,7 +200,34 @@ func run() error {
 	if management != nil {
 		managementProvider = management
 	}
-	handler, err := portal.NewHTTP(store, portal.HTTPOptions{NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
+	var merchantProvider portal.MerchantProvider
+	var merchantCountries []string
+	if *merchantFile != "" {
+		if *demo {
+			return errors.New("merchant setup requires non-demo HTTPS mode")
+		}
+		raw, e := privateFile(*merchantFile)
+		if e != nil {
+			return errors.New("merchant configuration unavailable")
+		}
+		var cfg struct {
+			SecretKey string   `json:"secret_key"`
+			Countries []string `json:"countries"`
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&cfg) != nil || decoder.Decode(new(any)) != io.EOF {
+			return errors.New("invalid merchant configuration")
+		}
+		client, e := merchantbilling.NewTestClient(cfg.SecretKey, *origin+"/merchant/return", *origin+"/merchant/refresh", cfg.Countries)
+		if e != nil {
+			return e
+		}
+		defer client.Close()
+		merchantProvider = client
+		merchantCountries = cfg.Countries
+	}
+	handler, err := portal.NewHTTP(store, portal.HTTPOptions{Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
 	if err != nil {
 		return err
 	}

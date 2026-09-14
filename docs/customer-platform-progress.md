@@ -1553,3 +1553,29 @@ scheduling, onboarding-link authorization, capability refresh, owner controls,
 sales/refunds and Stripe sandbox qualification remain required. Schema rollback
 requires a consistent pre-upgrade backup rather than opening the new database
 with an older binary. See `docs/merchant-payments.md` for recovery semantics.
+
+## Merchant owner panel and hosted onboarding (2026-09-14)
+
+Connected the merchant adapter and durable requests to opt-in HTTPS owner APIs
+and a separate Merchant setup panel. The CLI reads a private, strictly decoded
+`--test-merchant-config` with a test secret and allowed countries; fixed onboarding
+return URLs derive from the portal origin. Owners can create or continue account
+setup, request a single-use Stripe onboarding link and refresh capability status.
+Unknown submitted creations require reconciliation instead of another create.
+
+Onboarding-link intent is audited before provider access, with no link credential
+in storage/logs. Session ownership and immutable account binding are checked again
+before delivery. Schema 26 fences concurrent account observations using durable
+generations. Provider links and refreshes have an owner-scoped durable rate limit.
+The UI rejects unsafe/expired links and ignores responses and redirects from
+previous workspace selections. Returns only read status; they do not activate
+merchant checkout.
+
+Focused checks passed for owner HTTP/CSRF protections, foreign access, disabled
+feature routes, link non-disclosure after logout during provider work, no link
+credential in audit, request limiting, and older observation rejection. Synthetic
+DOM checks covered requested/submitted/bound controls, capability display, stale
+workspace redirects and malformed link rejection. Existing migration tests,
+command build, scoped vet and syntax checks passed. No Stripe account, charge,
+live database or deployed service was changed. Actual provider qualification,
+merchant checkout/fulfillment/refunds and operator recovery tooling remain open.

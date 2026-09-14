@@ -24,6 +24,8 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
+	Merchant          MerchantProvider
+	MerchantCountries []string
 	NodeProjects      map[string]NodeProjectConfig
 	DomainQuotes      DomainQuoteReader
 	DomainMarkupMinor int64
@@ -41,6 +43,8 @@ type attemptWindow struct {
 	count int
 }
 type HTTP struct {
+	merchant             MerchantProvider
+	merchantCountries    []string
 	nodeProjects         map[string]NodeProjectConfig
 	domainQuotes         DomainQuoteReader
 	domainMarkupMinor    int64
@@ -60,6 +64,15 @@ type HTTP struct {
 }
 
 func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
+	if opts.Merchant != nil && (opts.Development || len(opts.MerchantCountries) == 0) {
+		return nil, errors.New("merchant integration requires HTTPS and configured countries")
+	}
+	for _, country := range opts.MerchantCountries {
+		if !validMerchantCountry(country) {
+			return nil, errors.New("invalid merchant country")
+		}
+	}
+
 	if opts.DomainMarkupMinor < 0 {
 		return nil, errors.New("domain markup cannot be negative")
 	}
@@ -110,7 +123,7 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if opts.Development {
 		cookie = "portal-dev-session"
 	}
-	return &HTTP{nodeProjects: nodeProjects, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 func csrfFor(token string) string {
 	sum := sha256.Sum256([]byte("portal-csrf:" + token))
@@ -190,7 +203,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		name, kind := "", ""
 		switch r.URL.Path {
-		case "/", "/billing/success", "/billing/cancel":
+		case "/", "/billing/success", "/billing/cancel", "/merchant/return", "/merchant/refresh":
 			name = "index.html"
 			kind = "text/html; charset=utf-8"
 		case "/portal.js":
@@ -221,7 +234,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/config" && r.Method == "GET" {
-		httpJSON(w, map[string]bool{"domain_quotes": h.domainQuotes != nil, "signup": h.signup, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
+		httpJSON(w, map[string]any{"merchant": h.merchant != nil, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
 		return
 	}
 	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/verification/resend" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {
@@ -285,6 +298,10 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/domains/") {
 		h.domainHTTP(w, r, cookie.Value, account.ID)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/merchant/") {
+		h.merchantHTTP(w, r, cookie.Value)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/billing/") {
