@@ -1425,3 +1425,38 @@ This connects the implemented local upload/build/release/deploy path; it does no
 qualify public production hosting. Automatic project/runtime provisioning, public
 DNS/TLS, deployment lifecycle coverage, production storage, logs, and the remaining
 domain/payment/account requirements still need completion and release qualification.
+
+## Downloadable Node starter (2026-09-14)
+
+Node projects now offer a starter ZIP directly in the upload screen for owners
+and developers. The portal binary embeds the five explicit sample source files,
+so the download works without access to a checkout and cannot include local
+secrets, generated output or documentation accidentally. The download is public
+sample content, carries an attachment filename and inherits the portal's host,
+TLS and origin protections. It does not create a project or execute a build.
+
+A focused HTTP check confirmed the downloaded ZIP passes the same Node upload
+validator used for customer projects, with five source files. It also checked
+attachment headers, foreign-origin rejection and rejecting POST downloads.
+The customer portal build and scoped Go vet passed. This remains a development
+feature and has not changed live deployments.
+
+## Automatic Node status refresh (2026-09-14)
+
+The Node project screen checks active builds and deployments every five seconds.
+Completed jobs update saved releases, deployment actions, upload build buttons and
+the website link. The upload form stays in place, preserving the chosen file.
+Unchanged responses leave controls in place; mutations awaiting acknowledgement
+are protected from background replacement, and deployment retry keys remain
+stable across status updates.
+
+Polling stops at terminal states and on sign-out. Workspace changes abort the old
+requests, and generation checks prevent late responses from modifying the new
+workspace. A batch waits for every request to settle before scheduling another.
+Expired sessions sign out; transient failures display a refresh notice.
+
+A temporary synthetic DOM check exercised build completion, newly available
+deployment controls, retained file selection, the website link, stable retry keys,
+mutation protection, late workspace responses, partial batch failures and expired
+sessions. It passed, as did frontend syntax and the focused Node HTTP controls /
+workspace-boundary tests. No live rollout was performed.

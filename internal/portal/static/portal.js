@@ -1,15 +1,18 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,billingGeneration=0,domainQuotes=false,domainExpiryTimer;
+let nodeStatusCards=new Map(),nodeStatusState=null;
+const nodeStatusInterval=5000;
 const fragment=new URLSearchParams(location.hash.slice(1));
 let actionToken=fragment.get('verify')||fragment.get('reset')||fragment.get('invite')||'';
 const initialFlow=fragment.has('verify')?'verify':fragment.has('reset')?'reset':fragment.has('invite')?'invite':'';
 let pendingInvite=initialFlow==='invite'?actionToken:'';
 if(location.hash)history.replaceState(null,'',location.pathname+location.search);
-async function api(path,body){const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok){const error=new Error(data.error||'Request failed');error.status=response.status;throw error;}return data;}
+async function api(path,body,signal){const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined,signal});const data=await response.json();if(!response.ok){const error=new Error(data.error||'Request failed');error.status=response.status;throw error;}return data;}
 function error(e){$('error').textContent=e.message;$('error').hidden=false;}
-function signedOut(){generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
-async function loadProjects(){const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');card.append(name,kind);$('projects').append(card);await projectUploads(card,project,selected.role,version);if(version!==generation)return;}if(!data.projects.length)$('projects').textContent='No projects yet.';if(selected.role==='owner'){await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);}}
+function stopNodeStatusRefresh(){const state=nodeStatusState;nodeStatusCards.clear();if(!state)return;state.stopped=true;clearTimeout(state.timer);state.timer=null;if(state.controller)state.controller.abort();if(nodeStatusState===state)nodeStatusState=null;nodeStatusCards.clear();}
+function signedOut(){stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
+async function loadProjects(){stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');card.append(name,kind);$('projects').append(card);await projectUploads(card,project,selected.role,version);if(version!==generation)return;}if(!data.projects.length)$('projects').textContent='No projects yet.';if(selected.role==='owner'){await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);}if(version===generation)startNodeStatusRefresh(version,workspace);}
 async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();if(pendingInvite)showFlow('invite');}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;}}
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();});});
@@ -99,59 +102,91 @@ async function nodeProjectUploads(card,project,role,version,result){
   return nodeUploadRows(card,project,role,version,result, null);
  }
  const node=await api('/api/node?project='+encodeURIComponent(project.id));if(version!==generation)return;
+ const entry={card,project,role,version,node,deployKeys:new Map(),uploadButtons:[],live:document.createElement('div')};entry.live.className='node-live';card.append(entry.live);nodeStatusCards.set(project.id,entry);renderNodeLive(entry,node);
+ return nodeUploadRows(card,project,role,version,result,{node,builds:Array.isArray(node.builds)?node.builds:[],releases:Array.isArray(node.releases)?node.releases:[]});
+}
+
+function nodeJobActive(job){return job&&(job.state==='queued'||job.state==='running');}
+function renderNodeLive(entry,node){
+ const {live,project,role,version}=entry;
+ if(entry.mutating)return;
+ const snapshot=JSON.stringify(node);if(entry.snapshot===snapshot)return;entry.snapshot=snapshot;
+ live.replaceChildren();
  const builds=Array.isArray(node.builds)?node.builds:[];
  const releases=Array.isArray(node.releases)?node.releases:[];
  const deployments=Array.isArray(node.deployments)?node.deployments:[];
  const active=node.active||null;
- const pendingDeployment=deployments.some(item=>item.state==='queued'||item.state==='running');
+ const pendingDeployment=deployments.some(nodeJobActive);
  const activeRelease=active&&active.release_id;
  const status=document.createElement('p');
- status.textContent=pendingDeployment?'Deployment pending':active?'Live · Revision '+active.revision:node.available?'Ready to deploy':'Hosting setup is pending';
- card.append(status);
+ status.textContent=pendingDeployment?'Deployment pending':builds.some(nodeJobActive)?'Build pending':active?'Live · Revision '+active.revision:node.available?'Ready to deploy':'Hosting setup is pending';
+ live.append(status);
  if(active&&node.site){
-  const link=document.createElement('a');link.href=node.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open website';card.append(link);
+  const link=document.createElement('a');link.href=node.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open website';live.append(link);
  }
- const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh release status';refresh.addEventListener('click',()=>loadProjects().catch(error));card.append(refresh);
+ const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh release status';refresh.addEventListener('click',()=>loadProjects().catch(error));live.append(refresh);
  for(const build of builds){
-  const line=document.createElement('p');line.textContent='Build · '+build.state+' · '+new Date(build.created_at*1000).toLocaleString();card.append(line);
-  if(build.state==='failed'){const hint=document.createElement('p');hint.textContent=role==='viewer'?'Build failed.':'Build failed. Check your build script and uploaded files, then upload a corrected version or choose Build again.';card.append(hint);}
+  const line=document.createElement('p');line.textContent='Build · '+build.state+' · '+new Date(build.created_at*1000).toLocaleString();live.append(line);
+  if(build.state==='failed'){const hint=document.createElement('p');hint.textContent=role==='viewer'?'Build failed.':'Build failed. Check your build script and uploaded files, then upload a corrected version or choose Build again.';live.append(hint);}
   if(role!=='viewer'&&build.state==='queued'){
-   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel build';cancel.addEventListener('click',async()=>{cancel.disabled=true;try{await api('/api/node/builds/cancel',{project:project.id,id:build.id});if(version===generation)await loadProjects();}catch(e){error(e);cancel.disabled=false;}});card.append(cancel);
+   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel build';cancel.addEventListener('click',async()=>{cancel.disabled=true;entry.mutating=true;try{await api('/api/node/builds/cancel',{project:project.id,id:build.id});if(version===generation)await loadProjects();}catch(e){if(version===generation)error(e);cancel.disabled=false;}finally{entry.mutating=false;}});live.append(cancel);
   }
  }
- const releaseHeading=document.createElement('p');releaseHeading.textContent='Saved releases';card.append(releaseHeading);
+ const releaseHeading=document.createElement('p');releaseHeading.textContent='Saved releases';live.append(releaseHeading);
  for(const release of releases){
   const row=document.createElement('div');const label=document.createElement('p');
   const deployment=deployments.find(item=>item.release_id===release.build_id&&item.state==='succeeded');
   label.textContent='Release from '+new Date(release.created_at*1000).toLocaleString()+(deployment?' · '+deployment.state:'');row.append(label);
   if(node.available&&role!=='viewer'){
    const deploy=document.createElement('button');deploy.type='button';deploy.textContent=release.build_id===activeRelease?'Current':deployment?'Restore':'Deploy';deploy.disabled=pendingDeployment||release.build_id===activeRelease;
-   const requestKey=crypto.randomUUID();deploy.addEventListener('click',async()=>{deploy.disabled=true;try{await api('/api/node/deployments',{project:project.id,release:release.build_id,key:requestKey});if(version===generation)await loadProjects();}catch(e){error(e);deploy.disabled=false;}});row.append(deploy);
+   const requestKey=entry.deployKeys.get(release.build_id)||crypto.randomUUID();entry.deployKeys.set(release.build_id,requestKey);deploy.addEventListener('click',async()=>{deploy.disabled=true;entry.mutating=true;try{await api('/api/node/deployments',{project:project.id,release:release.build_id,key:requestKey});if(version===generation)await loadProjects();}catch(e){if(version===generation)error(e);deploy.disabled=false;}finally{entry.mutating=false;}});row.append(deploy);
   }
   const releasePending=deployments.some(item=>item.release_id===release.build_id&&(item.state==='queued'||item.state==='running'));
   if(role!=='viewer'&&release.build_id!==activeRelease&&!releasePending){
-   const remove=document.createElement('button');remove.type='button';remove.textContent='Delete release';remove.addEventListener('click',async()=>{if(!confirm('Delete this saved release?'))return;remove.disabled=true;try{await api('/api/node/releases/delete',{project:project.id,id:release.build_id});if(version===generation)await loadProjects();}catch(e){error(e);remove.disabled=false;}});row.append(remove);
+   const remove=document.createElement('button');remove.type='button';remove.textContent='Delete release';remove.addEventListener('click',async()=>{if(!confirm('Delete this saved release?'))return;remove.disabled=true;entry.mutating=true;try{await api('/api/node/releases/delete',{project:project.id,id:release.build_id});if(version===generation)await loadProjects();}catch(e){if(version===generation)error(e);remove.disabled=false;}finally{entry.mutating=false;}});row.append(remove);
   }
-  card.append(row);
+  live.append(row);
  }
- const historyHeading=document.createElement('p');historyHeading.textContent='Deployment history';card.append(historyHeading);
+ const historyHeading=document.createElement('p');historyHeading.textContent='Deployment history';live.append(historyHeading);
  for(const deployment of deployments){
   const row=document.createElement('div');const label=document.createElement('p');label.textContent='Revision '+deployment.revision+' · '+deployment.state+(deployment.id===active?.id?' · Current':'');row.append(label);
-  if(role!=='viewer'&&deployment.state==='queued'){const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel deployment';cancel.addEventListener('click',async()=>{cancel.disabled=true;try{await api('/api/node/deployments/cancel',{project:project.id,id:deployment.id});if(version===generation)await loadProjects();}catch(e){error(e);cancel.disabled=false;}});row.append(cancel);}
-  card.append(row);
+  if(role!=='viewer'&&deployment.state==='queued'){const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel deployment';cancel.addEventListener('click',async()=>{cancel.disabled=true;entry.mutating=true;try{await api('/api/node/deployments/cancel',{project:project.id,id:deployment.id});if(version===generation)await loadProjects();}catch(e){if(version===generation)error(e);cancel.disabled=false;}finally{entry.mutating=false;}});row.append(cancel);}
+  live.append(row);
  }
- return nodeUploadRows(card,project,role,version,result,{node,builds,releases});
+ entry.node=node;entry.active=builds.some(nodeJobActive)||deployments.some(nodeJobActive);
+ for(const {button,upload} of entry.uploadButtons||[]){
+  const build=builds.find(item=>item.upload_id===upload.id);
+  const saved=build&&releases.some(release=>release.build_id===build.id);
+  button.textContent=saved?'Built':build?.state==='queued'?'Build queued':build?.state==='running'?'Building':build?'Build again':'Build';
+  button.disabled=builds.some(nodeJobActive)||!!saved||!node.available;
+ }
+}
+async function pollNodeStatus(state){
+ if(state.stopped||nodeStatusState!==state||state.version!==generation||state.workspace!==$('workspace').value||state.inFlight)return;
+ const entries=[...nodeStatusCards.values()].filter(entry=>entry.version===state.version&&entry.active&&!entry.mutating);if(!entries.length){state.timer=setTimeout(()=>pollNodeStatus(state),nodeStatusInterval);return;}
+ state.inFlight=true;state.controller=new AbortController();
+ const results=await Promise.allSettled(entries.map(entry=>api('/api/node?project='+encodeURIComponent(entry.project.id),undefined,state.controller.signal)));
+ if(nodeStatusState!==state||state.stopped||state.version!==generation||state.workspace!==$('workspace').value){state.inFlight=false;return;}
+ let unauthorized=false;
+ results.forEach((result,index)=>{if(result.status==='fulfilled')renderNodeLive(entries[index],result.value);else if(result.reason?.status===401)unauthorized=true;else{const note=entries[index].live.firstElementChild;if(note)note.textContent='Status refresh unavailable. Retry with Refresh release status.';entries[index].snapshot=null;if(result.reason?.status===403||result.reason?.status===404)entries[index].active=false;}});
+ state.inFlight=false;state.controller=null;
+ if(!unauthorized&&[...nodeStatusCards.values()].some(entry=>entry.version===state.version&&entry.active))state.timer=setTimeout(()=>pollNodeStatus(state),nodeStatusInterval);else if(unauthorized)signedOut();
+}
+function startNodeStatusRefresh(version,workspace){
+ if(version!==generation||workspace!==$('workspace').value)return;
+ if([...nodeStatusCards.values()].some(entry=>entry.version===version&&entry.active)){const state={version,workspace,timer:null,inFlight:false,stopped:false,controller:null};nodeStatusState=state;state.timer=setTimeout(()=>pollNodeStatus(state),nodeStatusInterval);}
 }
 
 function nodeUploadRows(card,project,role,version,result,state){
- const copy=document.createElement('p');copy.textContent='ZIP up to 10 MiB. Include package.json with a start script and package-lock.json at the root. Omit node_modules and secrets.';card.append(copy);
+ const copy=document.createElement('p');copy.textContent='ZIP up to 10 MiB. Include package.json with a start script and package-lock.json at the root. Customize index.html in the starter, then ZIP the source files and upload, build, and deploy. Omit node_modules and secrets.';card.append(copy);
  if(role!=='viewer'){
+  const starter=document.createElement('a');starter.href='/examples/node-website.zip';starter.download='node-website.zip';starter.textContent='Download a starter website';card.append(starter);
   const form=document.createElement('form');const label=document.createElement('label');label.textContent='Project ZIP';const input=document.createElement('input');input.type='file';input.accept='.zip,application/zip';input.required=true;label.append(input);const button=document.createElement('button');button.textContent='Upload and validate';form.append(label,button);card.append(form);
   form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{const file=input.files[0];if(!file||file.size>10*1024*1024)throw new Error('Select a ZIP no larger than 10 MiB.');const response=await fetch('/api/uploads?project='+encodeURIComponent(project.id),{method:'POST',headers:{'Content-Type':'application/zip','X-CSRF-Token':csrf},body:file});const data=await response.json();if(!response.ok)throw new Error(data.error||'Upload failed');if(version===generation)await loadProjects();});});
  }
  for(const upload of result.uploads){const row=document.createElement('div');const text=document.createElement('p');text.textContent='Validated · '+upload.files+(upload.files===1?' file · ':' files · ')+(upload.compressed_bytes/1024).toFixed(1)+' KiB · '+new Date(upload.created_at*1000).toLocaleString();row.append(text);
-  if(state&&state.node.available&&role!=='viewer'){
-   const build=state.builds.find(item=>item.upload_id===upload.id);const saved=build&&state.releases.some(release=>release.build_id===build.id);const busy=state.builds.some(item=>item.state==='queued'||item.state==='running');const button=document.createElement('button');button.type='button';button.textContent=saved?'Built':build&&build.state==='queued'?'Build queued':build&&build.state==='running'?'Building':build?'Build again':'Build';button.disabled=busy||!!saved;const requestKey=crypto.randomUUID();button.addEventListener('click',async()=>{button.disabled=true;try{await api('/api/node/builds',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await loadProjects();}catch(e){error(e);button.disabled=false;}});row.append(button);
+  if(state&&role!=='viewer'){
+   const build=state.builds.find(item=>item.upload_id===upload.id);const saved=build&&state.releases.some(release=>release.build_id===build.id);const busy=state.builds.some(item=>item.state==='queued'||item.state==='running');const button=document.createElement('button');button.type='button';button.textContent=saved?'Built':build&&build.state==='queued'?'Build queued':build&&build.state==='running'?'Building':build?'Build again':'Build';button.disabled=busy||!!saved||!state.node.available;nodeStatusCards.get(project.id).uploadButtons.push({button,upload});const requestKey=crypto.randomUUID();button.addEventListener('click',async()=>{button.disabled=true;const entry=nodeStatusCards.get(project.id);entry.mutating=true;try{await api('/api/node/builds',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await loadProjects();}catch(e){if(version===generation)error(e);button.disabled=false;}finally{entry.mutating=false;}});row.append(button);
   }
   if(role!=='viewer'){const button=document.createElement('button');button.type='button';button.textContent='Delete upload';button.addEventListener('click',async()=>{if(!confirm('Delete this saved upload?'))return;button.disabled=true;try{await api('/api/uploads/delete',{project:project.id,id:upload.id});if(version===generation)await loadProjects();}catch(e){error(e);button.disabled=false;}});row.append(button);}card.append(row);
  }

@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/projectarchive"
 	"io"
 	"mime"
 	"net"
@@ -16,6 +15,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/examples"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/projectarchive"
 )
 
 //go:embed static/*
@@ -173,6 +175,17 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(r.URL.Path, "/api/") {
 		if r.Method != "GET" {
 			httpError(w, 405, "Method not allowed")
+			return
+		}
+		if r.URL.Path == "/examples/node-website.zip" {
+			data, err := examples.NodeWebsiteZIP()
+			if err != nil {
+				httpError(w, 500, "Example unavailable")
+				return
+			}
+			w.Header().Set("Content-Type", "application/zip")
+			w.Header().Set("Content-Disposition", `attachment; filename="node-website.zip"`)
+			w.Write(data)
 			return
 		}
 		name, kind := "", ""
