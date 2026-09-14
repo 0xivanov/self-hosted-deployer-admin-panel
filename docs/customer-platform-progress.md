@@ -1,6 +1,6 @@
 # Customer platform implementation progress
 
-Updated: 2026-09-13. The four-part goal remains active and incomplete. Delivery prioritizes usable features with focused checks, as reaffirmed by the user. No customer-platform code has been deployed to the live VPS/Pi environment.
+Updated: 2026-09-14. The four-part goal remains active and incomplete. Delivery prioritizes usable features with focused checks, as reaffirmed by the user. No customer-platform code has been deployed to the live VPS/Pi environment.
 
 ## Implemented and verified
 
@@ -1263,3 +1263,31 @@ is untrusted, and the resulting ext4 output has not been mounted or independentl
 exported on the Mac. Still required: immutable stopped-output acquisition and
 isolated export, reproducible builder image provisioning, controller staging and
 durable executor integration. No customer release was retained or activated.
+
+## Isolated build output export (2026-09-14)
+
+Added a separate export VM mode with a read-only stopped-build snapshot, capped
+console, bounded raw output disk and no network or host shares. A dedicated boot
+job verifies snapshot/build identities, mounts ext4 read-only without journal
+replay, and uses the existing bounded Go artifact exporter. It returns framed ZIP
+bytes, so the Mac never mounts the guest filesystem. The host importer validates
+framing, expected identities, digest and ZIP contents before saving an archive.
+
+The focused actual VM rehearsal exported the previous synthetic Node build. The
+942-byte ZIP contained the expected generated `built.txt`; the snapshot digest
+remained unchanged, and the host confirmed exporter retirement and zero network
+devices. This used separate private copies of the stopped template and build
+output. No customer code executed on the Mac and no live hosting node changed.
+
+This completes the runnable isolated export stage, not the connected customer
+release flow. Durable controller staging, assignment/tenant binding, both VM stop
+gates, artifact storage and portal retention still need integration. Reproducible
+production image provisioning and release-stage qualification also remain open.
+
+Validation: Swift compilation/signing, Linux exporter build, host importer build
+and vet, and focused `ReadExport` checks passed. The importer accepted the actual
+exported disk and produced a private ZIP with 5 entries and 443 expanded bytes.
+Wrong identities, truncated content, invalid padding, unknown header fields,
+invalid disk sizes, changed archive bytes and an escaping ZIP path were rejected.
+Private stopped OS/EFI copies were removed; snapshots, receipts and the synthetic
+release were retained. The original disposable lab is stopped.

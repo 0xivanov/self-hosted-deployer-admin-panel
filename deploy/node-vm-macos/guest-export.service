@@ -1,0 +1,17 @@
+[Unit]
+Description=Deployer stopped Node build export boot job
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/deployer-build/guest-export.py
+TimeoutStartSec=90
+MemoryMax=768M
+MemorySwapMax=0
+TasksMax=32
+CPUQuota=100%
+StandardOutput=append:/dev/hvc0
+StandardError=append:/dev/hvc0
+
+[Install]
+WantedBy=multi-user.target

@@ -37,8 +37,8 @@ devices and stopped 0.012 seconds after its 15-second deadline. A repeat invocat
 was rejected by the persistent attempt record. No live hosting node changed.
 
 Still required: reproducible trusted image provisioning, controller payload staging,
-immutable output snapshot acquisition, safe artifact export and integration with
-the durable executor provider. The boot job below implements guest execution;
+controller-managed immutable snapshot acquisition and integration of the export
+stage with the durable executor provider. The boot job below implements guest execution;
 this is not yet a complete `NodeBuildExecutor`.
 
 
@@ -115,3 +115,53 @@ The September 13 synthetic Node build reported success using these disk inputs
 and boot job. The host confirmed zero network devices and VM stop roughly 37.3
 seconds after startup. This was a dependency-free project; output artifact content
 was not independently exported or activated. The disposable template is stopped.
+
+## Isolated stopped-output export
+
+`--export-disks` adds a fourth read-only disk, `snapshot.disk`, with stable ID
+`deployer-snapshot`. It has the same private-file rules as other operation files
+and must be 64 to 512 MiB, aligned to 512 bytes. Export mode retains the capped
+console and uses zero network devices. Existing build mode is unchanged.
+
+After confirming the builder is stopped, the controller must create a separate
+private copy of its output disk, prevent further writers, and compute its SHA-256.
+Use a fresh trusted OS/EFI copy and a new export operation directory. Never boot
+the builder's used OS disk as the exporter. Do not mutate the snapshot during or
+after export; attach it read-only. A filesystem copy or digest alone is not proof
+that the builder has stopped. Preserve execution mappings and lifecycle records.
+
+Provision `guest-export.py` at `/opt/deployer-build/guest-export.py`, its enabled
+service in `/etc/systemd/system/`, and the Linux `node-artifact-export` binary at
+`/opt/deployer-build/node-artifact-export`. Files must be root-owned; scripts and
+units 0644, binary 0755. The fresh exporter image needs Python, systemd, UDF and
+ext4 support, but no Node toolchain or customer credentials. It must contain no
+`/var/lib/deployer-export` directory from an earlier run.
+
+Its input UDF label is `DEPLOYER_EXPORT`. `request.json` contains exactly
+`ExecutionID` (the original build ID), `SourceSHA256`, `SnapshotSHA256`, and
+`NotAfter` (Unix deadline at most 60 seconds ahead). The launcher's operation ID
+identifies the separate exporter VM, not the original builder. The controller
+must bind those two operations. The output is a separate blank raw disk.
+
+The export boot job checks the snapshot digest, mounts ext4 read-only with journal
+replay and execution disabled, and checks the candidate build metadata against
+the assigned source/execution. The existing bounded Go exporter validates paths,
+symlinks, sizes and ZIP contents. The job writes ZIP bytes at offset 4096 and
+publishes a NUL-padded JSON header in the first 4096 bytes only after syncing the
+archive. The header contains `Version: 1`, `ExecutionID`, `SourceSHA256`,
+`SnapshotSHA256`, `ArchiveSHA256` and `ArchiveBytes`. Remaining disk bytes are not
+part of the archive. The header and disk contents remain untrusted guest output.
+
+After independently confirming the export VM has stopped, use:
+
+```sh
+go run ./cmd/node-artifact-import STOPPED_EXPORT_DISK NEW_ARCHIVE_PATH \
+  EXPECTED_BUILD_EXECUTION_ID EXPECTED_SOURCE_SHA256 EXPECTED_SNAPSHOT_SHA256
+```
+
+The destination parent must be private. The importer reads raw bytes without
+mounting the disk, checks the framing and expected identities, and independently
+validates the ZIP and digest before exclusively creating the private archive.
+It does not infer VM retirement, resolve tenant ownership, or authorize release
+retention. The durable controller must supply identities from its own assignment,
+not copy them from the returned header, and must enforce both VM stop gates.

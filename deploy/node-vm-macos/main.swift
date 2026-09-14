@@ -75,6 +75,7 @@ final class Launcher: NSObject, VZVirtualMachineDelegate {
     let operation: String
     let deadline: Date
     let buildDisks: Bool
+    let exportDisks: Bool
     let console: ConsoleCapture?
     var timer: DispatchSourceTimer?
     var signals: [DispatchSourceSignal] = []
@@ -82,11 +83,12 @@ final class Launcher: NSObject, VZVirtualMachineDelegate {
     var stopRequested = false
     var finished = false
 
-    init(directory: String, operation: String, seconds: Int, buildDisks: Bool) throws {
+    init(directory: String, operation: String, seconds: Int, buildDisks: Bool, exportDisks: Bool) throws {
         self.directory = directory
         self.operation = operation
         self.buildDisks = buildDisks
-        console = buildDisks ? try ConsoleCapture(directory: directory) : nil
+        self.exportDisks = exportDisks
+        console = (buildDisks || exportDisks) ? try ConsoleCapture(directory: directory) : nil
         deadline = Date().addingTimeInterval(Double(seconds))
         let configuration = VZVirtualMachineConfiguration()
         configuration.platform = VZGenericPlatformConfiguration()
@@ -99,7 +101,7 @@ final class Launcher: NSObject, VZVirtualMachineDelegate {
             url: URL(fileURLWithPath: directory + "/disk"), readOnly: false,
             cachingMode: .uncached, synchronizationMode: .full)
         configuration.storageDevices = [VZVirtioBlockDeviceConfiguration(attachment: disk)]
-        if buildDisks {
+        if buildDisks || exportDisks {
             // Stable IDs avoid depending on asynchronous Linux device discovery.
             let input = try VZDiskImageStorageDeviceAttachment(
                 url: URL(fileURLWithPath: directory + "/input.iso"), readOnly: true)
@@ -112,6 +114,13 @@ final class Launcher: NSObject, VZVirtualMachineDelegate {
             outputDevice.blockDeviceIdentifier = "deployer-output"
             configuration.storageDevices.append(inputDevice)
             configuration.storageDevices.append(outputDevice)
+            if exportDisks {
+                let snapshot = try VZDiskImageStorageDeviceAttachment(
+                    url: URL(fileURLWithPath: directory + "/snapshot.disk"), readOnly: true)
+                let snapshotDevice = VZVirtioBlockDeviceConfiguration(attachment: snapshot)
+                snapshotDevice.blockDeviceIdentifier = "deployer-snapshot"
+                configuration.storageDevices.append(snapshotDevice)
+            }
         }
         configuration.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
         // No NAT, host network, sockets, shared folders, clipboard or guest agent.
@@ -131,7 +140,7 @@ final class Launcher: NSObject, VZVirtualMachineDelegate {
     }
 
     func start() throws {
-        try record(directory, "attempt.json", ["operation": operation, "deadline": deadline.timeIntervalSince1970, "build_disks": buildDisks])
+        try record(directory, "attempt.json", ["operation": operation, "deadline": deadline.timeIntervalSince1970, "build_disks": buildDisks, "export_disks": exportDisks])
         for number in [SIGINT, SIGTERM] {
             signal(number, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
@@ -150,7 +159,8 @@ final class Launcher: NSObject, VZVirtualMachineDelegate {
                 terminate("VM start failed; preserve its operation records")
             case .success:
                 do {
-                    try record(directory, "running.json", ["operation": operation, "observed_at": Date().timeIntervalSince1970, "network_devices": 0, "storage_devices": buildDisks ? 3 : 1])
+                    let storageDevices = exportDisks ? 4 : (buildDisks ? 3 : 1)
+                    try record(directory, "running.json", ["operation": operation, "observed_at": Date().timeIntervalSince1970, "network_devices": 0, "storage_devices": storageDevices, "build_disks": buildDisks, "export_disks": exportDisks])
                 } catch {
                     stopRequested = true
                 }
@@ -178,7 +188,7 @@ final class Launcher: NSObject, VZVirtualMachineDelegate {
         guard vm.state == .stopped else { terminate("VM stop remains unconfirmed") }
         finished = true
         do {
-            try record(directory, "stopped.json", ["operation": operation, "observed_at": Date().timeIntervalSince1970, "state": "stopped"])
+            try record(directory, "stopped.json", ["operation": operation, "observed_at": Date().timeIntervalSince1970, "state": "stopped", "build_disks": buildDisks, "export_disks": exportDisks])
         } catch { terminate("Stopped VM record could not be persisted") }
         print("VM stopped; no build outcome has been inferred.")
         exit(0)
@@ -197,7 +207,7 @@ func terminate(_ message: String) -> Never {
 }
 
 do {
-    guard CommandLine.arguments.count == 4 || (CommandLine.arguments.count == 5 && CommandLine.arguments[4] == "--build-disks") else { throw fail("usage: node-vm-macos PRIVATE_OPERATION_DIRECTORY EXECUTION_ID SECONDS [--build-disks]") }
+    guard CommandLine.arguments.count == 4 || (CommandLine.arguments.count == 5 && ["--build-disks", "--export-disks"].contains(CommandLine.arguments[4])) else { throw fail("usage: node-vm-macos PRIVATE_OPERATION_DIRECTORY EXECUTION_ID SECONDS [--build-disks|--export-disks]") }
     let directory = CommandLine.arguments[1]
     let operation = CommandLine.arguments[2]
     guard let resolved = realpath(directory, nil) else { throw fail("Operation directory unavailable") }
@@ -208,9 +218,12 @@ do {
     try checkedPath(directory, directory: true)
     try checkedPath(directory + "/disk", directory: false)
     try checkedPath(directory + "/efi", directory: false)
-    let buildDisks = CommandLine.arguments.count == 5
-    if buildDisks {
-        for (name, minimum, maximum) in [("input.iso", Int64(2048), Int64(128 * 1024 * 1024)), ("output.disk", Int64(64 * 1024 * 1024), Int64(512 * 1024 * 1024))] {
+    let buildDisks = CommandLine.arguments.count == 5 && CommandLine.arguments[4] == "--build-disks"
+    let exportDisks = CommandLine.arguments.count == 5 && CommandLine.arguments[4] == "--export-disks"
+    if buildDisks || exportDisks {
+        var disks = [("input.iso", Int64(2048), Int64(128 * 1024 * 1024)), ("output.disk", Int64(64 * 1024 * 1024), Int64(512 * 1024 * 1024))]
+        if exportDisks { disks.append(("snapshot.disk", Int64(64 * 1024 * 1024), Int64(512 * 1024 * 1024))) }
+        for (name, minimum, maximum) in disks {
             try checkedPath(directory + "/" + name, directory: false)
             var info = stat()
             guard lstat(directory + "/" + name, &info) == 0,
@@ -218,7 +231,7 @@ do {
                   info.st_size % 512 == 0 else { throw fail("Invalid build disk size") }
         }
     }
-    let launcher = try Launcher(directory: directory, operation: operation, seconds: seconds, buildDisks: buildDisks)
+    let launcher = try Launcher(directory: directory, operation: operation, seconds: seconds, buildDisks: buildDisks, exportDisks: exportDisks)
     try launcher.start()
     withExtendedLifetime(launcher) { RunLoop.main.run() }
 } catch {
