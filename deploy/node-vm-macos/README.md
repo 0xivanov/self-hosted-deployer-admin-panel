@@ -217,3 +217,23 @@ VM or repeats dispatch. Missing/incomplete evidence requires reconciliation; kee
 all records and disks. The command does not automatically recover interrupted
 staging or execution, continuously process a queue, activate the website, or serve
 the remote executor API. Those integrations remain separate work.
+
+### Automatic queue processing
+
+Add `--watch` to keep the local command running for its assigned project. It
+processes queued builds serially, checks every five seconds when idle or when an
+error needs reconciliation, and holds an exclusive lock on the execution root.
+A second command using that root is rejected before claiming work. Repeated
+unchanged errors are logged once; successful releases are printed as JSON.
+
+For a previously dispatched running build, the watcher reads the original portal
+intent and attempts retention from completed pipeline evidence only. It does not
+repeat submission or start another VM. Expired preparation without any dispatch
+intent is atomically fenced and failed, allowing the customer to request a fresh
+build. Unknown submitted execution outcomes still require reconciliation.
+
+SIGINT/SIGTERM stops further claims and lets the current bounded iteration finish
+(up to three minutes) before exiting. Idle shutdown is immediate. Keep the Mac
+awake while processing; this is a local operator worker, not a deployed hosting
+service. Watch mode cannot be combined with `--resume` and does not automatically
+activate a retained release.

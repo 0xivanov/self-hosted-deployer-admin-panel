@@ -1330,3 +1330,34 @@ automatic interrupted-run reconciliation, production artifact storage and image
 provisioning, and connecting retained releases to the running website lifecycle.
 The local command does not itself activate a website. Domain resale, merchant
 payments and the other remaining requirements of the four-part goal are unchanged.
+
+## Automatic local build queue (2026-09-14)
+
+Added `--watch` to the local Node build command. It processes queued builds
+serially for its assigned project, automatically retains completed saved pipeline
+results after a restart, and never resubmits a dispatched execution. The worker
+holds an exclusive execution-root lock; another worker is rejected before work is
+claimed. Error/idle iterations wait five seconds, repeated unchanged errors are
+suppressed, and shutdown drains the bounded current iteration before exit.
+
+The portal pending-execution accessor returns the original dispatch identity for
+observation, including after lease expiry. It only fences/fails expired preparation
+that has no dispatch intent. Focused integration checks passed for accepted-but-
+lost dispatch replies, preserved execution/deadline identity, assignment mismatch,
+other-project isolation, and rejecting an expired preparer's old lease.
+
+This is automatic processing on the operator's Mac, not a deployed remote build
+service. Interrupted submitted pipelines without complete evidence and unsuccessful
+build outcome reconciliation still need operator attention. Website activation,
+production image/artifact operations and remaining domain/payment features are
+not completed by this change.
+
+Actual watcher evidence: started with an idle synthetic project, then queued build
+`07287f2e742c75afad232b02b15740a040c8b532bd773cfc510486f385364c41`.
+Without another operator invocation, the watcher ran execution
+`22852a8114081ca84d6daeffb736c42b89ef7358ff3eaeeb9ae4f77f2f42bfab`
+through both isolated VMs and retained the expected 942-byte release. A competing
+worker was rejected by the execution-root lock. The portal returned the new
+release to its workspace and denied another workspace's archive request. The
+watcher then exited successfully on SIGTERM while idle. It is not left running.
+Command build/vet and diff checks passed. No live VPS/Pi changes were made.

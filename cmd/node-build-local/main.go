@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"syscall"
@@ -189,6 +190,73 @@ func readRequest(root *os.Root) (portal.NodeExecutionRequest, error) {
 	return request, nil
 }
 
+func retainRequest(ctx context.Context, store *portal.Store, executions *os.Root, project string, request portal.NodeExecutionRequest) (*portal.NodeRelease, error) {
+	root, err := executions.OpenRoot(request.ExecutionID)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	release, err := store.RetainNodeRelease(ctx, nodepipeline.Reader{Root: root, Request: request}, project, request.BuildID)
+	if err != nil {
+		return nil, err
+	}
+	if release == nil {
+		return nil, errors.New("Node build did not produce a release")
+	}
+	return release, nil
+}
+
+func processOnce(ctx context.Context, store *portal.Store, executions *os.Root, config pipelineConfig, configPath, scriptPath, executionsPath, project, toolchain, resume string) (*portal.NodeRelease, error) {
+	var request portal.NodeExecutionRequest
+	if resume != "" {
+		if !validID(resume) {
+			return nil, errors.New("invalid execution ID")
+		}
+		root, err := executions.OpenRoot(resume)
+		if err != nil {
+			return nil, err
+		}
+		request, err = readRequest(root)
+		root.Close()
+		if err != nil || request.ExecutionID != resume || request.ProjectID != project || request.ToolchainSHA256 != toolchain {
+			return nil, errors.New("execution request does not match assignment")
+		}
+		return retainRequest(ctx, store, executions, project, request)
+	}
+
+	jobs, err := os.OpenRoot(config.DependenciesDirectory)
+	if err != nil {
+		return nil, err
+	}
+	defer jobs.Close()
+	prepared, err := store.PrepareNodeBuild(ctx, project, toolchain, "arm64", jobs, npmfetch.NewClient())
+	if err != nil {
+		return nil, err
+	}
+	if prepared == nil || prepared.Claim == nil || prepared.Bundle == nil {
+		return nil, nil
+	}
+	claim := prepared.Claim
+	executor := localSubmitter{executions: executions, project: claim.Job.ProjectID, job: claim.Job.ID}
+	if err = store.DispatchNodeBuild(ctx, claim.Job.ID, claim.ExecutionID, claim.Lease, jobs, executor); err != nil {
+		return nil, err
+	}
+	root, err := executions.OpenRoot(claim.ExecutionID)
+	if err != nil {
+		return nil, err
+	}
+	request, err = readRequest(root)
+	root.Close()
+	if err != nil {
+		return nil, err
+	}
+	command := exec.CommandContext(ctx, "/usr/bin/python3", scriptPath, configPath, filepath.Join(executionsPath, request.ExecutionID))
+	if err = command.Run(); err != nil {
+		return nil, errors.New("Node build pipeline failed")
+	}
+	return retainRequest(ctx, store, executions, project, request)
+}
+
 func run() error {
 	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
 		return errors.New("local Node builds require macOS arm64")
@@ -200,9 +268,13 @@ func run() error {
 	scriptPath := flag.String("pipeline-script", "", "Pipeline Python script")
 	executionsPath := flag.String("executions-directory", "", "Private execution directory")
 	resume := flag.String("resume", "", "Resume an existing execution")
+	watch := flag.Bool("watch", false, "Watch and process builds continuously")
 	flag.Parse()
 	if *database == "" || *project == "" || *toolchain == "" || *configPath == "" || *scriptPath == "" || *executionsPath == "" {
 		return errors.New("database, project, toolchain, pipeline-config, pipeline-script, and executions-directory are required")
+	}
+	if *watch && *resume != "" {
+		return errors.New("resume cannot be combined with watch")
 	}
 	if !validID(*project) || !validID(*toolchain) {
 		return errors.New("project and toolchain must be SHA-256 identifiers")
@@ -226,79 +298,83 @@ func run() error {
 		return err
 	}
 	defer executions.Close()
+	lock, err := executions.Open(".")
+	if err != nil {
+		return err
+	}
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		lock.Close()
+		return errors.New("another local Node build watcher owns the execution directory")
+	}
+	defer func() { _ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); _ = lock.Close() }()
 	store, err := portal.Open(*database)
 	if err != nil {
 		return errors.New("portal database unavailable")
 	}
 	defer store.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
-
-	var request portal.NodeExecutionRequest
-	if *resume != "" {
-		if !validID(*resume) {
-			return errors.New("invalid execution ID")
+	if !*watch {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		release, err := processOnce(ctx, store, executions, config, *configPath, *scriptPath, *executionsPath, *project, *toolchain, *resume)
+		if err != nil {
+			return err
 		}
-		root, e := executions.OpenRoot(*resume)
-		if e != nil {
-			return e
-		}
-		request, err = readRequest(root)
-		root.Close()
-		if err != nil || request.ExecutionID != *resume || request.ProjectID != *project || request.ToolchainSHA256 != *toolchain {
-			return errors.New("execution request does not match assignment")
-		}
-	} else {
-		jobs, e := os.OpenRoot(config.DependenciesDirectory)
-		if e != nil {
-			return e
-		}
-		defer jobs.Close()
-		prepared, e := store.PrepareNodeBuild(ctx, *project, *toolchain, "arm64", jobs, npmfetch.NewClient())
-		if e != nil {
-			return e
-		}
-		if prepared == nil || prepared.Claim == nil || prepared.Bundle == nil {
+		if release == nil {
 			return errors.New("no queued Node build available")
 		}
-		claim := prepared.Claim
-		executor := localSubmitter{executions: executions, project: claim.Job.ProjectID, job: claim.Job.ID}
-		if e = store.DispatchNodeBuild(ctx, claim.Job.ID, claim.ExecutionID, claim.Lease, jobs, executor); e != nil {
-			return e
+		return json.NewEncoder(os.Stdout).Encode(release)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	var lastErr string
+	for {
+		if ctx.Err() != nil {
+			return nil
 		}
-		// Dispatch persisted the complete request; read it back as the immutable
-		// request used by the pipeline and evidence reader.
-		root, e := executions.OpenRoot(claim.ExecutionID)
-		if e != nil {
-			return e
+		// Stop claiming on shutdown, but allow the bounded active pipeline to drain.
+		iteration, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		pending, pendingErr := store.PendingNodeBuildExecution(iteration, *project, *toolchain, "arm64")
+		var release *portal.NodeRelease
+		var processErr error
+		if pendingErr != nil {
+			processErr = pendingErr
+		} else if pending != nil {
+			release, processErr = retainRequest(iteration, store, executions, *project, *pending)
+		} else {
+			release, processErr = processOnce(iteration, store, executions, config, *configPath, *scriptPath, *executionsPath, *project, *toolchain, "")
 		}
-		request, e = readRequest(root)
-		root.Close()
-		if e != nil {
-			return e
+		cancel()
+		if processErr != nil {
+			if processErr.Error() != lastErr {
+				fmt.Fprintln(os.Stderr, processErr)
+				lastErr = processErr.Error()
+			}
+		} else if release != nil {
+			lastErr = ""
+			if err := json.NewEncoder(os.Stdout).Encode(release); err != nil {
+				return err
+			}
+		} else {
+			if lastErr != "" {
+				fmt.Fprintln(os.Stderr, "Local Node build queue recovered")
+			}
+			lastErr = ""
+		}
+		// Back off on errors as well as idle queues; missing evidence must not
+		// become a tight retry loop against the database and execution files.
+		if processErr != nil || release == nil {
+			timer := time.NewTimer(5 * time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil
+			case <-timer.C:
+			}
+		}
+		if ctx.Err() != nil {
+			return nil
 		}
 	}
-
-	executionPath := filepath.Join(*executionsPath, request.ExecutionID)
-	if *resume == "" {
-		command := exec.CommandContext(ctx, "/usr/bin/python3", *scriptPath, *configPath, executionPath)
-		if err = command.Run(); err != nil {
-			return errors.New("Node build pipeline failed")
-		}
-	}
-	root, err := executions.OpenRoot(request.ExecutionID)
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-	release, err := store.RetainNodeRelease(ctx, nodepipeline.Reader{Root: root, Request: request}, *project, request.BuildID)
-	if err != nil {
-		return err
-	}
-	if release == nil {
-		return errors.New("Node build did not produce a release")
-	}
-	return json.NewEncoder(os.Stdout).Encode(release)
 }
 
 func main() {
