@@ -64,6 +64,9 @@ func (s *Store) RequestPublication(ctx context.Context, token, project, upload, 
 	if !errors.Is(err, sql.ErrNoRows) {
 		return PublicationJob{}, err
 	}
+	if err = s.requireHostingAccess(ctx, tx, p.WorkspaceID); err != nil {
+		return PublicationJob{}, err
+	}
 	var valid int
 	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM uploads WHERE id=? AND project_id=?", upload, project).Scan(&valid); err != nil {
 		return PublicationJob{}, err
@@ -183,6 +186,9 @@ func (s *Store) ClaimPublication(ctx context.Context, project string) (*Publicat
 			return nil, err
 		}
 		return nil, tx.Commit()
+	}
+	if err = s.requireProjectHostingAccess(ctx, tx, project); err != nil {
+		return nil, err
 	}
 	c := &PublicationClaim{Job: j, Lease: randomToken()}
 	if err = tx.QueryRowContext(ctx, "SELECT sha256,archive FROM uploads WHERE id=? AND project_id=?", j.UploadID, project).Scan(&c.SHA256, &c.Archive); err != nil {

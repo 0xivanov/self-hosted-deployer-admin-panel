@@ -52,6 +52,9 @@ func (s *Store) ClaimNodeBuild(ctx context.Context, project, toolchainSHA256, ar
 	if !allowed {
 		return nil, ErrDenied
 	}
+	if err = s.requireProjectHostingAccess(ctx, tx, project); err != nil {
+		return nil, err
+	}
 	c := &NodeBuildClaim{Job: job, ExecutionID: randomToken(), Lease: randomToken(), LeaseUntil: s.now().Add(time.Minute).Unix()}
 	var savedDigest string
 	if err = tx.QueryRowContext(ctx, "SELECT archive,sha256 FROM uploads WHERE id=? AND project_id=?", job.UploadID, project).Scan(&c.Archive, &savedDigest); err != nil {

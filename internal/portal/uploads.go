@@ -50,6 +50,9 @@ func (s *Store) UploadAccess(ctx context.Context, token, project string) (Projec
 	if err != nil {
 		return p, err
 	}
+	if err = s.requireHostingAccess(ctx, tx, p.WorkspaceID); err != nil {
+		return p, err
+	}
 	return p, tx.Commit()
 }
 
@@ -71,6 +74,9 @@ func (s *Store) SaveUpload(ctx context.Context, token, project string, data []by
 	defer tx.Rollback()
 	p, actor, err := s.uploadProject(ctx, tx, token, project, true)
 	if err != nil {
+		return Upload{}, err
+	}
+	if err = s.requireHostingAccess(ctx, tx, p.WorkspaceID); err != nil {
 		return Upload{}, err
 	}
 	var count, bytes int64

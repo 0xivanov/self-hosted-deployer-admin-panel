@@ -92,6 +92,9 @@ func (s *Store) RequestNodeBuild(ctx context.Context, token, project, upload, ke
 	if !errors.Is(err, sql.ErrNoRows) {
 		return NodeBuild{}, err
 	}
+	if err = s.requireHostingAccess(ctx, tx, p.WorkspaceID); err != nil {
+		return NodeBuild{}, err
+	}
 	var count, pending int
 	if err = tx.QueryRowContext(ctx, "SELECT count(*),COALESCE(sum(state IN ('queued','running')),0) FROM node_builds WHERE project_id=?", project).Scan(&count, &pending); err != nil {
 		return NodeBuild{}, err

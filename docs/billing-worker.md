@@ -61,7 +61,7 @@ Owners can request `/api/billing/offers?workspace=...` for enabled plans and the
 
 ## Customer billing screen
 
-With test billing enabled, workspace owners see Hosting billing beneath their projects. Set up test billing, refresh until the account is ready, choose a verified plan and refresh until the checkout link is available. The link opens Stripe in another tab. Use /billing/success and /billing/cancel on the configured portal origin as return URLs. The portal always retrieves saved status; a return URL does not confirm payment. Checkout completion currently remains awaiting billing reconciliation rather than enabling paid hosting.
+With test billing enabled, workspace owners see Hosting billing beneath their projects. Set up test billing, refresh until the account is ready, choose a verified plan and refresh until the checkout link is available. The link opens Stripe in another tab. Use /billing/success and /billing/cancel on the configured portal origin as return URLs. The portal always retrieves saved status; a return URL does not confirm payment. Checkout completion awaits billing reconciliation. Enrolled sandbox workspaces use the separate hosting access policy below; checkout completion alone never enables hosting.
 
 Subscription refresh signals require an already-bound subscription and matching customer. Events arriving before checkout identity binding remain pending. A valid signal clears the old observation, fences in-flight reads and reschedules the subscription task. Duplicate processing does not clear a newer observation. Refund and dispute event handling still require implementation before paid-access decisions.
 
@@ -86,3 +86,44 @@ Charge observations now include verified dispute outcomes and DisputesChecked. O
 Known charges refresh every five minutes, using durable sixty-second reservation/backoff after failures. charge.succeeded now seeds charge tracking through the same verified-event path. A missing event for an entirely unknown charge cannot be recovered by this scheduler; a provider discovery sweep remains required.
 
 Subscription reconciliation now discovers charges associated with its latest invoice and queues their verification even when the charge webhook was missed. Discovery requires exact customer/subscription identity and a supported single payment allocation. An empty result does not prove paid access. Historical invoices and unknown subscriptions still require a broader discovery sweep.
+
+## Sandbox hosting access policy
+
+`cmd/hosting-policy` opts a specific workspace into subscription enforcement:
+
+```sh
+hosting-policy --database /private/portal.sqlite --workspace WORKSPACE_ID --require-test-subscription true
+```
+
+Use this only for a sandbox workspace with test billing, plans, and the billing
+worker configured. The command requires an existing database and an explicit
+true/false value. It records the operator change. Passing false restores the
+workspace's previous unrestricted hosting behavior. Schema 36 leaves existing
+workspaces unrestricted unless explicitly enrolled; no live workspace is enrolled
+by deployment or migration alone.
+
+For an enrolled workspace, new projects, ZIP uploads, static publication, Node
+builds and Node deployment requests require fresh saved subscription and payment
+evidence. Worker claims and Node dispatch recheck the gate. Retrying a saved
+request retains its original job; reads, cleanup and reconciliation remain
+available. Running websites are not suspended or deleted by this policy.
+
+A qualifying subscription must be active, within its billing period, unpaused,
+and linked to the saved checkout and customer. Its latest invoice must be paid
+with nothing remaining. Exactly one corresponding charge must have no refund,
+no unresolved dispute and a completed dispute check. Subscription and charge
+observations must be less than 15 minutes old and cannot be future-dated. A
+scheduled end-of-period cancellation remains valid until the paid period ends.
+Trialing subscriptions, zero-charge invoices, split payments and partial refunds
+do not qualify under this initial policy.
+
+The owner billing screen shows whether hosting changes are enabled or on hold.
+`GET /api/billing/access?workspace=...` returns only the mode and allow/deny decision
+to authenticated workspace members, with test billing enabled. Payment gating
+returns HTTP 402; provider and payment identifiers remain private.
+
+This is a sandbox policy, not authorization to accept test-mode payments for live
+hosting. Production enrollment, plan-specific resource limits, grace/suspension
+rules and recovery behavior under real provider events still need qualification.
+Already-started work can complete and reconcile; this gate is not a runtime kill
+switch. Billing observation freshness depends on keeping the worker running.

@@ -62,6 +62,9 @@ func (s *Store) DispatchNodeBuild(ctx context.Context, id, execution, lease stri
 	if err != nil {
 		return err
 	}
+	if err = s.requireProjectHostingAccess(ctx, tx, job.ProjectID); err != nil {
+		return err
+	}
 	var existing []byte
 	if err = tx.QueryRowContext(ctx, "SELECT dispatch_intent FROM node_builds WHERE id=?", id).Scan(&existing); err != nil {
 		return err

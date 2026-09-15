@@ -66,6 +66,9 @@ func (s *Store) DispatchNodeDeployment(ctx context.Context, id, operation, lease
 	if err != nil {
 		return err
 	}
+	if err = s.requireProjectHostingAccess(ctx, tx, job.ProjectID); err != nil {
+		return err
+	}
 	release, err := savedNodeRelease(ctx, tx, job.ReleaseID, job.ProjectID)
 	if err != nil {
 		return err

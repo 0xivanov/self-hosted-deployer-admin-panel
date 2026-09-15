@@ -1877,3 +1877,26 @@ preservation of existing sessions and order identity. Synthetic UI checks cover
 code display cleanup, malformed codes, failed recovery and duplicate submissions.
 No live deployment, provider transaction or customer message was performed.
 The full hosting MVP goal remains active.
+
+## Sandbox subscription enforcement (2026-09-15)
+
+Added an operator-enabled per-workspace hosting access policy. Schema 36 leaves
+existing workspaces unchanged. Enrolled sandbox workspaces require fresh paid
+subscription and corresponding charge evidence for new projects, uploads,
+publications, Node builds and deployments. Worker claims and Node dispatch check
+again before new work starts. Existing request replay, reads and reconciliation
+remain available; running sites are not suspended or deleted.
+
+Luna implemented the policy and private operator command. Root reviewed and
+corrected no-policy handling requirements, required complete checkout/customer
+binding, integrated request/worker gates and added owner status UI. Tests cover
+a qualifying workspace creating a project, missing/stale/future/expired/paused
+or trialing evidence, unpaid invoices, refunds and dispute checks, workspace
+isolation and persisted enrollment. Integration checks confirm HTTP 402, retained
+request identity and no external Node submission after payment access is lost.
+Migration checks and synthetic UI state/stale-response checks passed.
+
+No live workspace was enrolled, no charge made and no deployment changed.
+Production enrollment, plan-specific resource quotas, grace/suspension behavior
+and provider qualification remain. This sandbox gate does not establish paid
+production hosting. The full four-part goal remains active.

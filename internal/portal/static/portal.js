@@ -420,12 +420,13 @@ function showBillingSubscriptions(content,subscriptions){
 }
 async function loadBilling(workspace,version){
  const request=++billingGeneration;
- const [catalog,status]=await Promise.all([api('/api/billing/offers?workspace='+encodeURIComponent(workspace)),api('/api/billing/status?workspace='+encodeURIComponent(workspace))]);
+ const [catalog,status,access]=await Promise.all([api('/api/billing/offers?workspace='+encodeURIComponent(workspace)),api('/api/billing/status?workspace='+encodeURIComponent(workspace)),api('/api/billing/access?workspace='+encodeURIComponent(workspace))]);
  if(version!==generation||request!==billingGeneration)return;
  const content=$('billing-content');content.replaceChildren();
  loadPaymentHistory(workspace,version,request,content);
  const note=text=>{const p=document.createElement('p');p.textContent=text;content.append(p);};
  const action=(text,fn)=>{const button=document.createElement('button');button.textContent=text;button.addEventListener('click',async()=>{button.disabled=true;try{await fn();if(version===generation)await loadBilling(workspace,version);}catch(e){if(version===generation)error(e);}finally{button.disabled=false;}});content.append(button);};
+ if(access.mode==='test_subscription')note(access.allowed?'Hosting changes are enabled by your verified test subscription.':'Hosting changes are on hold. A current paid test subscription and payment check are required. Existing sites keep running.');
  if(status.customer_state==='ready'&&billingManagement){action('Manage subscription and payment details',async()=>{
   const result=await api('/api/billing/manage',{workspace});
   if(version!==generation)return;

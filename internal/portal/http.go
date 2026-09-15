@@ -566,6 +566,8 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 func (h *HTTP) storeError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrHostingPayment):
+		httpError(w, 402, "Hosting changes require a current paid test subscription. Ask the workspace owner to check billing.")
 	case errors.Is(err, ErrPublishing):
 		httpError(w, 409, "A publication is already pending. Refresh its status before retrying.")
 	case errors.Is(err, ErrConflict):

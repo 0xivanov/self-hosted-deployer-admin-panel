@@ -59,6 +59,9 @@ func (s *Store) RequestNodeDeployment(ctx context.Context, token, project, relea
 	if !errors.Is(err, sql.ErrNoRows) {
 		return NodeDeployment{}, err
 	}
+	if err = s.requireHostingAccess(ctx, tx, p.WorkspaceID); err != nil {
+		return NodeDeployment{}, err
+	}
 	var activeRuntime string
 	err = tx.QueryRowContext(ctx, "SELECT j.runtime_id FROM node_active_deployments a JOIN node_deployments j ON j.id=a.deployment_id WHERE a.project_id=?", project).Scan(&activeRuntime)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -209,6 +212,9 @@ func (s *Store) ClaimNodeDeployment(ctx context.Context, project, runtimeID, too
 	}
 	if release == nil || release.ArtifactSHA256 != j.ArtifactSHA256 || release.ToolchainSHA256 != toolchain || release.Architecture != architecture {
 		return nil, ErrConflict
+	}
+	if err = s.requireProjectHostingAccess(ctx, tx, project); err != nil {
+		return nil, err
 	}
 	c := &NodeDeploymentClaim{Job: j, Release: *release, OperationID: randomToken(), Lease: randomToken()}
 	if err = tx.QueryRowContext(ctx, "SELECT r.archive FROM node_releases r JOIN node_deployment_releases ref ON ref.release_id=r.build_id WHERE ref.deployment_id=?", j.ID).Scan(&c.Archive); err != nil {

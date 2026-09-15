@@ -21,6 +21,14 @@ func (h *HTTP) billingHTTP(w http.ResponseWriter, r *http.Request, token string)
 		}
 	}
 	switch {
+	case r.URL.Path == "/api/billing/access" && r.Method == "GET":
+		status, err := h.store.WorkspaceHostingAccess(r.Context(), token, r.URL.Query().Get("workspace"))
+		if err != nil {
+			fail(err)
+			return
+		}
+		httpJSON(w, status)
+
 	case r.URL.Path == "/api/billing/manage" && r.Method == "POST":
 		if h.billingManagement == nil {
 			httpError(w, 503, "Billing management is unavailable")
