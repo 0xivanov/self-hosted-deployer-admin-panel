@@ -276,3 +276,40 @@ with bounded storage, in addition to durable order limits. Forwarded headers are
 not trusted, so a reverse proxy needs a qualified client-address/rate-limit setup
 before public launch. Verified merchant events, automatic fulfillment, refunds,
 tax/commercial qualification and actual Stripe sandbox trials are still required.
+
+## Background test merchant maintenance
+
+`cmd/merchant-worker` refreshes bound account capabilities and mapped open or
+completed-but-unpaid checkouts without buyer interaction. Run it against the
+same private portal database and test merchant configuration as the portal:
+
+```sh
+go run ./cmd/merchant-worker --database /private/path/portal.db \
+  --config /private/path/merchant-test.json --origin https://portal.example.test
+```
+
+The configuration contains `secret_key` and `countries`, must be a private regular
+file, and only test keys are accepted. The worker requires an existing database.
+It does not create merchant accounts, orders, checkout sessions or charges. Lost
+creation replies without a mapped session still require operator reconciliation;
+this worker does not guess their identity. It is not a webhook/fulfillment/refund
+worker.
+
+Default passes handle up to 50 accounts and 50 unpaid sessions, then wait 30
+seconds. `--batch` accepts 1 to 100, `--interval` 10 seconds to two minutes, and
+`--once` runs one bounded batch. Cursors advance through item failures and wrap
+at the end; a timed-out provider read does not stall other items. Cursors live in
+process memory, so restart resumes scanning at the beginning. Configure a single
+worker initially and size capacity so an account round trip stays below the
+five-minute readiness cutoff. Excess latency fails checkout readiness closed.
+
+Account observations use the same generation guard as owner refreshes. A slower
+response cannot replace a newer observation. Readiness revocations are recorded,
+and future order creation continues to enforce the original account owner's
+verified, enabled workspace ownership. Capability changes are audited; unchanged
+periodic reads do not create audit rows. Paid and expired orders are skipped.
+Worker output contains counts only. Integrating deployment supervision/monitoring,
+verified merchant events, fulfillment and refunds remains release work.
+
+This worker supersedes the earlier manual-refresh-only readiness limitation when
+it is configured and running. No worker is installed on the live fleet yet.

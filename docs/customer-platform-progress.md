@@ -1682,3 +1682,31 @@ This completes the local test-provider purchase path, not the payment product.
 Background merchant readiness, buyer credential expiry/recovery, signed events,
 fulfillment/refunds and provider qualification remain. Domain resale and the
 remaining hosting/release requirements are unchanged; the full goal is active.
+
+## Background merchant readiness and payments (2026-09-15)
+
+Added a runnable test merchant worker that refreshes existing bound accounts and
+mapped unpaid checkout sessions. This removes the need for buyers to refresh
+orders manually when the worker is running and keeps merchant capabilities
+current without repeated owner interaction. It cannot create accounts, checkouts
+or charges. Unknown submissions without a saved provider mapping still need
+operator reconciliation.
+
+Batches are bounded and cursor-based, advancing through individual provider
+failures. Account responses share observation-generation protection with manual
+refresh. Disabled payment capabilities block later purchases. Paid/expired orders
+are excluded, and logs contain counts only. The command requires a private test
+configuration, exact HTTPS origin and existing portal database; it supports one
+batch or continuous operation with signal shutdown.
+
+Root reviewed Luna's maintenance implementation and corrected per-call timeout
+handling so failed items do not stop cursor progress. Periodic unchanged account
+reads no longer create audit rows. Focused checks passed for readiness revocation,
+background paid-state reconciliation, unknown-submission exclusion, bounded scans,
+failure/timeout progress and older observation rejection. Command compilation and
+scoped vet passed. No live worker or service was installed, and no provider calls
+were made outside synthetic test fixtures.
+
+Merchant events, fulfillment/refunds, buyer expiry/recovery, actual provider
+qualification and worker deployment supervision remain. The full domain resale,
+account isolation, hosting/payment and release qualification goal remains active.
