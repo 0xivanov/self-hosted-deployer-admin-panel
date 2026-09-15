@@ -17,6 +17,8 @@ type MerchantCheckoutProvider interface {
 }
 
 type MerchantOrder struct {
+	FulfilledAt     int64  `json:"fulfilled_at"`
+	FulfilledBy     string `json:"-"`
 	ID              string `json:"id"`
 	WorkspaceID     string `json:"workspace_id"`
 	ProductID       string `json:"product_id"`
@@ -36,12 +38,12 @@ type MerchantOrder struct {
 	PaymentIntentID string `json:"-"`
 }
 
-const merchantOrderColumns = "id,workspace_id,product_id,product_revision,buyer_hash,request_key,account_id,name,currency,amount_minor,state,payment_status,COALESCE(session_id,''),COALESCE(checkout_url,''),COALESCE(payment_intent_id,''),created_at,submitted_at,observation_generation,observed_at"
+const merchantOrderColumns = "id,workspace_id,product_id,product_revision,buyer_hash,request_key,account_id,name,currency,amount_minor,state,payment_status,COALESCE(session_id,''),COALESCE(checkout_url,''),COALESCE(payment_intent_id,''),created_at,submitted_at,observation_generation,observed_at,fulfilled_at,fulfilled_by"
 
 func scanMerchantOrder(row interface{ Scan(...any) error }) (MerchantOrder, int64, int64, int64, error) {
 	var o MerchantOrder
 	var submitted, generation int64
-	err := row.Scan(&o.ID, &o.WorkspaceID, &o.ProductID, &o.ProductRevision, &o.BuyerHash, &o.RequestKey, &o.AccountID, &o.Name, &o.Currency, &o.AmountMinor, &o.State, &o.PaymentStatus, &o.SessionID, &o.CheckoutURL, &o.PaymentIntentID, &o.CreatedAt, &submitted, &generation, &o.ObservedAt)
+	err := row.Scan(&o.ID, &o.WorkspaceID, &o.ProductID, &o.ProductRevision, &o.BuyerHash, &o.RequestKey, &o.AccountID, &o.Name, &o.Currency, &o.AmountMinor, &o.State, &o.PaymentStatus, &o.SessionID, &o.CheckoutURL, &o.PaymentIntentID, &o.CreatedAt, &submitted, &generation, &o.ObservedAt, &o.FulfilledAt, &o.FulfilledBy)
 	return o, submitted, generation, o.ObservedAt, err
 }
 

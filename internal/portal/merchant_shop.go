@@ -27,6 +27,7 @@ type shopRefund struct {
 }
 
 type shopOrder struct {
+	FulfilledAt   int64       `json:"fulfilled_at"`
 	Refund        *shopRefund `json:"refund,omitempty"`
 	ID            string      `json:"id"`
 	Name          string      `json:"name"`
@@ -81,7 +82,7 @@ func (h *HTTP) shopProduct(r *http.Request) (shopProduct, error) {
 }
 
 func shopOrderView(order MerchantOrder) shopOrder {
-	view := shopOrder{ID: order.ID, Name: order.Name, Currency: order.Currency, AmountMinor: order.AmountMinor, State: order.State, PaymentStatus: order.PaymentStatus, CreatedAt: order.CreatedAt, ObservedAt: order.ObservedAt}
+	view := shopOrder{FulfilledAt: order.FulfilledAt, ID: order.ID, Name: order.Name, Currency: order.Currency, AmountMinor: order.AmountMinor, State: order.State, PaymentStatus: order.PaymentStatus, CreatedAt: order.CreatedAt, ObservedAt: order.ObservedAt}
 	if order.State == "open" {
 		view.URL = order.CheckoutURL
 	}

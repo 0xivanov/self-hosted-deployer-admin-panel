@@ -331,6 +331,8 @@ function renderMerchantOrders(orders,refunds=[],enabled=false){
   const observed=billingDateTime(order.observed_at);note(observed?'Last checked '+observed:'Payment not checked yet');
   const refund=(Array.isArray(refunds)?refunds:[]).find(r=>r.order_id===order.id);
   if(refund){note('Full refund: '+refund.state);if(refund.observed_at)note('Refund last checked '+billingDateTime(refund.observed_at));if(refund.state==='submitted')note('Refund outcome is unknown. Contact the operator for reconciliation.');}
+  const fulfilledAt=Number(order.fulfilled_at)||0;
+  note(fulfilledAt?'Marked fulfilled '+billingDateTime(fulfilledAt):'Not marked fulfilled');
   if(enabled && (refund||order.payment_status==='paid')){
    const button=document.createElement('button');button.type='button';button.textContent=refund?'Refresh refund':'Refund full test payment';let busy=false;
    button.addEventListener('click',async()=>{
@@ -338,6 +340,18 @@ function renderMerchantOrders(orders,refunds=[],enabled=false){
     if(!refund&&!confirm('Refund the full '+billingAmount(order.amount_minor,order.currency)+' test payment for '+order.name+'?'))return;
     busy=true;button.disabled=true;
     try{await api(refund?'/api/merchant/refunds/refresh':'/api/merchant/refunds',refund?{workspace,id:refund.id}:{workspace,order:order.id});}
+    catch(e){if(current())error(e);}
+    finally{if(current())await loadMerchantOrders(workspace,version);busy=false;}
+   });row.append(button);
+  }
+  const activeRefund=refund&&['requested','submitted','pending','requires_action','succeeded'].includes(refund.state);
+  if(!fulfilledAt&&order.state==='complete'&&order.payment_status==='paid'&&!activeRefund){
+   const button=document.createElement('button');button.type='button';button.textContent='Mark fulfilled';let busy=false;
+   button.addEventListener('click',async()=>{
+    if(busy||!current())return;
+    if(!confirm('Confirm that you have delivered or completed this service for the customer?'))return;
+    busy=true;button.disabled=true;
+    try{await api('/api/merchant/orders/fulfill',{workspace,order:order.id});}
     catch(e){if(current())error(e);}
     finally{if(current())await loadMerchantOrders(workspace,version);busy=false;}
    });row.append(button);

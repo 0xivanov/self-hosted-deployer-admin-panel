@@ -422,3 +422,25 @@ these three refund event types in the sandbox destination when qualifying the
 integration. Partial refunds, out-of-band refunds without platform metadata,
 failed-refund reissue, fulfillment, buyer credential recovery and release
 qualification remain outside this completed increment.
+
+## Manual fulfillment tracking
+
+Owners can mark a paid, completed order fulfilled after confirming that they have
+actually delivered the goods or completed the service. This is a recorded merchant
+attestation, not an automatic shipment, download delivery or external entitlement.
+The paid checkout alone never marks an order fulfilled.
+
+Schema 32 stores the original fulfillment time and private actor identity. The
+mutation is owner-only, same-origin and CSRF-protected. An unpaid order or a refund
+in requested, submitted, pending, requires_action or succeeded state blocks a new
+attestation. Failed/canceled refunds do not block a still-paid order. The check and
+write share one transaction. Replays keep one timestamp and one audit event;
+a later refund does not erase historical fulfillment.
+
+Order history shows the fulfillment status and action independently of refunds.
+Buyers see the merchant's recorded fulfillment time, never the actor identity.
+Unfulfilled orders with active/successful refunds show a hold rather than an
+expectation of delivery. Product forms remain intact during history refresh.
+Automated delivery integrations and tracking details are not implemented. External
+refunds/disputes are not yet fully reconciled, so production fulfillment decisions
+still require those release-stage payment controls.

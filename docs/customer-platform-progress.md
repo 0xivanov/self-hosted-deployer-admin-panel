@@ -1800,3 +1800,24 @@ duplicate receipt, foreign account/payment exclusion, canonical status overridin
 event payload, and preservation of existing checkout receipts through migration.
 Signature and refund-reference tests, command builds and scoped vet also passed.
 Root review corrected an omitted order reference in the refund event projection.
+
+## Manual order fulfillment tracking (2026-09-15)
+
+Added an owner fulfillment action and buyer-visible merchant attestation. Schema
+32 preserves the time and private actor. Eligible orders must be complete/paid
+and have no active or successful refund. The transaction records one audit event,
+and retries after restart preserve the original confirmation. Subsequent refunds
+do not erase fulfillment history.
+
+Luna implemented owner/buyer UI updates; root added store, API, migration and
+focused checks, and corrected buyer messaging for refund holds. Tests passed for
+owner/foreign/developer restrictions, CSRF, unpaid/refund rejection, restart
+idempotency and buyer-safe visibility. Synthetic UI checks passed for eligibility,
+duplicate clicks and stale workspace responses. Migrations, scoped vet, command
+builds and existing buyer payment/refund rendering checks passed. No external
+shipment, message, payment, live deployment or database migration was performed.
+
+This is manual delivery tracking. Automated website fulfillment integrations,
+complete dispute/out-of-band payment reconciliation, buyer credential expiry and
+recovery, provider trials, domain resale and remaining hosting/release work remain.
+The full four-part goal remains active.

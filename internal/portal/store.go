@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 31 {
+	if version > 32 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -293,6 +293,12 @@ PRAGMA user_version=1;`)
 
 	if version < 31 {
 		if _, err = tx.Exec(`ALTER TABLE merchant_events ADD COLUMN refund_request_id TEXT NOT NULL DEFAULT ''; ALTER TABLE merchant_events ADD COLUMN provider_refund_id TEXT NOT NULL DEFAULT ''; PRAGMA user_version=31;`); err != nil {
+			return err
+		}
+	}
+
+	if version < 32 {
+		if _, err = tx.Exec(`ALTER TABLE merchant_orders ADD COLUMN fulfilled_at INTEGER NOT NULL DEFAULT 0; ALTER TABLE merchant_orders ADD COLUMN fulfilled_by TEXT NOT NULL DEFAULT ''; PRAGMA user_version=32;`); err != nil {
 			return err
 		}
 	}

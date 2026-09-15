@@ -85,6 +85,31 @@ func (h *HTTP) merchantHTTP(w http.ResponseWriter, r *http.Request, token string
 		httpJSON(w, refund)
 		return
 	}
+	if r.URL.Path == "/api/merchant/orders/fulfill" {
+		if r.Method != "POST" {
+			w.Header().Set("Allow", "POST")
+			httpError(w, 405, "Method not allowed")
+			return
+		}
+		var input struct {
+			Workspace string `json:"workspace"`
+			Order     string `json:"order"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		order, err := h.store.FulfillMerchantOrder(r.Context(), token, input.Workspace, input.Order)
+		if errors.Is(err, ErrBillingConflict) {
+			httpError(w, 409, "Only paid orders without an active or successful refund can be marked fulfilled.")
+			return
+		}
+		if err != nil {
+			fail(err)
+			return
+		}
+		httpJSON(w, order)
+		return
+	}
 	if r.URL.Path == "/api/merchant/orders" {
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", "GET")
