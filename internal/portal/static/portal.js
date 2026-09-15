@@ -317,8 +317,35 @@ async function loadMerchantProducts(workspace,version){
  try{const data=await api('/api/merchant/products?workspace='+encodeURIComponent(workspace));if(version===generation&&request===productGeneration&&workspace===$('workspace').value)renderMerchantProducts(workspace,version,request,data.products);}
  catch(e){if(version===generation&&request===productGeneration&&workspace===$('workspace').value)$('product-content').replaceChildren(merchantProductError('Product catalog is unavailable. Refresh the workspace to retry.'));}
 }
-function renderMerchantOrders(orders){const content=$('merchant-orders-content');content.replaceChildren();const list=Array.isArray(orders)?orders:[];if(!list.length){const empty=document.createElement('p');empty.textContent='No merchant orders yet.';content.append(empty);return;}for(const order of list){const row=document.createElement('div');row.className='project';const title=document.createElement('strong');title.textContent=(order.name||'Product')+' · '+(billingAmount(order.amount_minor,order.currency)||'Amount unavailable');row.append(title);const state=document.createElement('p');state.textContent='Order: '+(order.state||'Unknown')+' · Payment: '+(order.payment_status||'Unknown');row.append(state);const created=billingDateTime(order.created_at);if(created){const line=document.createElement('p');line.textContent='Created '+created;row.append(line);}const line=document.createElement('p');const observed=billingDateTime(order.observed_at);line.textContent=observed?'Last checked '+observed:'Payment not checked yet';row.append(line);content.append(row);}}
-async function loadMerchantOrders(workspace,version){if(version!==generation||workspace!==$('workspace').value)return;const request=++merchantOrdersGeneration;const button=$('merchant-orders-refresh');if(button)button.disabled=true;try{const data=await api('/api/merchant/orders?workspace='+encodeURIComponent(workspace));if(version===generation&&request===merchantOrdersGeneration&&workspace===$('workspace').value)renderMerchantOrders(data.orders);}catch(e){if(version===generation&&request===merchantOrdersGeneration&&workspace===$('workspace').value){const content=$('merchant-orders-content');content.replaceChildren();const note=document.createElement('p');note.textContent='Order history is unavailable.';content.append(note);}}finally{if(button&&version===generation&&request===merchantOrdersGeneration&&workspace===$('workspace').value)button.disabled=false;}}
+function renderMerchantOrders(orders,refunds=[],enabled=false){
+ const content=$('merchant-orders-content');content.replaceChildren();const list=Array.isArray(orders)?orders:[];
+ const workspace=$('workspace').value,version=generation,request=merchantOrdersGeneration;
+ const current=()=>version===generation&&request===merchantOrdersGeneration&&workspace===$('workspace').value;
+ if(!list.length){const empty=document.createElement('p');empty.textContent='No merchant orders yet.';content.append(empty);return;}
+ for(const order of list){
+  const row=document.createElement('div');row.className='project';
+  const note=text=>{const p=document.createElement('p');p.textContent=text;row.append(p);};
+  const title=document.createElement('strong');title.textContent=(order.name||'Product')+' · '+(billingAmount(order.amount_minor,order.currency)||'Amount unavailable');row.append(title);
+  note('Order: '+(order.state||'Unknown')+' · Payment: '+(order.payment_status||'Unknown'));
+  const created=billingDateTime(order.created_at);if(created)note('Created '+created);
+  const observed=billingDateTime(order.observed_at);note(observed?'Last checked '+observed:'Payment not checked yet');
+  const refund=(Array.isArray(refunds)?refunds:[]).find(r=>r.order_id===order.id);
+  if(refund){note('Full refund: '+refund.state);if(refund.observed_at)note('Refund last checked '+billingDateTime(refund.observed_at));if(refund.state==='submitted')note('Refund outcome is unknown. Contact the operator for reconciliation.');}
+  if(enabled && (refund||order.payment_status==='paid')){
+   const button=document.createElement('button');button.type='button';button.textContent=refund?'Refresh refund':'Refund full test payment';let busy=false;
+   button.addEventListener('click',async()=>{
+    if(busy||!current())return;
+    if(!refund&&!confirm('Refund the full '+billingAmount(order.amount_minor,order.currency)+' test payment for '+order.name+'?'))return;
+    busy=true;button.disabled=true;
+    try{await api(refund?'/api/merchant/refunds/refresh':'/api/merchant/refunds',refund?{workspace,id:refund.id}:{workspace,order:order.id});}
+    catch(e){if(current())error(e);}
+    finally{if(current())await loadMerchantOrders(workspace,version);busy=false;}
+   });row.append(button);
+  }
+  content.append(row);
+ }
+}
+async function loadMerchantOrders(workspace,version){if(version!==generation||workspace!==$('workspace').value)return;const request=++merchantOrdersGeneration;const button=$('merchant-orders-refresh');if(button)button.disabled=true;try{const [data,refundData]=await Promise.all([api('/api/merchant/orders?workspace='+encodeURIComponent(workspace)),api('/api/merchant/refunds?workspace='+encodeURIComponent(workspace))]);if(version===generation&&request===merchantOrdersGeneration&&workspace===$('workspace').value)renderMerchantOrders(data.orders,refundData.refunds,refundData.enabled===true);}catch(e){if(version===generation&&request===merchantOrdersGeneration&&workspace===$('workspace').value){const content=$('merchant-orders-content');content.replaceChildren();const note=document.createElement('p');note.textContent='Order history is unavailable.';content.append(note);}}finally{if(button&&version===generation&&request===merchantOrdersGeneration&&workspace===$('workspace').value)button.disabled=false;}}
 $('merchant-orders-refresh').addEventListener('click',()=>{const workspace=$('workspace').value;if(merchantEnabled&&workspaces.find(w=>w.id===workspace)?.role==='owner')loadMerchantOrders(workspace,generation);});
 function merchantAccountLabel(state){return {not_started:'Not started',requested:'Setup in progress',submitted:'Needs reconciliation',bound:'Account created'}[state]||'Unknown';}
 function merchantRequestValid(version,request,workspace){return version===generation&&request===merchantGeneration&&workspace===$('workspace').value;}

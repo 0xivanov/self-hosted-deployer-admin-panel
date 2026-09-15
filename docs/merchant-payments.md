@@ -346,3 +346,33 @@ rather than dropping known events when full; retention/monitoring belongs to the
 release setup. This completes checkout-event ingestion/reconciliation only.
 Refund events, fulfillment delivery, production configuration and actual Stripe
 sandbox delivery qualification remain outstanding.
+
+## Owner full-order test refunds
+
+Owners can request a full test refund from order history after a canonical paid
+checkout has been recorded. The request uses the saved merchant account, original
+PaymentIntent, amount and currency. There is one durable refund intent per order;
+repeated requests cannot create a second refund. Requests persist submission
+before the Stripe call and use a stable provider idempotency key. Unknown replies
+remain submitted and require reconciliation, never another creation.
+
+Schema 30 preserves refund identity, state and observation generation. Owners can
+refresh mapped refund status, including pending, requires_action, succeeded,
+failed and canceled. Later bank failures may replace an earlier succeeded state;
+older in-flight observations cannot overwrite newer checks. A succeeded API status
+is not a promise that the buyer's bank has permanently settled the credit.
+[Stripe refund lifecycle](https://docs.stripe.com/refunds#failed-refunds).
+
+The adapter validates returned amount/currency, original payment, request/order
+metadata and account-scoped refund identity. Refunds use the original payment
+method, with no alternate destination or transfer reversal. Only test keys are
+accepted. The panel asks for confirmation of the full amount and exposes no
+private payment/provider identifiers. Refund refresh is separate from issuing a
+new refund. Unpaid orders and revoked request actors cannot trigger submission.
+
+Initial limits: full refunds only, one request per order; partial refunds and
+reissuing a failed/canceled refund are not implemented. Out-of-band Stripe refunds
+may cause provider rejection and need operator reconciliation. Refund webhook and
+background refresh integration, buyer-facing refund status/recovery, receipt
+notifications, provider qualification and production configuration remain open.
+The existing checkout-event endpoint does not yet process refund events.

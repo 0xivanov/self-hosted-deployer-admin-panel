@@ -23,6 +23,68 @@ func (h *HTTP) merchantHTTP(w http.ResponseWriter, r *http.Request, token string
 			httpError(w, 503, "Merchant service unavailable. Refresh status before retrying.")
 		}
 	}
+	if r.URL.Path == "/api/merchant/refunds" || r.URL.Path == "/api/merchant/refunds/refresh" {
+		provider, enabled := h.merchant.(MerchantRefundProvider)
+		if r.Method == "GET" && r.URL.Path == "/api/merchant/refunds" {
+			refunds, err := h.store.MerchantRefunds(r.Context(), token, r.URL.Query().Get("workspace"))
+			if err != nil {
+				fail(err)
+				return
+			}
+			httpJSON(w, map[string]any{"refunds": refunds, "enabled": enabled})
+			return
+		}
+		if r.Method != "POST" {
+			httpError(w, 405, "Method not allowed")
+			return
+		}
+		if !enabled {
+			httpError(w, 404, "Refunds unavailable")
+			return
+		}
+		var input struct {
+			Workspace string `json:"workspace"`
+			Order     string `json:"order"`
+			ID        string `json:"id"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		var refund MerchantRefund
+		var err error
+		if r.URL.Path == "/api/merchant/refunds" {
+			if input.ID != "" || !validMerchantOrderToken(input.Order) {
+				httpError(w, 400, "Invalid refund request")
+				return
+			}
+			refund, err = h.store.RequestMerchantRefund(r.Context(), token, input.Workspace, input.Order)
+			if err == nil {
+				_, err = h.store.DispatchMerchantRefund(r.Context(), refund.ID, provider)
+			}
+		} else {
+			if input.Order != "" || !validMerchantOrderToken(input.ID) {
+				httpError(w, 400, "Invalid refund request")
+				return
+			}
+			refund, err = h.store.OwnerMerchantRefund(r.Context(), token, input.Workspace, input.ID)
+			if err == nil && refund.State == "requested" {
+				_, err = h.store.DispatchMerchantRefund(r.Context(), refund.ID, provider)
+			} else if err == nil && refund.ProviderID != "" {
+				_, err = h.store.ReconcileMerchantRefund(r.Context(), refund.ID, refund.ProviderID, provider)
+			}
+		}
+		if err != nil {
+			httpError(w, 409, "Refund could not be updated. Refresh saved history; an unknown submission requires reconciliation.")
+			return
+		}
+		refund, err = h.store.OwnerMerchantRefund(r.Context(), token, input.Workspace, refund.ID)
+		if err != nil {
+			fail(err)
+			return
+		}
+		httpJSON(w, refund)
+		return
+	}
 	if r.URL.Path == "/api/merchant/orders" {
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", "GET")

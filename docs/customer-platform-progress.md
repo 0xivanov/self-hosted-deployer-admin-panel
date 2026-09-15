@@ -1736,3 +1736,25 @@ provider purchase, checkout or deployment was configured.
 Actual Stripe sandbox delivery qualification, refund events, fulfillment,
 buyer expiry/recovery and inbox retention/monitoring remain. All four original
 MVP requirements and final release qualification remain active.
+
+## Owner full-order test refund flow (2026-09-15)
+
+Added a test refund adapter, durable schema 30 refund requests and owner controls
+in merchant order history. Refunds pin the paid order's account, PaymentIntent,
+amount and currency, persist submission before provider work and prevent another
+creation after an unknown reply. Owners can inspect and refresh mapped status;
+private provider references remain hidden. The panel confirms the full amount,
+blocks duplicate clicks and guards workspace changes.
+
+Luna implemented the provider adapter and fixtures; root reviewed it and added
+store/API/UI work. Review removed an unnecessary create parameter and allowed
+fresh bank-return failures after apparent success rather than freezing that
+status. Focused tests passed for provider scope/payload/identity, owner isolation,
+CSRF/private-field omission, unpaid/revoked-owner rejection, duplicate requests,
+restart recovery and later failure observations. Migration checks, command builds,
+scoped vet and synthetic panel/product-edit checks passed.
+
+No actual refund or live migration/deployment was performed. Partial refunds,
+refund events/background refresh, buyer status and failed-refund reissue remain,
+along with fulfillment and actual provider qualification. Domain resale, remaining
+hosting work and full release qualification are still required for the goal.
