@@ -426,6 +426,7 @@ function renderHostingUsage(content,access){
  const display=(used,limit)=>String(used===null?'Unavailable':used)+(limit===null?' used':' / '+limit);
  const note=text=>{const p=document.createElement('p');p.textContent=text;content.append(p);};
  if(typeof access?.plan==='string'&&access.plan)note('Plan: '+access.plan);
+ if(access?.limits)note('Allowances saved with your checkout.');
  const projectUsage=count(usage.projects),projectLimit=count(limits.projects);
  const uploadUsage=count(usage.uploads),uploadLimit=count(limits.uploads);
  const storageUsage=bytes(usage.upload_bytes),storageLimit=bytes(limits.upload_bytes);
@@ -460,6 +461,8 @@ async function loadBilling(workspace,version){
   const matchedSubscription=subscriptions.some(subscription=>subscription.checkout_id===checkout.id);
   note(checkout.state==='completed'?(matchedSubscription?'Checkout completed. Subscription status is shown above.':'Checkout completed. Billing status is awaiting reconciliation.') :checkout.state==='open'?'Your test checkout is ready. Review the final amount on Stripe.':'Preparing your test checkout. Refresh shortly.');
   note('Selected plan: '+checkout.plan);
+  if(checkout.limits)note('Saved checkout allowances: '+checkout.limits.projects+' projects, '+checkout.limits.uploads+' saved source ZIPs, '+(checkout.limits.upload_bytes/1048576).toFixed(2)+' MiB of source ZIP storage. Node.js '+(checkout.limits.node?'included.':'not included.'));
+  else note('This checkout keeps the platform default allowances.');
   if(checkout.state==='open'&&checkout.url){const url=new URL(checkout.url);if(url.protocol==='https:'&&url.host==='checkout.stripe.com'&&!url.username&&!url.password){const link=document.createElement('a');link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open Stripe test checkout';content.append(link);}}
   return;
  }

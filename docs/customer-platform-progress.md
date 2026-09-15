@@ -1921,3 +1921,25 @@ No live configuration or deployment changed. These are current sandbox operator
 limits. Immutable purchased allowances, production enrollment/upgrade/grace rules,
 and plan-specific runtime/build/bandwidth metering remain, along with remaining
 domain/payment/deployment qualification work. The full goal remains active.
+
+## Saved hosting checkout allowances (2026-09-15)
+
+Checkout requests now retain their hosting allowance snapshot alongside their
+price. Later operator edits affect new checkouts only. Enforced project/upload
+limits and Node eligibility read the saved checkout terms. A checkout created
+with platform defaults retains them even after custom limits are configured.
+Schema 38 backfills existing checkouts once to preserve effective allowances.
+
+Luna implemented checkout persistence and replay checks. Root reviewed it, wired
+saved allowances into enforcement/status, updated migration fixtures and UI,
+and added effective-access and migration checks. Review caught SQLite returning
+an empty blob like a missing value; reads now reject empty saved data instead of
+silently granting default access. Intentional SQL NULL remains the default marker.
+
+Focused tests passed for saved limits across edits/restart/replay, new checkout
+settings, effective Node/project enforcement, default preservation, migration,
+invalid saved data and existing hosting/isolation checks. UI usage/status checks
+passed. No live database, deployment or provider transaction changed.
+
+Explicit upgrades/downgrades, catalog-to-checkout price/allowance consent versioning,
+runtime metering and provider/pilot qualification remain. The full goal is active.

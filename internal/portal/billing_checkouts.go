@@ -3,6 +3,7 @@ package portal
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/url"
 	"strings"
@@ -10,23 +11,29 @@ import (
 )
 
 type BillingCheckout struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-	ActorID     string `json:"-"`
-	CustomerID  string `json:"-"`
-	PlanID      string `json:"plan"`
-	PriceID     string `json:"-"`
-	SessionID   string `json:"-"`
-	URL         string `json:"url,omitempty"`
-	State       string `json:"state"`
-	CreatedAt   int64  `json:"created_at"`
+	ID          string             `json:"id"`
+	WorkspaceID string             `json:"workspace_id"`
+	ActorID     string             `json:"-"`
+	CustomerID  string             `json:"-"`
+	PlanID      string             `json:"plan"`
+	PriceID     string             `json:"-"`
+	SessionID   string             `json:"-"`
+	URL         string             `json:"url,omitempty"`
+	State       string             `json:"state"`
+	CreatedAt   int64              `json:"created_at"`
+	Limits      *HostingPlanLimits `json:"limits,omitempty"`
 }
 
-const checkoutColumns = "id,workspace_id,actor_id,customer_id,plan_id,price_id,COALESCE(session_id,''),checkout_url,state,created_at"
+const checkoutColumns = "id,workspace_id,actor_id,customer_id,plan_id,price_id,COALESCE(session_id,''),checkout_url,state,created_at,CASE WHEN hosting_limits IS NOT NULL AND length(hosting_limits)=0 THEN 'null' ELSE hosting_limits END"
 
 func scanCheckout(row interface{ Scan(...any) error }) (BillingCheckout, error) {
 	var c BillingCheckout
-	err := row.Scan(&c.ID, &c.WorkspaceID, &c.ActorID, &c.CustomerID, &c.PlanID, &c.PriceID, &c.SessionID, &c.URL, &c.State, &c.CreatedAt)
+	var rawLimits []byte
+	err := row.Scan(&c.ID, &c.WorkspaceID, &c.ActorID, &c.CustomerID, &c.PlanID, &c.PriceID, &c.SessionID, &c.URL, &c.State, &c.CreatedAt, &rawLimits)
+	if err != nil {
+		return c, err
+	}
+	c.Limits, err = decodeHostingLimits(rawLimits)
 	return c, err
 }
 
@@ -73,7 +80,18 @@ func (s *Store) RequestBillingCheckout(ctx context.Context, token, workspace, pl
 	if err != nil {
 		return c, err
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO billing_checkouts(id,workspace_id,actor_id,customer_id,plan_id,price_id,state,created_at) VALUES(?,?,?,?,?,?,?,?)", c.ID, workspace, actor, c.CustomerID, plan, c.PriceID, c.State, c.CreatedAt); err != nil {
+	c.Limits, err = s.savedHostingLimits(ctx, tx, plan)
+	if err != nil {
+		return c, err
+	}
+	var limits any
+	if c.Limits != nil {
+		limits, err = json.Marshal(c.Limits)
+		if err != nil {
+			return c, err
+		}
+	}
+	if _, err = tx.ExecContext(ctx, "INSERT INTO billing_checkouts(id,workspace_id,actor_id,customer_id,plan_id,price_id,hosting_limits,state,created_at) VALUES(?,?,?,?,?,?,?,?,?)", c.ID, workspace, actor, c.CustomerID, plan, c.PriceID, limits, c.State, c.CreatedAt); err != nil {
 		return c, err
 	}
 	if err = audit(ctx, tx, actor, workspace, "billing.checkout_requested:"+c.ID, c.CreatedAt); err != nil {

@@ -3,6 +3,7 @@ package portal
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 )
 
@@ -21,7 +22,7 @@ type HostingUsage struct {
 }
 
 // ConfigureHostingLimits is operator configuration for enrolled sandbox workspaces.
-// Decreasing limits never deletes existing projects, uploads, or running sites.
+// Changes apply to future checkouts. Saved checkout allowances stay unchanged.
 func (s *Store) ConfigureHostingLimits(ctx context.Context, plan string, limits HostingPlanLimits) error {
 	if plan == "" || limits.Projects < 1 || limits.Projects > 100 || limits.Uploads < 1 || limits.Uploads > WorkspaceUploadCount || limits.UploadBytes < 1 || limits.UploadBytes > WorkspaceUploadBytes {
 		return ErrInvalid
@@ -57,14 +58,14 @@ func (s *Store) savedHostingLimits(ctx context.Context, tx *sql.Tx, plan string)
 	return &limits, nil
 }
 func (s *Store) workspaceHostingLimits(ctx context.Context, tx *sql.Tx, workspace string) (*HostingPlanLimits, error) {
-	plan, err := s.qualifyingHostingPlan(ctx, tx, workspace)
+	entitlement, err := s.qualifyingHostingEntitlement(ctx, tx, workspace)
 	if err != nil {
 		return nil, err
 	}
-	if plan == "" {
+	if entitlement == nil {
 		return nil, nil
 	}
-	return s.savedHostingLimits(ctx, tx, plan)
+	return entitlement.Limits, nil
 }
 func (s *Store) hostingUsage(ctx context.Context, tx *sql.Tx, workspace string) (HostingUsage, error) {
 	var usage HostingUsage
@@ -116,4 +117,19 @@ func (s *Store) requireHostingUpload(ctx context.Context, tx *sql.Tx, workspace 
 		return ErrHostingPlanLimit
 	}
 	return nil
+}
+
+// A NULL snapshot preserves the platform defaults offered with that checkout.
+func decodeHostingLimits(data []byte) (*HostingPlanLimits, error) {
+	if data == nil {
+		return nil, nil
+	}
+	var limits HostingPlanLimits
+	if err := json.Unmarshal(data, &limits); err != nil {
+		return nil, ErrBillingConflict
+	}
+	if limits.Projects < 1 || limits.Projects > 100 || limits.Uploads < 1 || limits.Uploads > WorkspaceUploadCount || limits.UploadBytes < 1 || limits.UploadBytes > WorkspaceUploadBytes {
+		return nil, ErrBillingConflict
+	}
+	return &limits, nil
 }

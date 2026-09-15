@@ -10,9 +10,14 @@ import (
 	"time"
 )
 
-func hostingLimitsFixture(t *testing.T) (*Store, string, Account, Session) {
+func hostingLimitsFixture(t *testing.T, configured ...HostingPlanLimits) (*Store, string, Account, Session) {
 	t.Helper()
 	s, path, a, session := billingCheckoutFixture(t)
+	if len(configured) > 0 {
+		if err := s.ConfigureHostingLimits(t.Context(), "starter", configured[0]); err != nil {
+			t.Fatal(err)
+		}
+	}
 	checkout, err := s.RequestBillingCheckout(t.Context(), session.Token, a.WorkspaceID, "starter")
 	if err != nil {
 		t.Fatal(err)
@@ -31,10 +36,10 @@ func hostingLimitsFixture(t *testing.T) (*Store, string, Account, Session) {
 	return s, path, a, session
 }
 func TestHostingLimitsBoundariesUsageAndRestart(t *testing.T) {
-	s, path, a, session := hostingLimitsFixture(t)
-	ctx := t.Context()
 	archive := testArchive(t)
 	limits := HostingPlanLimits{Projects: 1, Uploads: 2, UploadBytes: int64(len(archive)), Node: false}
+	s, path, a, session := hostingLimitsFixture(t, limits)
+	ctx := t.Context()
 	if err := s.ConfigureHostingLimits(ctx, "starter", limits); err != nil {
 		t.Fatal(err)
 	}
@@ -54,14 +59,6 @@ func TestHostingLimitsBoundariesUsageAndRestart(t *testing.T) {
 	}
 	if _, err = s.SaveUpload(ctx, session.Token, p.ID, archive); !errors.Is(err, ErrHostingPlanLimit) {
 		t.Fatal("storage cap", err)
-	}
-	limits.Uploads = 1
-	limits.UploadBytes = 2 * int64(len(archive))
-	if err = s.ConfigureHostingLimits(ctx, "starter", limits); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.SaveUpload(ctx, session.Token, p.ID, archive); !errors.Is(err, ErrHostingPlanLimit) {
-		t.Fatal("archive count cap", err)
 	}
 	offers, err := s.BillingPlanOffers(ctx, session.Token, a.WorkspaceID)
 	if err != nil || len(offers) != 1 || offers[0].Limits == nil || *offers[0].Limits != limits {
@@ -98,8 +95,12 @@ func TestHostingLimitsBoundariesUsageAndRestart(t *testing.T) {
 	}
 }
 func TestHostingNodeLimitRecheckedBeforeClaim(t *testing.T) {
-	s, _, a, session := hostingLimitsFixture(t)
+	limits := HostingPlanLimits{Projects: 2, Uploads: 2, UploadBytes: WorkspaceUploadBytes, Node: false}
+	s, _, a, session := hostingLimitsFixture(t, limits)
 	ctx := t.Context()
+	if err := s.ConfigureHostingPolicy(ctx, a.WorkspaceID, false); err != nil {
+		t.Fatal(err)
+	}
 	p, err := s.CreateProject(ctx, session.Token, a.WorkspaceID, "node", "node")
 	if err != nil {
 		t.Fatal(err)
@@ -113,8 +114,7 @@ func TestHostingNodeLimitRecheckedBeforeClaim(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	limits := HostingPlanLimits{Projects: 2, Uploads: 2, UploadBytes: WorkspaceUploadBytes, Node: false}
-	if err = s.ConfigureHostingLimits(ctx, "starter", limits); err != nil {
+	if err = s.ConfigureHostingPolicy(ctx, a.WorkspaceID, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.ClaimNodeBuild(ctx, p.ID, assignment.ToolchainSHA256, "arm64"); !errors.Is(err, ErrHostingPlanLimit) {
@@ -130,5 +130,19 @@ func TestHostingNodeLimitRecheckedBeforeClaim(t *testing.T) {
 	}
 	if err = s.CancelNodeBuild(ctx, session.Token, p.ID, job.ID); err != nil {
 		t.Fatal("cancel denied", err)
+	}
+}
+
+func TestHostingSavedUploadCountLimit(t *testing.T) {
+	s, _, a, session := hostingLimitsFixture(t, HostingPlanLimits{Projects: 2, Uploads: 1, UploadBytes: WorkspaceUploadBytes, Node: true})
+	p, err := s.CreateProject(t.Context(), session.Token, a.WorkspaceID, "count", "static")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.SaveUpload(t.Context(), session.Token, p.ID, testArchive(t)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.SaveUpload(t.Context(), session.Token, p.ID, testArchive(t)); !errors.Is(err, ErrHostingPlanLimit) {
+		t.Fatal("count exceeded", err)
 	}
 }

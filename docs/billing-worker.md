@@ -144,8 +144,8 @@ plans retain the existing platform defaults, including Node support. Legacy
 workspaces remain unchanged. Schema 37 creates no plan limit records by default.
 
 The plan comes from verified saved subscription evidence, not browser input.
-Limits are current operator policy and take effect on the next operation; they
-are not immutable purchased plan terms. If several subscriptions qualify, the
+A checkout saves the configured allowances when its request is created. Later
+operator changes apply to future checkouts and do not rewrite saved allowances. If several subscriptions qualify, the
 first by subscription ID supplies the plan, consistently for status and writes.
 Plan-specific allowances are not summed. Production upgrade/downgrade terms and
 multiple-subscription selection still require a customer-facing policy.
@@ -153,7 +153,7 @@ multiple-subscription selection still require a customer-facing policy.
 Project creation checks the workspace project count. Upload storage includes all
 saved source versions across all workspace projects. Counts and byte checks share
 the insert transaction. Deleting an unused upload frees its allowance. Lowering
-limits keeps existing data and sites, and blocks additions beyond the new limits.
+plan limits affects future checkouts, while existing checkouts keep their saved limits.
 Node exclusion blocks new Node project/uploads/build/deployment work, including
 worker claims and dispatch checks; it does not stop a running Node site. Saved
 request replay and cleanup remain available.
@@ -163,3 +163,23 @@ usage and configured allowances, including whether Node.js is included. Source
 ZIP storage is not total hosting storage: release artifacts, runtime disk, logs,
 CPU, memory, bandwidth and build concurrency remain under separate platform caps
 and are not yet billed or metered per plan.
+
+## Saved checkout allowances
+
+Schema 38 stores the allowance snapshot alongside the checkout's saved price.
+Same-plan request retries, worker reads, subscription access decisions and the
+billing screen all use that snapshot. The enabled plan catalog continues to show
+current settings for a future checkout. Starting a new checkout captures those
+settings in the same transaction as its immutable request. There is no browser
+allowance override or endpoint for changing saved checkout allowances.
+
+An unconfigured plan stores SQL NULL, preserving the platform default allowance
+for that checkout even if custom limits are added later. Invalid saved JSON blocks
+access rather than reverting to defaults. During upgrade, existing checkouts are
+backfilled once from the effective plan settings to preserve pre-upgrade behavior.
+That migrated snapshot stays fixed on subsequent restarts and plan edits.
+
+Changing a paid customer's plan or renewing into different allowances still needs
+an explicit upgrade/downgrade workflow. This change preserves hosting allowances;
+it does not freeze every platform safety limit, complete pricing consent/versioning
+between catalog display and checkout creation, or qualify live billing.

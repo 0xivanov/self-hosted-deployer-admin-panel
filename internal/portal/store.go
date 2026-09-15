@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 37 {
+	if version > 38 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -336,6 +336,14 @@ PRAGMA user_version=1;`)
 
 	if version < 37 {
 		if _, err = tx.Exec(`CREATE TABLE hosting_plan_limits(plan_id TEXT PRIMARY KEY REFERENCES billing_plans(id),projects INTEGER NOT NULL CHECK(projects BETWEEN 1 AND 100),uploads INTEGER NOT NULL CHECK(uploads BETWEEN 1 AND 20),upload_bytes INTEGER NOT NULL CHECK(upload_bytes BETWEEN 1 AND 104857600),node INTEGER NOT NULL CHECK(node IN (0,1))); PRAGMA user_version=37`); err != nil {
+			return err
+		}
+	}
+
+	if version < 38 {
+		if _, err = tx.Exec(`ALTER TABLE billing_checkouts ADD COLUMN hosting_limits BLOB;
+ UPDATE billing_checkouts SET hosting_limits=(SELECT json_object('projects',projects,'uploads',uploads,'upload_bytes',upload_bytes,'node',json(CASE node WHEN 1 THEN 'true' ELSE 'false' END)) FROM hosting_plan_limits WHERE plan_id=billing_checkouts.plan_id);
+ PRAGMA user_version=38`); err != nil {
 			return err
 		}
 	}

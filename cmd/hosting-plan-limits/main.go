@@ -43,6 +43,6 @@ func run(args []string, out io.Writer) error {
 	if err = store.ConfigureHostingLimits(context.Background(), *plan, portal.HostingPlanLimits{Projects: *projects, Uploads: *uploads, UploadBytes: *storage << 20, Node: *node == "true"}); err != nil {
 		return errors.New("hosting plan limits could not be configured")
 	}
-	_, err = fmt.Fprintln(out, "Hosting plan limits saved. Existing data and running sites were retained.")
+	_, err = fmt.Fprintln(out, "Hosting plan limits saved for future checkouts. Existing checkout allowances were retained.")
 	return err
 }
