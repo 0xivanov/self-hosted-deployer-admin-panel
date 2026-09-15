@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 28 {
+	if version > 29 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -275,6 +275,12 @@ PRAGMA user_version=1;`)
 
 	if version < 28 {
 		if _, err = tx.Exec(`CREATE TABLE merchant_orders(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id),product_id TEXT NOT NULL REFERENCES merchant_products(id),product_revision INTEGER NOT NULL,buyer_hash TEXT NOT NULL,request_key TEXT NOT NULL,account_id TEXT NOT NULL REFERENCES merchant_accounts(account_id),name TEXT NOT NULL,currency TEXT NOT NULL,amount_minor INTEGER NOT NULL,state TEXT NOT NULL CHECK(state IN ('requested','submitted','open','complete','expired')),payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK(payment_status IN ('unpaid','paid')),session_id TEXT,checkout_url TEXT NOT NULL DEFAULT '',payment_intent_id TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,submitted_at INTEGER NOT NULL DEFAULT 0,observation_generation INTEGER NOT NULL DEFAULT 0,observed_at INTEGER NOT NULL DEFAULT 0,UNIQUE(buyer_hash,request_key),UNIQUE(account_id,session_id)); CREATE INDEX merchant_orders_workspace ON merchant_orders(workspace_id,created_at,id); CREATE INDEX merchant_orders_buyer ON merchant_orders(buyer_hash,created_at); PRAGMA user_version=28;`); err != nil {
+			return err
+		}
+	}
+
+	if version < 29 {
+		if _, err = tx.Exec(`CREATE TABLE merchant_events(id TEXT PRIMARY KEY,account_id TEXT NOT NULL,order_id TEXT NOT NULL REFERENCES merchant_orders(id),session_id TEXT NOT NULL,event_type TEXT NOT NULL,body_hash TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','done')),created_at INTEGER NOT NULL,received_at INTEGER NOT NULL,next_attempt INTEGER NOT NULL DEFAULT 0); CREATE INDEX merchant_events_due ON merchant_events(state,next_attempt,id); PRAGMA user_version=29;`); err != nil {
 			return err
 		}
 	}

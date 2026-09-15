@@ -43,6 +43,7 @@ func run() error {
 	mailKeyFile := flag.String("mail-key-file", "", "private file containing 32-byte hex mail encryption key")
 	merchantFile := flag.String("test-merchant-config", "", "private Stripe test Connect settings with secret_key and countries")
 	managementFile := flag.String("test-billing-management-config", "", "private Stripe test customer portal settings")
+	merchantWebhookFile := flag.String("test-merchant-webhook-secret-file", "", "Private Stripe Connect test webhook signing secret")
 	webhookFile := flag.String("test-webhook-secret-file", "", "private Stripe test webhook signing secret file")
 	testBilling := flag.Bool("test-billing", false, "enable owner billing request API for a separately configured Stripe test worker")
 	nodeProjectsFile := flag.String("node-projects", "", "private JSON mapping Node project IDs to assigned build settings and runtimes")
@@ -51,6 +52,20 @@ func run() error {
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return errors.New("unexpected arguments")
+	}
+	var merchantWebhookSecret string
+	if *merchantWebhookFile != "" {
+		if *merchantFile == "" || *demo {
+			return errors.New("merchant webhook requires merchant configuration and HTTPS mode")
+		}
+		raw, e := privateFile(*merchantWebhookFile)
+		if e != nil {
+			return errors.New("merchant webhook signing secret unavailable")
+		}
+		merchantWebhookSecret = strings.TrimSpace(string(raw))
+		if merchantWebhookSecret == "" {
+			return errors.New("merchant webhook signing secret empty")
+		}
 	}
 	var webhookSecret string
 	if *webhookFile != "" {
@@ -227,7 +242,7 @@ func run() error {
 		merchantProvider = client
 		merchantCountries = cfg.Countries
 	}
-	handler, err := portal.NewHTTP(store, portal.HTTPOptions{Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
+	handler, err := portal.NewHTTP(store, portal.HTTPOptions{TestMerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
 	if err != nil {
 		return err
 	}

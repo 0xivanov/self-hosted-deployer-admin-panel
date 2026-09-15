@@ -313,3 +313,36 @@ verified merchant events, fulfillment and refunds remains release work.
 
 This worker supersedes the earlier manual-refresh-only readiness limitation when
 it is configured and running. No worker is installed on the live fleet yet.
+
+## Verified Connect checkout events
+
+The portal now accepts a separate `/webhooks/stripe-merchant-test` endpoint with
+`--test-merchant-webhook-secret-file`. It requires HTTPS, test merchant checkout
+configuration and a private signing-secret file. Configure a Stripe test/sandbox
+Connect destination for connected-account checkout completion, expiration and
+async payment success/failure events. Use the API version supported by the pinned
+Stripe SDK. Hosting subscription webhooks remain separate. Stripe identifies a
+connected account with the event's top-level `account`; subsequent resource
+retrieval must use that account scope. [Stripe Connect webhook documentation](https://docs.stripe.com/connect/webhooks).
+
+Raw-body signatures, timestamp tolerance, explicit test mode and order references
+are checked before receipt. Schema 29 stores only event references and a body hash,
+not the customer payload. Known order/account/session mappings are required;
+unrelated orders are ignored. Duplicate identical event receipts have no effect,
+and conflicting content under the same event ID is rejected. The endpoint
+acknowledges known events only after they are durably retained.
+
+The merchant worker processes pending events before periodic maintenance. It
+retrieves the canonical session through the bound account and applies existing
+price/reference/state validation. Webhook payment fields never directly mark an
+order paid. A verified event can recover a submitted order whose creation reply
+was lost, because it supplies a candidate session that is then independently
+retrieved and checked. No new checkout is created during recovery.
+
+Provider failures remain queued for a retry after one minute. Restart preserves
+the inbox; duplicate worker reads are harmless and order generation checks still
+apply. The inbox currently caps retained events at 100,000 and fails receipt
+rather than dropping known events when full; retention/monitoring belongs to the
+release setup. This completes checkout-event ingestion/reconciliation only.
+Refund events, fulfillment delivery, production configuration and actual Stripe
+sandbox delivery qualification remain outstanding.

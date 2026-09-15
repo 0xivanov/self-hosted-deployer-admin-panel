@@ -1710,3 +1710,29 @@ were made outside synthetic test fixtures.
 Merchant events, fulfillment/refunds, buyer expiry/recovery, actual provider
 qualification and worker deployment supervision remain. The full domain resale,
 account isolation, hosting/payment and release qualification goal remains active.
+
+## Durable merchant checkout events (2026-09-15)
+
+Added the separately configured test Connect webhook endpoint and schema 29 event
+inbox. Raw signatures and timestamps, explicit test mode, connected-account scope,
+checkout mode and matching order references are verified. Receipt stores only
+references/body hash and acknowledges after durable insertion. Identical receipts
+deduplicate; unrelated order/account mappings are ignored.
+
+The merchant worker now processes pending events before periodic refresh,
+retrieving the canonical checkout in its saved account. This can recover a
+submitted order after a lost creation response, without creating another
+checkout. Payment fields in an event cannot mark an order paid directly. Failed
+retrievals remain pending with a one-minute retry delay, including after restart.
+
+Luna implemented the verifier and focused signature tests. Root added the inbox,
+worker integration, endpoint/configuration and recovery tests, and removed an
+unnecessary restriction on unrelated metadata. Focused checks passed for signature
+rejection, explicit test mode, account/reference binding, duplicate/conflicting
+receipts, restart recovery, delayed retries, canonical unpaid-state preservation
+and migrations. Command compilation and scoped vet passed. No live endpoint,
+provider purchase, checkout or deployment was configured.
+
+Actual Stripe sandbox delivery qualification, refund events, fulfillment,
+buyer expiry/recovery and inbox retention/monitoring remain. All four original
+MVP requirements and final release qualification remain active.

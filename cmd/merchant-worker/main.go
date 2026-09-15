@@ -80,6 +80,13 @@ func run() error {
 	defer stop()
 	var accountCursor, orderCursor string
 	for {
+		eventDone, eventFailures, eventErr := store.ProcessMerchantEvents(ctx, client, *batch)
+		if ctx.Err() != nil {
+			return nil
+		}
+		if eventErr != nil {
+			return errors.New("merchant event processing failed; inspect private records")
+		}
 		result, err := store.MaintainMerchants(ctx, client, accountCursor, orderCursor, *batch)
 		if ctx.Err() != nil {
 			return nil
@@ -88,9 +95,9 @@ func run() error {
 			return errors.New("merchant maintenance failed; inspect private portal records")
 		}
 		accountCursor, orderCursor = result.AccountCursor, result.OrderCursor
-		fmt.Printf("Merchant refresh: accounts=%d orders=%d failures=%d\n", result.AccountsChecked, result.OrdersChecked, result.Failures)
+		fmt.Printf("Merchant refresh: accounts=%d orders=%d events=%d failures=%d\n", result.AccountsChecked, result.OrdersChecked, eventDone, result.Failures+eventFailures)
 		if *once {
-			if result.Failures > 0 {
+			if result.Failures+eventFailures > 0 {
 				return errors.New("some merchant updates need retry")
 			}
 			return nil

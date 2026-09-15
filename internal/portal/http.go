@@ -24,25 +24,27 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
-	Merchant          MerchantProvider
-	MerchantCountries []string
-	NodeProjects      map[string]NodeProjectConfig
-	DomainQuotes      DomainQuoteReader
-	DomainMarkupMinor int64
-	BillingManagement BillingManagement
-	TestWebhookSecret string
-	TestBilling       bool
-	Origin            string
-	Development       bool
-	Mail              *AccountMail
-	Signup            bool
-	PublicationSites  map[string]string
+	TestMerchantWebhookSecret string
+	Merchant                  MerchantProvider
+	MerchantCountries         []string
+	NodeProjects              map[string]NodeProjectConfig
+	DomainQuotes              DomainQuoteReader
+	DomainMarkupMinor         int64
+	BillingManagement         BillingManagement
+	TestWebhookSecret         string
+	TestBilling               bool
+	Origin                    string
+	Development               bool
+	Mail                      *AccountMail
+	Signup                    bool
+	PublicationSites          map[string]string
 }
 type attemptWindow struct {
 	start time.Time
 	count int
 }
 type HTTP struct {
+	merchantWebhook      http.Handler
 	merchant             MerchantProvider
 	merchantCountries    []string
 	shopAttempts         map[string]attemptWindow
@@ -120,11 +122,24 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 			return nil, err
 		}
 	}
+	var merchantWebhook http.Handler
+	if opts.TestMerchantWebhookSecret != "" {
+		if opts.Development || opts.Merchant == nil {
+			return nil, errors.New("merchant webhook requires HTTPS and merchant configuration")
+		}
+		if _, ok := opts.Merchant.(MerchantCheckoutProvider); !ok {
+			return nil, errors.New("merchant checkout provider required")
+		}
+		merchantWebhook, err = MerchantWebhookHandler(store, u.Host, opts.TestMerchantWebhookSecret)
+		if err != nil {
+			return nil, err
+		}
+	}
 	cookie := "__Host-portal-session"
 	if opts.Development {
 		cookie = "portal-dev-session"
 	}
-	return &HTTP{shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 func csrfFor(token string) string {
 	sum := sha256.Sum256([]byte("portal-csrf:" + token))
@@ -158,6 +173,15 @@ func (h *HTTP) allowLogin(address string) bool {
 	return true
 }
 func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/webhooks/stripe-merchant-test" {
+		if h.merchantWebhook == nil || r.URL.EscapedPath() != "/webhooks/stripe-merchant-test" || r.URL.RawQuery != "" || r.URL.ForceQuery {
+			httpError(w, 404, "Not found")
+			return
+		}
+		h.merchantWebhook.ServeHTTP(w, r)
+		return
+	}
+
 	if r.URL.Path == "/webhooks/stripe-test" {
 		if h.billingWebhook == nil || r.URL.EscapedPath() != "/webhooks/stripe-test" || r.URL.RawQuery != "" || r.URL.ForceQuery {
 			httpError(w, 404, "Not found")
