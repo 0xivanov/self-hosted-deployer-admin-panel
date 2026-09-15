@@ -87,3 +87,24 @@ The form was exercised with a temporary loopback portal and synthetic registrar:
 owner sign-in, EUR registration/renewal display, invalid-name rejection and sign-out.
 The temporary server and test fixture were removed afterward. This is UI evidence,
 not a qualification of NameSilo availability, pricing, tax or registration.
+
+## Prepared domain orders
+
+Owners can now prepare a domain order from a saved quote, inspect it and cancel
+it. Preparation retrieves a new provider quote and requires unchanged registration
+and renewal costs/currency, standard non-premium availability, and an unexpired
+original retail offer. The owner is reauthorized after the provider read. Schema
+33 stores the accepted offer and quote reference with state `awaiting_payment`.
+
+An identical quote request replays the same order, including after cancellation.
+Only one awaiting-payment order per workspace/domain is permitted; this does not
+reserve the domain or prevent another workspace from expressing interest. There
+is a 100-order workspace cap. Cancellation is owner-only and idempotent. New quotes
+can be used after cancellation. Original owner identity is private.
+
+The panel says payment setup is pending and the domain is not registered. No
+customer payment, registrar funding or registration occurs in this step. Availability,
+price, tax, payment authorization and registrant contact requirements must be
+checked again before eventual purchase. Expired saved offers never authorize a
+later charge. No real registrar reader or purchase transport is configured yet;
+NameSilo sandbox endpoint/credentials remain required for that integration.

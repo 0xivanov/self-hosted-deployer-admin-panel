@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,billingGeneration=0,merchantEnabled=false,merchantCountries=[],merchantGeneration=0,productGeneration=0,merchantOrdersGeneration=0,domainQuotes=false,domainExpiryTimer;
+let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,billingGeneration=0,merchantEnabled=false,merchantCountries=[],merchantGeneration=0,productGeneration=0,merchantOrdersGeneration=0,domainQuotes=false,domainOrderGeneration=0,domainExpiryTimer;
 let nodeStatusCards=new Map(),nodeStatusState=null;
 const nodeStatusInterval=5000;
 const fragment=new URLSearchParams(location.hash.slice(1));
@@ -12,7 +12,7 @@ async function api(path,body,signal){const response=await fetch(path,{method:bod
 function error(e){$('error').textContent=e.message;$('error').hidden=false;}
 function stopNodeStatusRefresh(){const state=nodeStatusState;nodeStatusCards.clear();if(!state)return;state.stopped=true;clearTimeout(state.timer);state.timer=null;if(state.controller)state.controller.abort();if(nodeStatusState===state)nodeStatusState=null;nodeStatusCards.clear();}
 function signedOut(){stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
-async function loadProjects(){stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');card.append(name,kind);$('projects').append(card);await projectUploads(card,project,selected.role,version);if(version!==generation)return;}if(!data.projects.length)$('projects').textContent='No projects yet.';if(selected.role==='owner'){await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
+async function loadProjects(){stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');card.append(name,kind);$('projects').append(card);await projectUploads(card,project,selected.role,version);if(version!==generation)return;}if(!data.projects.length)$('projects').textContent='No projects yet.';if(selected.role==='owner'){if(domainQuotes)loadDomainOrders(workspace,version);await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
 async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();if(pendingInvite)showFlow('invite');}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;}}
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();});});
@@ -455,6 +455,7 @@ $('billing-refresh').addEventListener('click',()=>{const workspace=$('workspace'
 
 
 function resetDomainPanel(){
+ domainOrderGeneration++;$('domain-orders').replaceChildren();
  clearTimeout(domainExpiryTimer);
  $('domain-result').replaceChildren();
  $('domain-name').value='';
@@ -470,6 +471,17 @@ function showDomainQuote(quote,version){
  note('First year: '+money(offer.registration_minor));
  note('Estimated renewal: '+money(offer.renewal_minor)+' per year. Future prices may change.');
  note('Tax will be confirmed before purchase.');
+ const prepare=document.createElement('button');prepare.type='button';prepare.textContent='Prepare domain order';let preparing=false;
+ prepare.addEventListener('click',async()=>{
+  if(preparing||version!==generation)return;
+  if(Date.parse(offer.expires_at)<=Date.now()){error(new Error('Quote expired. Search again.'));return;}
+  const workspace=$('workspace').value;
+  preparing=true;prepare.disabled=true;
+  try{const order=await api('/api/domains/orders',{workspace,quote:quote.id});if(version===generation){prepare.textContent=order.state==='canceled'?'Order canceled. Search for a new quote.':'Order prepared';await loadDomainOrders(workspace,version);}}
+  catch(e){if(version===generation){error(e);prepare.disabled=false;}}
+  finally{preparing=false;}
+ });content.append(prepare);
+
  const expiry=document.createElement('p');expiry.className='notice';content.append(expiry);
  const remaining=Date.parse(offer.expires_at)-Date.now();
  const expired=()=>{if(version===generation)expiry.textContent='This quote has expired. Search again for a current price.';};
@@ -490,3 +502,25 @@ $('domain-form').addEventListener('submit',async event=>{
  }catch(e){if(version===generation){$('domain-result').replaceChildren();error(e);}}
  finally{button.disabled=false;}
 });
+
+async function loadDomainOrders(workspace,version){
+ if(version!==generation||workspace!==$('workspace').value)return;
+ const request=++domainOrderGeneration;
+ const current=()=>version===generation&&request===domainOrderGeneration&&workspace===$('workspace').value;
+ try{
+  const data=await api('/api/domains/orders?workspace='+encodeURIComponent(workspace));if(!current())return;
+  const content=$('domain-orders');content.replaceChildren();
+  if(!data.orders.length){content.textContent='No domain orders yet.';return;}
+  for(const order of data.orders){
+   const row=document.createElement('div');row.className='project';
+   const title=document.createElement('strong');title.textContent=order.offer.domain;row.append(title);
+   const detail=document.createElement('p');detail.textContent=billingAmount(order.offer.registration_minor,order.offer.currency)+' for one year · '+(order.state==='canceled'?'Canceled':'Awaiting payment setup. Not registered.');row.append(detail);
+   if(order.state==='awaiting_payment'){
+    const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel order';let busy=false;
+    cancel.addEventListener('click',async()=>{if(busy||!current())return;busy=true;cancel.disabled=true;try{await api('/api/domains/orders/cancel',{workspace,id:order.id});if(current())await loadDomainOrders(workspace,version);}catch(e){if(current()){error(e);cancel.disabled=false;}}finally{busy=false;}});row.append(cancel);
+   }
+   content.append(row);
+  }
+ }catch(e){if(current()){$('domain-orders').textContent='Domain order history is unavailable.';error(e);}}
+}
+$('domain-orders-refresh').addEventListener('click',()=>{const workspace=$('workspace').value;if(domainQuotes&&workspaces.find(w=>w.id===workspace)?.role==='owner')loadDomainOrders(workspace,generation);});

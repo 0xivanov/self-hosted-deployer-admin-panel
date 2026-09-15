@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 32 {
+	if version > 33 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -299,6 +299,12 @@ PRAGMA user_version=1;`)
 
 	if version < 32 {
 		if _, err = tx.Exec(`ALTER TABLE merchant_orders ADD COLUMN fulfilled_at INTEGER NOT NULL DEFAULT 0; ALTER TABLE merchant_orders ADD COLUMN fulfilled_by TEXT NOT NULL DEFAULT ''; PRAGMA user_version=32;`); err != nil {
+			return err
+		}
+	}
+
+	if version < 33 {
+		if _, err = tx.Exec(`CREATE TABLE domain_orders(id TEXT PRIMARY KEY,quote_id TEXT NOT NULL UNIQUE REFERENCES domain_quotes(id),workspace_id TEXT NOT NULL REFERENCES workspaces(id),actor_id TEXT NOT NULL,name TEXT NOT NULL,offer BLOB NOT NULL,state TEXT NOT NULL CHECK(state IN ('awaiting_payment','canceled')),created_at INTEGER NOT NULL); CREATE INDEX domain_orders_workspace ON domain_orders(workspace_id,created_at,id); CREATE UNIQUE INDEX domain_orders_active ON domain_orders(workspace_id,name) WHERE state='awaiting_payment'; PRAGMA user_version=33;`); err != nil {
 			return err
 		}
 	}

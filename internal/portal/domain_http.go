@@ -34,9 +34,9 @@ func (h *HTTP) allowDomainQuote(account string) bool {
 	return true
 }
 
-// Reached after host/TLS, session, origin and CSRF checks. No purchase route exists.
+// Reached after host/TLS, session, origin and CSRF checks. Orders do not register domains.
 func (h *HTTP) domainHTTP(w http.ResponseWriter, r *http.Request, token, account string) {
-	if h.domainQuotes == nil || r.URL.Path != "/api/domains/quote" || r.URL.EscapedPath() != r.URL.Path {
+	if h.domainQuotes == nil || (r.URL.Path != "/api/domains/quote" && r.URL.Path != "/api/domains/orders" && r.URL.Path != "/api/domains/orders/cancel") || r.URL.EscapedPath() != r.URL.Path {
 		httpError(w, 404, "Not found")
 		return
 	}
@@ -44,6 +44,10 @@ func (h *HTTP) domainHTTP(w http.ResponseWriter, r *http.Request, token, account
 		switch {
 		case errors.Is(err, domains.ErrDomain):
 			httpError(w, 400, "Enter a supported domain name")
+		case errors.Is(err, ErrDomainOrderConflict):
+			httpError(w, 409, "Quote expired, price changed, or an active order already exists. Refresh saved orders or request a new quote.")
+		case errors.Is(err, ErrInvalid):
+			h.storeError(w, err)
 		case errors.Is(err, domains.ErrQuote):
 			httpError(w, 409, "A current standard-price quote is unavailable")
 		case errors.Is(err, ErrDomainQuoteLimit):
@@ -53,6 +57,59 @@ func (h *HTTP) domainHTTP(w http.ResponseWriter, r *http.Request, token, account
 		default:
 			httpError(w, 503, "Domain quotes are temporarily unavailable")
 		}
+	}
+	if r.URL.Path != "/api/domains/quote" {
+		if r.Method == "GET" && r.URL.Path == "/api/domains/orders" {
+			orders, err := h.store.DomainOrders(r.Context(), token, r.URL.Query().Get("workspace"))
+			if err != nil {
+				fail(err)
+				return
+			}
+			httpJSON(w, map[string]any{"orders": orders})
+			return
+		}
+		if r.Method != "POST" {
+			httpError(w, 405, "Method not allowed")
+			return
+		}
+		if r.URL.RawQuery != "" || r.URL.ForceQuery {
+			httpError(w, 400, "Unexpected query parameters")
+			return
+		}
+		var input struct {
+			Workspace string `json:"workspace"`
+			Quote     string `json:"quote"`
+			ID        string `json:"id"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		var order DomainOrder
+		var err error
+		if r.URL.Path == "/api/domains/orders" {
+			if input.ID != "" || !validMerchantOrderToken(input.Quote) {
+				httpError(w, 400, "Invalid domain quote")
+				return
+			}
+			if !h.allowDomainQuote(account) {
+				w.Header().Set("Retry-After", "60")
+				httpError(w, 429, "Retry domain requests in a minute")
+				return
+			}
+			order, err = h.store.RequestDomainOrder(r.Context(), h.domainQuotes, token, input.Workspace, input.Quote)
+		} else {
+			if input.Quote != "" || !validMerchantOrderToken(input.ID) {
+				httpError(w, 400, "Invalid domain order")
+				return
+			}
+			order, err = h.store.CancelDomainOrder(r.Context(), token, input.Workspace, input.ID)
+		}
+		if err != nil {
+			fail(err)
+			return
+		}
+		httpJSON(w, order)
+		return
 	}
 	if r.Method == "POST" {
 		if r.URL.RawQuery != "" || r.URL.ForceQuery {

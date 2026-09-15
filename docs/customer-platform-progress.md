@@ -1821,3 +1821,23 @@ This is manual delivery tracking. Automated website fulfillment integrations,
 complete dispute/out-of-band payment reconciliation, buyer credential expiry and
 recovery, provider trials, domain resale and remaining hosting/release work remain.
 The full four-part goal remains active.
+
+## Domain order preparation and cancellation (2026-09-15)
+
+Added a quote-to-order preparation flow, saved order history and cancellation.
+Preparation rechecks availability and both provider prices against the saved
+retail offer, then reauthorizes the owner before persistence. Schema 33 prevents
+duplicate active workspace/domain orders without reserving domains globally.
+The UI explicitly states that payment/registration are not connected.
+
+Luna implemented order storage; root reviewed and corrected the missing domain
+name insert and required a fresh provider observation, then added schema, API and
+UI. Focused checks passed for unchanged replay, cancellation/restart, tenant
+isolation, revoked-owner rejection and changed price/currency/availability/premium
+status. HTTP CSRF and anonymous access checks, migrations, scoped vet and synthetic
+UI cancellation/stale-workspace checks passed.
+
+No registrar purchase or customer payment was made, and no live deployment changed.
+Sandbox endpoint/access was requested to continue actual registrar integration.
+Registrant contacts, payment authorization, registration, ownership/renewal
+lifecycle and the other hosting/account/payment release requirements remain.
