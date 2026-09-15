@@ -1656,3 +1656,29 @@ response ordering and error recovery; syntax and scoped vet also passed.
 No live service, payment or database was changed. Public buyer checkout and
 purchase links, verified payment events, fulfillment and refunds remain open,
 alongside the existing domain, hosting and release-qualification requirements.
+
+## Buyer test checkout and purchase links (2026-09-15)
+
+Product owners now have purchase links. The buyer page shows the saved product
+price and creates a durable order for that product revision, then offers the
+scoped Stripe test checkout. Buyer cookies and CSRF are separate from workspace
+login; private order reads require the buyer credential. Order and product DTOs
+omit workspace and private provider fields. Disabled products are not public.
+
+Buyer refresh reconciles a mapped checkout in the original merchant account.
+Stripe return navigation never marks payment paid. The page preserves its create
+identity after uncertain replies and rejects untrusted checkout links. Requested
+orders can retry dispatch; submitted orders cannot repeat provider creation.
+
+Root reviewed Luna's shop backend, added routing, purchase links and buyer pages,
+and tightened ID validation and pre-submission retry. Focused API checks passed
+for cookie flags, origin/CSRF, buyer isolation, price binding, duplicate requests,
+lost provider replies, rate limits and return pages. Synthetic UI checks passed
+for uncertain retry identity, trusted links and unpaid-state rendering. Syntax,
+scoped vet and the product-edit behavior check passed. No actual provider session,
+charge, live database or deployment was changed.
+
+This completes the local test-provider purchase path, not the payment product.
+Background merchant readiness, buyer credential expiry/recovery, signed events,
+fulfillment/refunds and provider qualification remain. Domain resale and the
+remaining hosting/release requirements are unchanged; the full goal is active.

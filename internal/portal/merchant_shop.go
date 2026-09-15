@@ -1,0 +1,311 @@
+package portal
+
+import (
+	"crypto/subtle"
+	"database/sql"
+	"errors"
+	"net"
+	"net/http"
+	"time"
+)
+
+const merchantBuyerCookie = "__Host-merchant-buyer"
+
+type shopProduct struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Currency    string `json:"currency"`
+	AmountMinor int64  `json:"amount_minor"`
+	Revision    int64  `json:"revision"`
+}
+
+type shopOrder struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Currency      string `json:"currency"`
+	AmountMinor   int64  `json:"amount_minor"`
+	State         string `json:"state"`
+	PaymentStatus string `json:"payment_status"`
+	CreatedAt     int64  `json:"created_at"`
+	ObservedAt    int64  `json:"observed_at"`
+	URL           string `json:"url,omitempty"`
+}
+
+func (h *HTTP) allowShop(address string) bool {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		host = address
+	}
+	now := time.Now()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for key, value := range h.shopAttempts {
+		if now.Sub(value.start) >= time.Minute {
+			delete(h.shopAttempts, key)
+		}
+	}
+	w, exists := h.shopAttempts[host]
+	if !exists {
+		if len(h.shopAttempts) >= 4096 {
+			return false
+		}
+		w.start = now
+	}
+	if w.count >= 30 {
+		return false
+	}
+	w.count++
+	h.shopAttempts[host] = w
+	return true
+}
+
+func (h *HTTP) shopProduct(r *http.Request) (shopProduct, error) {
+	id := r.URL.Query().Get("product")
+	if !validMerchantOrderToken(id) {
+		return shopProduct{}, ErrInvalid
+	}
+	var product shopProduct
+	err := h.store.db.QueryRowContext(r.Context(), "SELECT id,name,currency,amount_minor,revision FROM merchant_products WHERE id=? AND active=1", id).Scan(&product.ID, &product.Name, &product.Currency, &product.AmountMinor, &product.Revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return shopProduct{}, ErrDenied
+	}
+	return product, err
+}
+
+func shopOrderView(order MerchantOrder) shopOrder {
+	view := shopOrder{ID: order.ID, Name: order.Name, Currency: order.Currency, AmountMinor: order.AmountMinor, State: order.State, PaymentStatus: order.PaymentStatus, CreatedAt: order.CreatedAt, ObservedAt: order.ObservedAt}
+	if order.State == "open" {
+		view.URL = order.CheckoutURL
+	}
+	return view
+}
+
+func (h *HTTP) shopBuyer(r *http.Request) (string, error) {
+	cookie, err := r.Cookie(merchantBuyerCookie)
+	if err != nil || !validMerchantOrderToken(cookie.Value) {
+		return "", ErrDenied
+	}
+	return cookie.Value, nil
+}
+
+func (h *HTTP) shopCSRF(r *http.Request, token string) bool {
+	return subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(csrfFor(token))) == 1
+}
+
+func (h *HTTP) shopHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.merchant == nil {
+		httpError(w, http.StatusNotFound, "Not found")
+		return
+	}
+	if _, ok := h.merchant.(MerchantCheckoutProvider); !ok {
+		httpError(w, http.StatusNotFound, "Not found")
+		return
+	}
+	if !h.allowShop(r.RemoteAddr) {
+		w.Header().Set("Retry-After", "60")
+		httpError(w, http.StatusTooManyRequests, "Please retry later")
+		return
+	}
+	switch r.URL.Path {
+	case "/api/shop/product":
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			httpError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		product, err := h.shopProduct(r)
+		if errors.Is(err, ErrInvalid) {
+			httpError(w, http.StatusBadRequest, "Invalid product")
+			return
+		}
+		if errors.Is(err, ErrDenied) {
+			httpError(w, http.StatusNotFound, "Not found")
+			return
+		}
+		if err != nil {
+			httpError(w, http.StatusServiceUnavailable, "Shop unavailable")
+			return
+		}
+		httpJSON(w, product)
+		return
+	case "/api/shop/session":
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			httpError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		token := ""
+		if cookie, err := r.Cookie(merchantBuyerCookie); err == nil && validMerchantOrderToken(cookie.Value) {
+			token = cookie.Value
+		}
+		if token == "" {
+			token = randomToken()
+			http.SetCookie(w, &http.Cookie{Name: merchantBuyerCookie, Value: token, Path: "/", MaxAge: 30 * 24 * 60 * 60, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		}
+		httpJSON(w, map[string]string{"csrf": csrfFor(token)})
+		return
+	case "/api/shop/orders":
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			httpError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		h.shopCreateOrder(w, r)
+		return
+	case "/api/shop/order":
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			httpError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		h.shopGetOrder(w, r)
+		return
+	case "/api/shop/refresh":
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			httpError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		h.shopRefreshOrder(w, r)
+		return
+	default:
+		httpError(w, http.StatusNotFound, "Not found")
+		return
+	}
+}
+
+func (h *HTTP) shopCreateOrder(w http.ResponseWriter, r *http.Request) {
+	token, err := h.shopBuyer(r)
+	if err != nil {
+		httpError(w, http.StatusUnauthorized, "Shop session required")
+		return
+	}
+	if !h.shopCSRF(r, token) {
+		httpError(w, http.StatusForbidden, "Reload the shop and retry")
+		return
+	}
+	var input struct {
+		Product  string `json:"product"`
+		Revision int64  `json:"revision"`
+		Key      string `json:"key"`
+	}
+	if !httpDecode(w, r, &input) {
+		return
+	}
+	if !validMerchantOrderToken(input.Product) {
+		httpError(w, 400, "Invalid product")
+		return
+	}
+	order, err := h.store.RequestMerchantOrder(r.Context(), token, input.Product, input.Revision, input.Key)
+	if err != nil {
+		if errors.Is(err, ErrInvalid) {
+			httpError(w, http.StatusBadRequest, "Invalid order")
+			return
+		}
+		if errors.Is(err, ErrDenied) {
+			httpError(w, http.StatusForbidden, "Order unavailable")
+			return
+		}
+		httpError(w, http.StatusConflict, "Order request conflicts")
+		return
+	}
+	if order.State == "requested" {
+		provider, _ := h.merchant.(MerchantCheckoutProvider)
+		if _, dispatchErr := h.store.DispatchMerchantOrder(r.Context(), order.ID, provider); dispatchErr != nil {
+			saved, readErr := h.store.BuyerMerchantOrder(r.Context(), token, order.ID)
+			if readErr == nil {
+				httpJSON(w, shopOrderView(saved))
+				return
+			}
+			httpError(w, http.StatusServiceUnavailable, "Order service unavailable")
+			return
+		}
+		order, err = h.store.BuyerMerchantOrder(r.Context(), token, order.ID)
+		if err != nil {
+			httpError(w, http.StatusServiceUnavailable, "Order service unavailable")
+			return
+		}
+	}
+	httpJSON(w, shopOrderView(order))
+}
+
+func (h *HTTP) shopGetOrder(w http.ResponseWriter, r *http.Request) {
+	token, err := h.shopBuyer(r)
+	if err != nil {
+		httpError(w, http.StatusUnauthorized, "Shop session required")
+		return
+	}
+	id := r.URL.Query().Get("order")
+	if !validMerchantOrderToken(id) {
+		httpError(w, http.StatusBadRequest, "Invalid order")
+		return
+	}
+	order, err := h.store.BuyerMerchantOrder(r.Context(), token, id)
+	if errors.Is(err, ErrDenied) {
+		httpError(w, http.StatusNotFound, "Not found")
+		return
+	}
+	if err != nil {
+		httpError(w, http.StatusServiceUnavailable, "Order service unavailable")
+		return
+	}
+	httpJSON(w, shopOrderView(order))
+}
+
+func (h *HTTP) shopRefreshOrder(w http.ResponseWriter, r *http.Request) {
+	token, err := h.shopBuyer(r)
+	if err != nil {
+		httpError(w, http.StatusUnauthorized, "Shop session required")
+		return
+	}
+	if !h.shopCSRF(r, token) {
+		httpError(w, http.StatusForbidden, "Reload the shop and retry")
+		return
+	}
+	var input struct {
+		Order string `json:"order"`
+	}
+	if !httpDecode(w, r, &input) {
+		return
+	}
+	if !validMerchantOrderToken(input.Order) {
+		httpError(w, 400, "Invalid order")
+		return
+	}
+	order, err := h.store.BuyerMerchantOrder(r.Context(), token, input.Order)
+	if errors.Is(err, ErrDenied) {
+		httpError(w, http.StatusNotFound, "Not found")
+		return
+	}
+	if err != nil {
+		httpError(w, http.StatusServiceUnavailable, "Order service unavailable")
+		return
+	}
+	if order.State == "requested" {
+		provider, _ := h.merchant.(MerchantCheckoutProvider)
+		if _, err := h.store.DispatchMerchantOrder(r.Context(), order.ID, provider); err != nil {
+			httpError(w, http.StatusServiceUnavailable, "Checkout cannot proceed yet. Retry after the merchant updates availability.")
+			return
+		}
+		order, err = h.store.BuyerMerchantOrder(r.Context(), token, order.ID)
+		if err != nil {
+			httpError(w, 503, "Order service unavailable")
+			return
+		}
+		httpJSON(w, shopOrderView(order))
+		return
+	}
+	if order.SessionID != "" {
+		provider, _ := h.merchant.(MerchantCheckoutProvider)
+		if _, reconcileErr := h.store.ReconcileMerchantOrder(r.Context(), order.ID, order.SessionID, provider); reconcileErr != nil && !errors.Is(reconcileErr, ErrBillingConflict) {
+			httpError(w, http.StatusServiceUnavailable, "Order service unavailable")
+			return
+		}
+		order, err = h.store.BuyerMerchantOrder(r.Context(), token, order.ID)
+		if err != nil {
+			httpError(w, http.StatusServiceUnavailable, "Order service unavailable")
+			return
+		}
+	}
+	httpJSON(w, shopOrderView(order))
+}

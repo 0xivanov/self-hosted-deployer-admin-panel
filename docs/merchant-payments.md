@@ -244,3 +244,35 @@ later catalog edits do not change past purchases. Checkout state and payment
 status are shown separately. Refresh reads saved observations; it does not contact
 Stripe or prove fulfillment. The panel shows when an observation was last saved.
 This history is separate from customers' hosting subscription payments.
+
+## Buyer purchase flow (test mode)
+
+Owners can open a product's test purchase link from the catalog and share that
+URL. `/shop?product=<id>` shows the active product's stored price, then requests
+one order for the displayed revision. There is no client-supplied amount. The
+buyer explicitly opens the resulting Stripe test checkout. A private order page
+uses `/shop?order=<id>`; the ID alone does not grant access.
+
+The shop API is enabled only when the configured merchant provider supports
+checkout. A separate Secure, HttpOnly, host-only, SameSite=Lax buyer cookie is
+required for orders. It has a 30-day browser lifetime and is stored as a hash on
+orders. Buyer API mutations require the matching CSRF header and portal origin.
+Public responses omit workspace and private provider identifiers. Public product
+reads only expose active products. The UI retains a creation key across uncertain
+replies; a submitted request cannot create another checkout. Refresh may dispatch
+an order only while it is still requested, before provider submission.
+
+The return pages do not confirm payment. The same browser tab remembers the order
+ID, then retrieves its saved state. The buyer can explicitly refresh to retrieve
+Stripe's observed checkout state in the bound merchant account. Only verified
+paid observations show payment confirmation. Fulfillment is not inferred.
+
+Current development limits: the buyer must retain the cookie (there is no email
+order recovery yet); server-side buyer credential expiry/revocation remains to
+be added. Merchant readiness must have been checked within five minutes, using
+the account refresh control; background capability refresh remains open. Each
+portal process limits shop requests to 30 per minute per direct peer address,
+with bounded storage, in addition to durable order limits. Forwarded headers are
+not trusted, so a reverse proxy needs a qualified client-address/rate-limit setup
+before public launch. Verified merchant events, automatic fulfillment, refunds,
+tax/commercial qualification and actual Stripe sandbox trials are still required.

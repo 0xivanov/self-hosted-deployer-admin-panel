@@ -45,6 +45,7 @@ type attemptWindow struct {
 type HTTP struct {
 	merchant             MerchantProvider
 	merchantCountries    []string
+	shopAttempts         map[string]attemptWindow
 	nodeProjects         map[string]NodeProjectConfig
 	domainQuotes         DomainQuoteReader
 	domainMarkupMinor    int64
@@ -123,7 +124,7 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if opts.Development {
 		cookie = "portal-dev-session"
 	}
-	return &HTTP{merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 func csrfFor(token string) string {
 	sum := sha256.Sum256([]byte("portal-csrf:" + token))
@@ -206,6 +207,12 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "/", "/billing/success", "/billing/cancel", "/merchant/return", "/merchant/refresh":
 			name = "index.html"
 			kind = "text/html; charset=utf-8"
+		case "/shop", "/merchant/sales/success", "/merchant/sales/cancel":
+			name = "shop.html"
+			kind = "text/html; charset=utf-8"
+		case "/shop.js":
+			name = "shop.js"
+			kind = "text/javascript; charset=utf-8"
 		case "/portal.js":
 			name = "portal.js"
 			kind = "text/javascript; charset=utf-8"
@@ -231,6 +238,10 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.Header().Set("Retry-After", "5")
 		httpError(w, 429, "Please retry shortly")
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/shop/") {
+		h.shopHTTP(w, r)
 		return
 	}
 	if r.URL.Path == "/api/config" && r.Method == "GET" {

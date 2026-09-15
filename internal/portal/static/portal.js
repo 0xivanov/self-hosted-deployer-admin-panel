@@ -288,6 +288,8 @@ function renderMerchantProducts(workspace,version,request,products){
   const button=document.createElement('button');button.type='submit';button.textContent=creating?'Create product':'Save changes';
   const message=document.createElement('p');message.setAttribute('role','status');
   form.append(label('Product name',name),label('Currency',currency),label('Price',price),label('Active in catalog',active),button,message);
+  const purchase=document.createElement('a');purchase.textContent='Open test purchase page';purchase.target='_blank';purchase.rel='noopener noreferrer';
+  const updatePurchase=()=>{purchase.hidden=!product?.active;if(product)purchase.href='/shop?product='+encodeURIComponent(product.id);};updatePurchase();if(!creating)form.append(purchase);
   form.addEventListener('submit',async event=>{
    event.preventDefault();if(busy||!current())return;message.textContent='';
    const clean=name.value.trim(),amount=parseMerchantPrice(price.value);
@@ -299,7 +301,7 @@ function renderMerchantProducts(workspace,version,request,products){
    try{
     const saved=await api('/api/merchant/products',payload);if(!current())return;
     if(creating){content.append(productForm(saved));name.value='';price.value='';intent=null;}
-    else{Object.assign(product,saved);}
+    else{Object.assign(product,saved);updatePurchase();}
     message.textContent='Product saved.';
    }catch(e){if(current()){message.textContent=e.status===409?'Product changed, request conflicts, or catalog is full. Refresh before retrying.':'Unable to save. Retry unchanged values or refresh the catalog to check the result.';if(creating&&e.status===400)intent=null;}}
    finally{busy=false;button.disabled=false;for(const control of [name,currency,price,active])control.disabled=false;}
