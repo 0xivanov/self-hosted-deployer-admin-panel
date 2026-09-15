@@ -1758,3 +1758,22 @@ No actual refund or live migration/deployment was performed. Partial refunds,
 refund events/background refresh, buyer status and failed-refund reissue remain,
 along with fulfillment and actual provider qualification. Domain resale, remaining
 hosting work and full release qualification are still required for the goal.
+
+## Automatic refund updates and buyer status (2026-09-15)
+
+The merchant worker now refreshes all mapped refunds, including succeeded ones,
+without issuing new refunds. Bounded cursor scans advance through failed reads.
+Buyers see saved refund status, amount and observation time on their private order
+page; original payment status stays distinct. Private provider and owner fields
+are excluded. Database read failures do not silently remove refund information.
+
+Luna implemented the maintenance scan; root reviewed it and connected the command,
+buyer API and page. Focused checks passed for buyer/anonymous/foreign isolation,
+private-field omission and pending-to-success-to-failure visibility. Synthetic UI
+checks passed for distinct refund messages alongside existing retry/link/payment
+handling. Command compilation and scoped vet passed. No live deployment, payment
+or refund was performed.
+
+Refund events and unknown-outcome operator tooling, buyer expiry/recovery,
+fulfillment and real provider qualification remain, as do the other domain,
+hosting and final release requirements. The full goal remains active.

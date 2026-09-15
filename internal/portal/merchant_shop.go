@@ -19,16 +19,24 @@ type shopProduct struct {
 	Revision    int64  `json:"revision"`
 }
 
+type shopRefund struct {
+	State       string `json:"state"`
+	Currency    string `json:"currency"`
+	AmountMinor int64  `json:"amount_minor"`
+	ObservedAt  int64  `json:"observed_at"`
+}
+
 type shopOrder struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Currency      string `json:"currency"`
-	AmountMinor   int64  `json:"amount_minor"`
-	State         string `json:"state"`
-	PaymentStatus string `json:"payment_status"`
-	CreatedAt     int64  `json:"created_at"`
-	ObservedAt    int64  `json:"observed_at"`
-	URL           string `json:"url,omitempty"`
+	Refund        *shopRefund `json:"refund,omitempty"`
+	ID            string      `json:"id"`
+	Name          string      `json:"name"`
+	Currency      string      `json:"currency"`
+	AmountMinor   int64       `json:"amount_minor"`
+	State         string      `json:"state"`
+	PaymentStatus string      `json:"payment_status"`
+	CreatedAt     int64       `json:"created_at"`
+	ObservedAt    int64       `json:"observed_at"`
+	URL           string      `json:"url,omitempty"`
 }
 
 func (h *HTTP) allowShop(address string) bool {
@@ -214,7 +222,7 @@ func (h *HTTP) shopCreateOrder(w http.ResponseWriter, r *http.Request) {
 		if _, dispatchErr := h.store.DispatchMerchantOrder(r.Context(), order.ID, provider); dispatchErr != nil {
 			saved, readErr := h.store.BuyerMerchantOrder(r.Context(), token, order.ID)
 			if readErr == nil {
-				httpJSON(w, shopOrderView(saved))
+				h.writeShopOrder(w, r, saved)
 				return
 			}
 			httpError(w, http.StatusServiceUnavailable, "Order service unavailable")
@@ -226,7 +234,7 @@ func (h *HTTP) shopCreateOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	httpJSON(w, shopOrderView(order))
+	h.writeShopOrder(w, r, order)
 }
 
 func (h *HTTP) shopGetOrder(w http.ResponseWriter, r *http.Request) {
@@ -249,7 +257,7 @@ func (h *HTTP) shopGetOrder(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusServiceUnavailable, "Order service unavailable")
 		return
 	}
-	httpJSON(w, shopOrderView(order))
+	h.writeShopOrder(w, r, order)
 }
 
 func (h *HTTP) shopRefreshOrder(w http.ResponseWriter, r *http.Request) {
@@ -292,7 +300,7 @@ func (h *HTTP) shopRefreshOrder(w http.ResponseWriter, r *http.Request) {
 			httpError(w, 503, "Order service unavailable")
 			return
 		}
-		httpJSON(w, shopOrderView(order))
+		h.writeShopOrder(w, r, order)
 		return
 	}
 	if order.SessionID != "" {
@@ -307,5 +315,24 @@ func (h *HTTP) shopRefreshOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	httpJSON(w, shopOrderView(order))
+	h.writeShopOrder(w, r, order)
+}
+
+// Only return refund evidence for the same privately authenticated buyer order.
+func (h *HTTP) writeShopOrder(w http.ResponseWriter, r *http.Request, order MerchantOrder) {
+	token, err := h.shopBuyer(r)
+	if err != nil {
+		httpError(w, 401, "Shop session required")
+		return
+	}
+	var refund shopRefund
+	err = h.store.db.QueryRowContext(r.Context(), `SELECT f.state,f.currency,f.amount_minor,f.observed_at FROM merchant_refunds f JOIN merchant_orders o ON o.id=f.order_id WHERE o.id=? AND o.buyer_hash=?`, order.ID, digest(token)).Scan(&refund.State, &refund.Currency, &refund.AmountMinor, &refund.ObservedAt)
+	view := shopOrderView(order)
+	if err == nil {
+		view.Refund = &refund
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		httpError(w, 503, "Order service unavailable")
+		return
+	}
+	httpJSON(w, view)
 }

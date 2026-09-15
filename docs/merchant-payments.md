@@ -376,3 +376,26 @@ may cause provider rejection and need operator reconciliation. Refund webhook an
 background refresh integration, buyer-facing refund status/recovery, receipt
 notifications, provider qualification and production configuration remain open.
 The existing checkout-event endpoint does not yet process refund events.
+
+## Automatic refund status and buyer visibility
+
+The merchant worker now also scans mapped refunds in bounded, cursor-based
+batches and retrieves their current provider state. It includes previously
+succeeded refunds because a bank can later return the funds. A failed lookup
+advances past that item and retries after the cursor wraps. This process never
+creates or reissues refunds; submitted requests without a provider mapping still
+require operator reconciliation. The same generation guard protects concurrent
+owner and worker observations.
+
+The private buyer order response includes a separate refund summary containing
+only status, amount, currency and last observation time. The buyer page displays
+pending, succeeded, failed, canceled and action-required refund states separately
+from the original payment. It does not expose refund IDs, payment/account IDs,
+owner identity or the buyer credential. Read errors fail the order response
+instead of silently hiding an existing refund.
+
+Buyer refresh reads the saved refund observation; the worker updates that
+observation in the background. Cookie authorization remains mandatory even when
+an order URL is known. There is no customer email recovery yet. Refund webhooks,
+unknown-refund recovery tooling, partial refunds, retention/polling scale and real
+provider qualification remain outstanding. No production worker is installed.
