@@ -1635,3 +1635,24 @@ merchant readiness, restart recovery, concurrent dispatch, out-of-order provider
 responses and schema migrations. Public purchase routes, buyer cookies/checkout
 pages, provider events, fulfillment and refunds are still required. These changes
 are local implementation only; no live migration, checkout or deployment occurred.
+
+## Merchant order history panel (2026-09-15)
+
+Owners can now view and refresh the latest 100 saved website-sale orders in the
+merchant panel. Each order shows its accepted product name/price, checkout state,
+payment state, creation time and last recorded payment check. Unchecked orders
+are explicit. Refresh reads saved evidence, without contacting the payment
+provider or disrupting unsaved product edits. Hosting subscription history stays
+separate.
+
+The owner-only API omits buyer credentials and private provider references. The
+UI discards responses after workspace changes, logout or newer history requests.
+Luna implemented the frontend; root reviewed it and added the protected endpoint.
+Focused HTTP checks passed for owner/foreign/developer/anonymous access, populated
+private-field omission, empty history, disabled configuration and non-cacheable
+responses. A synthetic DOM check passed for rendering, independent product edits,
+response ordering and error recovery; syntax and scoped vet also passed.
+
+No live service, payment or database was changed. Public buyer checkout and
+purchase links, verified payment events, fulfillment and refunds remain open,
+alongside the existing domain, hosting and release-qualification requirements.

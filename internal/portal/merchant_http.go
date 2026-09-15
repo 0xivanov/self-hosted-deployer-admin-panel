@@ -23,6 +23,20 @@ func (h *HTTP) merchantHTTP(w http.ResponseWriter, r *http.Request, token string
 			httpError(w, 503, "Merchant service unavailable. Refresh status before retrying.")
 		}
 	}
+	if r.URL.Path == "/api/merchant/orders" {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			httpError(w, 405, "Method not allowed")
+			return
+		}
+		orders, err := h.store.MerchantOrders(r.Context(), token, r.URL.Query().Get("workspace"))
+		if err != nil {
+			fail(err)
+			return
+		}
+		httpJSON(w, map[string]any{"orders": orders})
+		return
+	}
 	if r.URL.Path == "/api/merchant/products" {
 		if r.Method == "GET" {
 			products, err := h.store.MerchantProducts(r.Context(), token, r.URL.Query().Get("workspace"))

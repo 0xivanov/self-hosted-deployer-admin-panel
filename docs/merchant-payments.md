@@ -229,3 +229,18 @@ per minute. Public-route abuse controls, order retention and complete paginated
 owner reporting remain launch work. The store/coordinator is not a public purchase
 endpoint; buyer-cookie handling, the purchase/consent page, return pages and
 merchant event/fulfillment integration still need to be connected.
+
+## Owner order history
+
+Workspace owners can inspect the latest 100 website-sale orders in the merchant
+panel and refresh the saved history independently of product editing. The
+`GET /api/merchant/orders?workspace=<id>` endpoint requires a signed-in owner of
+that workspace and enabled merchant configuration. Responses are non-cacheable
+and omit buyer tokens/hashes, request keys, account/session/payment references
+and checkout URLs. Developers and viewers cannot read the history.
+
+The displayed order amount and product name come from the accepted order, so
+later catalog edits do not change past purchases. Checkout state and payment
+status are shown separately. Refresh reads saved observations; it does not contact
+Stripe or prove fulfillment. The panel shows when an observation was last saved.
+This history is separate from customers' hosting subscription payments.
