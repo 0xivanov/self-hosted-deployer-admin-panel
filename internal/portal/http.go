@@ -566,6 +566,8 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 func (h *HTTP) storeError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrHostingPlanLimit):
+		httpError(w, 409, "Hosting plan limit reached or Node.js is not included. Check plan usage in billing.")
 	case errors.Is(err, ErrHostingPayment):
 		httpError(w, 402, "Hosting changes require a current paid test subscription. Ask the workspace owner to check billing.")
 	case errors.Is(err, ErrPublishing):

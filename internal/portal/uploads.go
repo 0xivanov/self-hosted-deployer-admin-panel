@@ -50,7 +50,7 @@ func (s *Store) UploadAccess(ctx context.Context, token, project string) (Projec
 	if err != nil {
 		return p, err
 	}
-	if err = s.requireHostingAccess(ctx, tx, p.WorkspaceID); err != nil {
+	if err = s.requireHostingKind(ctx, tx, p.WorkspaceID, p.Kind); err != nil {
 		return p, err
 	}
 	return p, tx.Commit()
@@ -76,7 +76,7 @@ func (s *Store) SaveUpload(ctx context.Context, token, project string, data []by
 	if err != nil {
 		return Upload{}, err
 	}
-	if err = s.requireHostingAccess(ctx, tx, p.WorkspaceID); err != nil {
+	if err = s.requireHostingKind(ctx, tx, p.WorkspaceID, p.Kind); err != nil {
 		return Upload{}, err
 	}
 	var count, bytes int64
@@ -86,6 +86,9 @@ func (s *Store) SaveUpload(ctx context.Context, token, project string, data []by
 	}
 	if count >= WorkspaceUploadCount || bytes+int64(len(data)) > WorkspaceUploadBytes {
 		return Upload{}, ErrQuota
+	}
+	if err = s.requireHostingUpload(ctx, tx, p.WorkspaceID, count, bytes, int64(len(data))); err != nil {
+		return Upload{}, err
 	}
 	u := Upload{ID: randomToken(), ProjectID: project, SHA256: manifest.SHA256, Files: manifest.Files, ExpandedBytes: manifest.Bytes, CompressedBytes: int64(len(data)), CreatedAt: s.now().Unix()}
 	if _, err = tx.ExecContext(ctx, "INSERT INTO uploads VALUES(?,?,?,?,?,?,?)", u.ID, project, u.SHA256, u.Files, u.ExpandedBytes, data, u.CreatedAt); err != nil {

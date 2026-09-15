@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 36 {
+	if version > 37 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -330,6 +330,12 @@ PRAGMA user_version=1;`)
 
 	if version < 36 {
 		if _, err = tx.Exec(`CREATE TABLE hosting_workspace_policies(workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id),require_test_subscription INTEGER NOT NULL CHECK(require_test_subscription IN (0,1))); PRAGMA user_version=36`); err != nil {
+			return err
+		}
+	}
+
+	if version < 37 {
+		if _, err = tx.Exec(`CREATE TABLE hosting_plan_limits(plan_id TEXT PRIMARY KEY REFERENCES billing_plans(id),projects INTEGER NOT NULL CHECK(projects BETWEEN 1 AND 100),uploads INTEGER NOT NULL CHECK(uploads BETWEEN 1 AND 20),upload_bytes INTEGER NOT NULL CHECK(upload_bytes BETWEEN 1 AND 104857600),node INTEGER NOT NULL CHECK(node IN (0,1))); PRAGMA user_version=37`); err != nil {
 			return err
 		}
 	}
@@ -636,7 +642,7 @@ func (s *Store) CreateProject(ctx context.Context, token, workspace, name, kind 
 	if err != nil {
 		return Project{}, err
 	}
-	if err = s.requireHostingAccess(ctx, tx, workspace); err != nil {
+	if err = s.requireHostingProject(ctx, tx, workspace, kind); err != nil {
 		return Project{}, err
 	}
 	var existing string

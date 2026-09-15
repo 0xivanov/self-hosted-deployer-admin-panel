@@ -1900,3 +1900,24 @@ No live workspace was enrolled, no charge made and no deployment changed.
 Production enrollment, plan-specific resource quotas, grace/suspension behavior
 and provider qualification remain. This sandbox gate does not establish paid
 production hosting. The full four-part goal remains active.
+
+## Sandbox plan limits and usage (2026-09-15)
+
+Added operator-configured limits for projects, saved source uploads, compressed
+source storage and Node.js inclusion. Schema 37 preserves legacy behavior and
+unconfigured plans. Verified subscription identity selects the plan; customers
+cannot submit a plan or allowance override with project/upload requests.
+Limits and insert checks share a transaction. Node eligibility is also checked
+before claims and dispatch. Existing sites and retained data are not deleted.
+
+Root implemented and reviewed limits, persistence, command, gates and catalog
+fields. Luna added billing usage rendering; root clarified defaults and included
+all-version accounting. Focused checks passed for exact byte limits, upload count,
+project cap, freeing upload space, restart, workspace isolation, Node claim denial,
+saved request replay, usage and offer visibility. Existing hosting gate checks,
+migration checks and synthetic usage/stale-response UI checks passed.
+
+No live configuration or deployment changed. These are current sandbox operator
+limits. Immutable purchased allowances, production enrollment/upgrade/grace rules,
+and plan-specific runtime/build/bandwidth metering remain, along with remaining
+domain/payment/deployment qualification work. The full goal remains active.

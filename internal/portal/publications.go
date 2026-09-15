@@ -64,7 +64,7 @@ func (s *Store) RequestPublication(ctx context.Context, token, project, upload, 
 	if !errors.Is(err, sql.ErrNoRows) {
 		return PublicationJob{}, err
 	}
-	if err = s.requireHostingAccess(ctx, tx, p.WorkspaceID); err != nil {
+	if err = s.requireHostingKind(ctx, tx, p.WorkspaceID, p.Kind); err != nil {
 		return PublicationJob{}, err
 	}
 	var valid int

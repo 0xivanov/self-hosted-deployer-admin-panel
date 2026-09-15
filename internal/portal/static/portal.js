@@ -418,6 +418,25 @@ function showBillingSubscriptions(content,subscriptions){
   content.append(row);
  }
 }
+function renderHostingUsage(content,access){
+ const limits=access&&access.limits&&typeof access.limits==='object'?access.limits:{};
+ const usage=access&&access.usage&&typeof access.usage==='object'?access.usage:{};
+ const count=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0?Math.floor(value):null;
+ const bytes=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0?value:null;
+ const display=(used,limit)=>String(used===null?'Unavailable':used)+(limit===null?' used':' / '+limit);
+ const note=text=>{const p=document.createElement('p');p.textContent=text;content.append(p);};
+ if(typeof access?.plan==='string'&&access.plan)note('Plan: '+access.plan);
+ const projectUsage=count(usage.projects),projectLimit=count(limits.projects);
+ const uploadUsage=count(usage.uploads),uploadLimit=count(limits.uploads);
+ const storageUsage=bytes(usage.upload_bytes),storageLimit=bytes(limits.upload_bytes);
+ const mib=value=>value===null?'Unavailable':(value/1048576).toFixed(2);
+ note('Projects: '+display(projectUsage,projectLimit));
+ note('Saved upload ZIPs: '+display(uploadUsage,uploadLimit));
+ note('Source ZIP storage: '+mib(storageUsage)+(storageLimit===null?'':' / '+mib(storageLimit))+' MiB');
+ if(typeof limits.node==='boolean')note('Node.js: '+(limits.node?'included':'not included'));
+ note('Usage includes all saved upload versions.');
+ if(!Object.keys(limits).length)note(access?.allowed===false?'Plan limits will appear after billing verification.':'Platform defaults apply.');
+}
 async function loadBilling(workspace,version){
  const request=++billingGeneration;
  const [catalog,status,access]=await Promise.all([api('/api/billing/offers?workspace='+encodeURIComponent(workspace)),api('/api/billing/status?workspace='+encodeURIComponent(workspace)),api('/api/billing/access?workspace='+encodeURIComponent(workspace))]);
@@ -427,6 +446,7 @@ async function loadBilling(workspace,version){
  const note=text=>{const p=document.createElement('p');p.textContent=text;content.append(p);};
  const action=(text,fn)=>{const button=document.createElement('button');button.textContent=text;button.addEventListener('click',async()=>{button.disabled=true;try{await fn();if(version===generation)await loadBilling(workspace,version);}catch(e){if(version===generation)error(e);}finally{button.disabled=false;}});content.append(button);};
  if(access.mode==='test_subscription')note(access.allowed?'Hosting changes are enabled by your verified test subscription.':'Hosting changes are on hold. A current paid test subscription and payment check are required. Existing sites keep running.');
+ renderHostingUsage(content,access);
  if(status.customer_state==='ready'&&billingManagement){action('Manage subscription and payment details',async()=>{
   const result=await api('/api/billing/manage',{workspace});
   if(version!==generation)return;
@@ -449,6 +469,7 @@ async function loadBilling(workspace,version){
  if(!catalog.offers.length)note('No hosting plans are currently available.');
  for(const offer of catalog.offers){
   note(offer.plan+' · '+(offer.price?billingPrice(offer.price):'Price temporarily unavailable'));
+  if(offer.limits)note('Current plan limits: '+offer.limits.projects+' projects, '+offer.limits.uploads+' saved source ZIPs, '+(offer.limits.upload_bytes/1048576).toFixed(2)+' MiB of source ZIP storage. Node.js '+(offer.limits.node?'included.':'not included.'));
   if(offer.price){note(offer.price.tax_behavior==='inclusive'?'Tax included in the base price.':offer.price.tax_behavior==='exclusive'?'Tax may be added at checkout.':'Tax treatment will be confirmed at checkout.');action('Choose '+offer.plan,()=>api('/api/billing/checkout',{workspace,plan:offer.plan}));}
  }
 }

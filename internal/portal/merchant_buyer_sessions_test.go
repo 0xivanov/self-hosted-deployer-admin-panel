@@ -93,7 +93,7 @@ func TestMerchantBuyerLegacyMigration(t *testing.T) {
 	if _, err := s.RequestMerchantOrder(ctx, token, product.ID, product.Revision, randomToken()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec("DROP TABLE hosting_workspace_policies; DROP TABLE merchant_order_recovery_grants; DROP TABLE merchant_order_recovery_codes; DROP TABLE merchant_buyer_sessions; PRAGMA user_version=33"); err != nil {
+	if _, err := s.db.Exec("DROP TABLE hosting_plan_limits; DROP TABLE hosting_workspace_policies; DROP TABLE merchant_order_recovery_grants; DROP TABLE merchant_order_recovery_codes; DROP TABLE merchant_buyer_sessions; PRAGMA user_version=33"); err != nil {
 		t.Fatal(err)
 	}
 	before := time.Now().Add(30 * 24 * time.Hour).Unix()

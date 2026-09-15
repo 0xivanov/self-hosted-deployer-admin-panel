@@ -92,7 +92,7 @@ func (s *Store) RequestNodeBuild(ctx context.Context, token, project, upload, ke
 	if !errors.Is(err, sql.ErrNoRows) {
 		return NodeBuild{}, err
 	}
-	if err = s.requireHostingAccess(ctx, tx, p.WorkspaceID); err != nil {
+	if err = s.requireHostingKind(ctx, tx, p.WorkspaceID, p.Kind); err != nil {
 		return NodeBuild{}, err
 	}
 	var count, pending int

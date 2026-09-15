@@ -59,8 +59,9 @@ func (s *Store) RefreshBillingPriceOnce(ctx context.Context, p BillingPriceReade
 }
 
 type BillingPlanOffer struct {
-	Plan  string                    `json:"plan"`
-	Price *hostingbilling.PlanPrice `json:"price"`
+	Limits *HostingPlanLimits        `json:"limits,omitempty"`
+	Plan   string                    `json:"plan"`
+	Price  *hostingbilling.PlanPrice `json:"price"`
 }
 
 // BillingPlanOffers returns only fresh price observations, alongside enabled
@@ -95,6 +96,11 @@ func (s *Store) BillingPlanOffers(ctx context.Context, token, workspace string) 
 				return nil, err
 			}
 			offer.Price = &price
+		}
+		offer.Limits, err = s.savedHostingLimits(ctx, tx, offer.Plan)
+		if err != nil {
+			rows.Close()
+			return nil, err
 		}
 		offers = append(offers, offer)
 	}

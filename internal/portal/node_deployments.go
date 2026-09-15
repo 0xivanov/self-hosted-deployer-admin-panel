@@ -59,7 +59,7 @@ func (s *Store) RequestNodeDeployment(ctx context.Context, token, project, relea
 	if !errors.Is(err, sql.ErrNoRows) {
 		return NodeDeployment{}, err
 	}
-	if err = s.requireHostingAccess(ctx, tx, p.WorkspaceID); err != nil {
+	if err = s.requireHostingKind(ctx, tx, p.WorkspaceID, p.Kind); err != nil {
 		return NodeDeployment{}, err
 	}
 	var activeRuntime string

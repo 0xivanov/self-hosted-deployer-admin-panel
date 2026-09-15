@@ -127,3 +127,39 @@ hosting. Production enrollment, plan-specific resource limits, grace/suspension
 rules and recovery behavior under real provider events still need qualification.
 Already-started work can complete and reconcile; this gate is not a runtime kill
 switch. Billing observation freshness depends on keeping the worker running.
+
+## Sandbox plan resource limits
+
+Configure a known billing plan with `cmd/hosting-plan-limits`:
+
+```sh
+hosting-plan-limits --database /private/portal.sqlite --plan starter --projects 3 --uploads 10 --upload-mib 50 --node false
+```
+
+Every value is mandatory. Supported bounds are 1–100 projects, 1–20 retained source
+ZIPs, and 1–100 MiB of compressed source ZIP storage. Node is an explicit true or
+false. Limits cannot exceed the existing upload platform ceiling. These limits
+apply only to workspaces enrolled in test subscription enforcement. Unconfigured
+plans retain the existing platform defaults, including Node support. Legacy
+workspaces remain unchanged. Schema 37 creates no plan limit records by default.
+
+The plan comes from verified saved subscription evidence, not browser input.
+Limits are current operator policy and take effect on the next operation; they
+are not immutable purchased plan terms. If several subscriptions qualify, the
+first by subscription ID supplies the plan, consistently for status and writes.
+Plan-specific allowances are not summed. Production upgrade/downgrade terms and
+multiple-subscription selection still require a customer-facing policy.
+
+Project creation checks the workspace project count. Upload storage includes all
+saved source versions across all workspace projects. Counts and byte checks share
+the insert transaction. Deleting an unused upload frees its allowance. Lowering
+limits keeps existing data and sites, and blocks additions beyond the new limits.
+Node exclusion blocks new Node project/uploads/build/deployment work, including
+worker claims and dispatch checks; it does not stop a running Node site. Saved
+request replay and cleanup remain available.
+
+The offer catalog shows current plan limits before checkout. Billing status shows
+usage and configured allowances, including whether Node.js is included. Source
+ZIP storage is not total hosting storage: release artifacts, runtime disk, logs,
+CPU, memory, bandwidth and build concurrency remain under separate platform caps
+and are not yet billed or metered per plan.
