@@ -50,6 +50,22 @@ func merchantWebhookSignature(body []byte, secret string, timestamp int64) strin
 	return fmt.Sprintf("t=%d,v1=%s", timestamp, hex.EncodeToString(mac.Sum(nil)))
 }
 
+func merchantRefundWebhookBody(t *testing.T, typ string, live bool, paymentIntent any, refundID, order, refundRequest string, metadata map[string]string) []byte {
+	t.Helper()
+	body := map[string]any{
+		"id": "evt_refund_webhook_123", "object": "event", "api_version": stripe.APIVersion,
+		"livemode": live, "account": "acct_test_account", "context": "", "type": typ, "created": time.Now().Unix(),
+		"data": map[string]any{"object": map[string]any{
+			"id": refundID, "object": "refund", "payment_intent": paymentIntent, "amount": 1250, "currency": "eur", "status": "succeeded", "metadata": metadata,
+		}},
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
 func TestMerchantCheckoutWebhookValid(t *testing.T) {
 	order := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	body := merchantWebhookBody(t, "checkout.session.completed", false, "acct_test_account", "cs_test_session_123", order, "payment", map[string]string{
@@ -127,6 +143,51 @@ func TestMerchantCheckoutWebhookUnsupportedEvent(t *testing.T) {
 	body := merchantWebhookBody(t, "account.updated", false, "acct_test_account", "cs_test_session_123", order, "payment", map[string]string{"merchant_order": order})
 	if _, err := VerifyTestCheckoutEvent(body, merchantWebhookSignature(body, merchantWebhookSecret, time.Now().Unix()), merchantWebhookSecret); !errors.Is(err, ErrUnsupportedEvent) {
 		t.Fatalf("error = %v, want ErrUnsupportedEvent", err)
+	}
+}
+
+func TestMerchantCheckoutWebhookRefundWrapperRejectsRefund(t *testing.T) {
+	order := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	body := merchantRefundWebhookBody(t, "refund.created", false, "pi_test_payment", "re_test_refund", order, order, map[string]string{"merchant_order": order, "merchant_refund": order})
+	if _, err := VerifyTestCheckoutEvent(body, merchantWebhookSignature(body, merchantWebhookSecret, time.Now().Unix()), merchantWebhookSecret); !errors.Is(err, ErrUnsupportedEvent) {
+		t.Fatalf("error = %v, want ErrUnsupportedEvent", err)
+	}
+}
+
+func TestMerchantRefundWebhookValidAndExpandedPaymentIntent(t *testing.T) {
+	order := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	for name, paymentIntent := range map[string]any{"string": "pi_test_payment", "expanded": map[string]string{"id": "pi_test_payment"}} {
+		t.Run(name, func(t *testing.T) {
+			body := merchantRefundWebhookBody(t, "refund.updated", false, paymentIntent, "re_test_refund", order, order, map[string]string{"merchant_order": order, "merchant_refund": order, "unrelated": "allowed"})
+			event, err := VerifyTestMerchantEvent(body, merchantWebhookSignature(body, merchantWebhookSecret, time.Now().Unix()), merchantWebhookSecret)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if event.RefundID != "re_test_refund" || event.RefundRequestID != order || event.OrderID != order || event.PaymentIntentID != "pi_test_payment" || event.Type != "refund.updated" {
+				t.Fatalf("unexpected event: %+v", event)
+			}
+		})
+	}
+}
+
+func TestMerchantRefundWebhookRejectsInvalidEvidence(t *testing.T) {
+	order := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	tests := []struct {
+		name string
+		body []byte
+	}{
+		{"bad refund metadata", merchantRefundWebhookBody(t, "refund.failed", false, "pi_test_payment", "re_test_refund", order, "bad", map[string]string{"merchant_order": order, "merchant_refund": "bad"})},
+		{"bad order metadata", merchantRefundWebhookBody(t, "refund.failed", false, "pi_test_payment", "re_test_refund", "bad", order, map[string]string{"merchant_order": "bad", "merchant_refund": order})},
+		{"bad payment intent", merchantRefundWebhookBody(t, "refund.failed", false, "ch_bad", "re_test_refund", order, order, map[string]string{"merchant_order": order, "merchant_refund": order})},
+		{"bad refund id", merchantRefundWebhookBody(t, "refund.failed", false, "pi_test_payment", "ch_not_refund", order, order, map[string]string{"merchant_order": order, "merchant_refund": order})},
+		{"live envelope", merchantRefundWebhookBody(t, "refund.failed", true, "pi_test_payment", "re_test_refund", order, order, map[string]string{"merchant_order": order, "merchant_refund": order})},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := VerifyTestMerchantEvent(tc.body, merchantWebhookSignature(tc.body, merchantWebhookSecret, time.Now().Unix()), merchantWebhookSecret); !errors.Is(err, ErrWebhook) {
+				t.Fatalf("error = %v, want ErrWebhook", err)
+			}
+		})
 	}
 }
 

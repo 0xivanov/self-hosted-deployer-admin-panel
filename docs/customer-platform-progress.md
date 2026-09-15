@@ -1777,3 +1777,26 @@ or refund was performed.
 Refund events and unknown-outcome operator tooling, buyer expiry/recovery,
 fulfillment and real provider qualification remain, as do the other domain,
 hosting and final release requirements. The full goal remains active.
+
+## Refund event recovery (2026-09-15)
+
+Extended the test Connect event endpoint and durable inbox to refund-created,
+updated and failed events. A receipt must match the saved refund request, original
+order, merchant account and payment. The worker retrieves the canonical refund
+and can recover a lost creation response without another refund submission.
+Checkout event processing remains separate within the shared durable inbox.
+
+Luna extended the verifier and focused tests; root implemented schema 31, receipt
+mapping, worker dispatch and restart recovery checks. No customer payload is
+retained, and event status fields cannot overwrite canonical provider evidence.
+No live endpoint, migration or refund was performed.
+
+Remaining work includes fulfillment, partial/out-of-band refund handling,
+buyer credentials/recovery, actual Stripe sandbox qualification, domain resale,
+remaining hosting flows and full release qualification. The goal remains active.
+
+Focused verification passed for lost-refund-response recovery after restart,
+duplicate receipt, foreign account/payment exclusion, canonical status overriding
+event payload, and preservation of existing checkout receipts through migration.
+Signature and refund-reference tests, command builds and scoped vet also passed.
+Root review corrected an omitted order reference in the refund event projection.

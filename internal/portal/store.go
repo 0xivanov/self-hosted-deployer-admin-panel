@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 30 {
+	if version > 31 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -287,6 +287,12 @@ PRAGMA user_version=1;`)
 
 	if version < 30 {
 		if _, err = tx.Exec(`CREATE TABLE merchant_refunds(id TEXT PRIMARY KEY,order_id TEXT NOT NULL UNIQUE REFERENCES merchant_orders(id),workspace_id TEXT NOT NULL REFERENCES workspaces(id),actor_id TEXT NOT NULL,account_id TEXT NOT NULL,payment_intent_id TEXT NOT NULL,currency TEXT NOT NULL,amount_minor INTEGER NOT NULL,state TEXT NOT NULL CHECK(state IN ('requested','submitted','pending','requires_action','succeeded','failed','canceled')),provider_id TEXT,created_at INTEGER NOT NULL,submitted_at INTEGER NOT NULL DEFAULT 0,observed_at INTEGER NOT NULL DEFAULT 0,generation INTEGER NOT NULL DEFAULT 0,UNIQUE(account_id,provider_id)); CREATE INDEX merchant_refunds_workspace ON merchant_refunds(workspace_id,created_at); PRAGMA user_version=30;`); err != nil {
+			return err
+		}
+	}
+
+	if version < 31 {
+		if _, err = tx.Exec(`ALTER TABLE merchant_events ADD COLUMN refund_request_id TEXT NOT NULL DEFAULT ''; ALTER TABLE merchant_events ADD COLUMN provider_refund_id TEXT NOT NULL DEFAULT ''; PRAGMA user_version=31;`); err != nil {
 			return err
 		}
 	}

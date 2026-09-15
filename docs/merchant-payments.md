@@ -399,3 +399,26 @@ observation in the background. Cookie authorization remains mandatory even when
 an order URL is known. There is no customer email recovery yet. Refund webhooks,
 unknown-refund recovery tooling, partial refunds, retention/polling scale and real
 provider qualification remain outstanding. No production worker is installed.
+
+## Refund event recovery
+
+The same test Connect webhook destination now supports `refund.created`,
+`refund.updated` and `refund.failed`, in addition to checkout events. Refund
+objects lack a mode field, so the explicit test-mode Connect envelope is required.
+The verifier extracts the original payment and both saved metadata references;
+unrelated metadata is allowed. Raw signatures, API version, timestamp and account
+checks are shared with checkout verification.
+
+Schema 31 extends the existing durable event inbox with refund request/provider
+references. Receipt requires the exact saved order, refund request, account and
+PaymentIntent, plus the existing provider ID if already mapped. Unrelated records
+are ignored. The worker retrieves the canonical refund before applying any status,
+so an event marked succeeded cannot override a current failed provider state.
+
+This recovers submitted refunds whose create response was lost, without issuing
+another refund. Duplicate receipt and restart behavior are shared with checkout
+events, and failed retrievals retain the existing one-minute retry delay. Configure
+these three refund event types in the sandbox destination when qualifying the
+integration. Partial refunds, out-of-band refunds without platform metadata,
+failed-refund reissue, fulfillment, buyer credential recovery and release
+qualification remain outside this completed increment.

@@ -30,7 +30,11 @@ func (s *Store) AcceptMerchantEvent(ctx context.Context, event merchantbilling.C
 		return err
 	}
 	var count int
-	err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_orders WHERE id=? AND account_id=? AND state!='requested' AND (session_id IS NULL OR session_id=?)", event.OrderID, event.AccountID, event.SessionID).Scan(&count)
+	if event.RefundRequestID != "" {
+		err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_refunds WHERE id=? AND order_id=? AND account_id=? AND payment_intent_id=? AND state!='requested' AND (provider_id IS NULL OR provider_id=?)", event.RefundRequestID, event.OrderID, event.AccountID, event.PaymentIntentID, event.RefundID).Scan(&count)
+	} else {
+		err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_orders WHERE id=? AND account_id=? AND state!='requested' AND (session_id IS NULL OR session_id=?)", event.OrderID, event.AccountID, event.SessionID).Scan(&count)
+	}
 	if err != nil {
 		return err
 	}
@@ -43,28 +47,28 @@ func (s *Store) AcceptMerchantEvent(ctx context.Context, event merchantbilling.C
 	if count >= 100000 {
 		return ErrBillingConflict
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO merchant_events(id,account_id,order_id,session_id,event_type,body_hash,created_at,received_at) VALUES(?,?,?,?,?,?,?,?)", event.ID, event.AccountID, event.OrderID, event.SessionID, event.Type, event.SHA256, event.Created, s.now().Unix())
+	_, err = tx.ExecContext(ctx, "INSERT INTO merchant_events(id,account_id,order_id,session_id,event_type,body_hash,created_at,received_at,refund_request_id,provider_refund_id) VALUES(?,?,?,?,?,?,?,?,?,?)", event.ID, event.AccountID, event.OrderID, event.SessionID, event.Type, event.SHA256, event.Created, s.now().Unix(), event.RefundRequestID, event.RefundID)
 	if err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// ProcessMerchantEvents retrieves the canonical checkout before updating orders.
+// ProcessMerchantEvents retrieves canonical checkout or refund state before updates.
 // Failed items stay durable and become eligible again after one minute.
 func (s *Store) ProcessMerchantEvents(ctx context.Context, p MerchantCheckoutProvider, limit int) (int, int, error) {
 	if p == nil || limit < 1 || limit > 100 {
 		return 0, 0, ErrInvalid
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT id,order_id,session_id FROM merchant_events WHERE state='pending' AND next_attempt<=? ORDER BY next_attempt,id LIMIT ?", s.now().Unix(), limit)
+	rows, err := s.db.QueryContext(ctx, "SELECT id,order_id,session_id,refund_request_id,provider_refund_id FROM merchant_events WHERE state='pending' AND next_attempt<=? ORDER BY next_attempt,id LIMIT ?", s.now().Unix(), limit)
 	if err != nil {
 		return 0, 0, err
 	}
-	type item struct{ id, order, session string }
+	type item struct{ id, order, session, refundRequest, refundID string }
 	items := []item{}
 	for rows.Next() {
 		var v item
-		if err = rows.Scan(&v.id, &v.order, &v.session); err != nil {
+		if err = rows.Scan(&v.id, &v.order, &v.session, &v.refundRequest, &v.refundID); err != nil {
 			rows.Close()
 			return 0, 0, err
 		}
@@ -90,7 +94,17 @@ func (s *Store) ProcessMerchantEvents(ctx context.Context, p MerchantCheckoutPro
 		if n != 1 {
 			continue
 		}
-		if _, err = s.ReconcileMerchantOrder(ctx, v.order, v.session, p); err != nil {
+		if v.refundRequest != "" {
+			refundProvider, ok := p.(MerchantRefundProvider)
+			if !ok {
+				err = ErrInvalid
+			} else {
+				_, err = s.ReconcileMerchantRefund(ctx, v.refundRequest, v.refundID, refundProvider)
+			}
+		} else {
+			_, err = s.ReconcileMerchantOrder(ctx, v.order, v.session, p)
+		}
+		if err != nil {
 			if ctx.Err() != nil {
 				return done, failed, ctx.Err()
 			}
@@ -134,7 +148,7 @@ func MerchantWebhookHandler(store *Store, host, secret string) (http.Handler, er
 			http.Error(w, "Webhook too large", 413)
 			return
 		}
-		event, err := merchantbilling.VerifyTestCheckoutEvent(body, r.Header.Get("Stripe-Signature"), secret)
+		event, err := merchantbilling.VerifyTestMerchantEvent(body, r.Header.Get("Stripe-Signature"), secret)
 		if errors.Is(err, merchantbilling.ErrUnsupportedEvent) {
 			w.WriteHeader(204)
 			return
