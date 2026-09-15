@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 34 {
+	if version > 35 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -318,6 +318,12 @@ PRAGMA user_version=1;`)
 			return err
 		}
 		if _, err = tx.Exec(`PRAGMA user_version=34`); err != nil {
+			return err
+		}
+	}
+
+	if version < 35 {
+		if _, err = tx.Exec(`CREATE TABLE merchant_order_recovery_codes(order_id TEXT PRIMARY KEY REFERENCES merchant_orders(id) ON DELETE CASCADE,code_hash TEXT NOT NULL UNIQUE,expires_at INTEGER NOT NULL); CREATE TABLE merchant_order_recovery_grants(order_id TEXT NOT NULL REFERENCES merchant_orders(id) ON DELETE CASCADE,session_hash TEXT NOT NULL REFERENCES merchant_buyer_sessions(token_hash) ON DELETE CASCADE,created_at INTEGER NOT NULL,PRIMARY KEY(order_id,session_hash)); CREATE INDEX merchant_order_recovery_grants_session ON merchant_order_recovery_grants(session_hash,order_id); PRAGMA user_version=35`); err != nil {
 			return err
 		}
 	}

@@ -119,6 +119,22 @@ func (h *HTTP) shopHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/shop/recovery-code":
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			httpError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		h.shopIssueRecoveryCode(w, r)
+		return
+	case "/api/shop/recover":
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			httpError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		h.shopRecoverOrder(w, r)
+		return
 	case "/api/shop/product":
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", "GET")
@@ -211,6 +227,74 @@ func (h *HTTP) shopHTTP(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusNotFound, "Not found")
 		return
 	}
+}
+
+func (h *HTTP) shopIssueRecoveryCode(w http.ResponseWriter, r *http.Request) {
+	if r.URL.RawQuery != "" || r.URL.ForceQuery {
+		httpError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+	token, err := h.shopBuyer(r)
+	if err != nil {
+		httpError(w, http.StatusUnauthorized, "Shop session required")
+		return
+	}
+	if !h.shopCSRF(r, token) {
+		httpError(w, http.StatusForbidden, "Reload the shop and retry")
+		return
+	}
+	var input struct {
+		Order string `json:"order"`
+	}
+	if !httpDecode(w, r, &input) {
+		return
+	}
+	recovery, err := h.store.IssueMerchantOrderRecoveryCode(r.Context(), token, input.Order)
+	if errors.Is(err, ErrInvalid) {
+		httpError(w, http.StatusBadRequest, "Invalid order")
+		return
+	}
+	if errors.Is(err, ErrDenied) {
+		httpError(w, http.StatusNotFound, "Not found")
+		return
+	}
+	if err != nil {
+		httpError(w, http.StatusServiceUnavailable, "Order service unavailable")
+		return
+	}
+	httpJSON(w, map[string]any{"code": recovery.Code, "expires_at": recovery.ExpiresAt.Unix()})
+}
+
+func (h *HTTP) shopRecoverOrder(w http.ResponseWriter, r *http.Request) {
+	if r.URL.RawQuery != "" || r.URL.ForceQuery {
+		httpError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+	token, err := h.shopBuyer(r)
+	if err != nil {
+		httpError(w, http.StatusUnauthorized, "Shop session required")
+		return
+	}
+	if !h.shopCSRF(r, token) {
+		httpError(w, http.StatusForbidden, "Reload the shop and retry")
+		return
+	}
+	var input struct {
+		Code string `json:"code"`
+	}
+	if !httpDecode(w, r, &input) {
+		return
+	}
+	order, err := h.store.RedeemMerchantOrderRecoveryCode(r.Context(), token, input.Code)
+	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrDenied) {
+		httpError(w, http.StatusNotFound, "Recovery code is invalid, expired or unavailable.")
+		return
+	}
+	if err != nil {
+		httpError(w, http.StatusServiceUnavailable, "Order service unavailable")
+		return
+	}
+	h.writeShopOrder(w, r, order)
 }
 
 func (h *HTTP) shopCreateOrder(w http.ResponseWriter, r *http.Request) {
@@ -357,7 +441,7 @@ func (h *HTTP) writeShopOrder(w http.ResponseWriter, r *http.Request, order Merc
 		return
 	}
 	var refund shopRefund
-	err = h.store.db.QueryRowContext(r.Context(), `SELECT f.state,f.currency,f.amount_minor,f.observed_at FROM merchant_refunds f JOIN merchant_orders o ON o.id=f.order_id WHERE o.id=? AND o.buyer_hash=?`, order.ID, digest(token)).Scan(&refund.State, &refund.Currency, &refund.AmountMinor, &refund.ObservedAt)
+	err = h.store.db.QueryRowContext(r.Context(), `SELECT f.state,f.currency,f.amount_minor,f.observed_at FROM merchant_refunds f JOIN merchant_orders o ON o.id=f.order_id WHERE o.id=? AND (o.buyer_hash=? OR EXISTS (SELECT 1 FROM merchant_order_recovery_grants g JOIN merchant_buyer_sessions bs ON bs.token_hash=g.session_hash WHERE g.order_id=o.id AND g.session_hash=? AND bs.expires_at>?))`, order.ID, digest(token), digest(token), h.store.now().Unix()).Scan(&refund.State, &refund.Currency, &refund.AmountMinor, &refund.ObservedAt)
 	view := shopOrderView(order)
 	if err == nil {
 		view.Refund = &refund

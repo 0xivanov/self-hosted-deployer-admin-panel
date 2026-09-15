@@ -1855,3 +1855,25 @@ checks passed. Synthetic UI checks cover failed logout, successful 204 cleanup,
 duplicate actions and existing checkout retry behavior. Buyer recovery remains
 unfinished. No live deployment or database was changed. The four-part goal remains
 active, including actual registrar and payment-provider qualification.
+
+## Saved buyer order recovery (2026-09-15)
+
+Added private recovery codes and a buyer recovery form. A saved code restores
+access to one existing order in another browser without changing its purchase
+identity or triggering a payment. Codes expire after one year; creating another
+invalidates the old code while leaving already authorized browsers intact.
+Signing out still removes that browser's session and recovered access.
+
+Luna implemented schema 35, code storage, access grants and API routes. Root
+reviewed the implementation, required an indexed unique code hash and correct
+store-error handling, and added the UI, HTTP and migration checks. Recovery codes
+are stored only as hashes on the server and sent in POST bodies, never URLs.
+The UI does not persist them in browser storage. Email recovery remains absent;
+a buyer must save a valid code before losing browser access.
+
+Validation covers order isolation, replacement/expiry, restart, revoked sessions,
+CSRF, private response fields and recovered refund visibility, plus migration
+preservation of existing sessions and order identity. Synthetic UI checks cover
+code display cleanup, malformed codes, failed recovery and duplicate submissions.
+No live deployment, provider transaction or customer message was performed.
+The full hosting MVP goal remains active.

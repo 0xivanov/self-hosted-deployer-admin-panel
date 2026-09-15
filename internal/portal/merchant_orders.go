@@ -148,7 +148,7 @@ func (s *Store) BuyerMerchantOrder(ctx context.Context, buyerToken, orderID stri
 	if !validMerchantOrderToken(buyerToken) || orderID == "" {
 		return MerchantOrder{}, ErrInvalid
 	}
-	o, _, _, _, err := scanMerchantOrder(s.db.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE id=? AND buyer_hash=?", orderID, digest(buyerToken)))
+	o, _, _, _, err := scanMerchantOrder(s.db.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE id=? AND (buyer_hash=? OR EXISTS (SELECT 1 FROM merchant_order_recovery_grants g JOIN merchant_buyer_sessions bs ON bs.token_hash=g.session_hash WHERE g.order_id=merchant_orders.id AND g.session_hash=? AND bs.expires_at>?))", orderID, digest(buyerToken), digest(buyerToken), s.now().Unix()))
 	if errors.Is(err, sql.ErrNoRows) {
 		return MerchantOrder{}, ErrDenied
 	}

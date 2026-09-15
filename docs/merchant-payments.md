@@ -460,5 +460,27 @@ Other local storage entries remain intact. Failure preserves the displayed state
 concurrent actions in the same page are blocked. Other tabs lose server access
 but may retain already displayed information until refreshed.
 
-Self-service buyer order recovery is not implemented. Sign-out warns about this
-before removing access. Session expiry does not delete merchant order history.
+Buyers can save an order recovery code before signing out, as described below.
+Session expiry does not delete merchant order history.
+
+## Saved order recovery codes
+
+Buyers with current order access can create a private recovery code from checkout.
+Save the displayed code outside the browser, for example in a password manager.
+On another browser, open `/shop` and enter the code under “Recover an order”.
+Recovery restores access to that one order, including payment, refund and manual
+fulfillment status. It does not create another purchase or change its buyer key.
+
+Codes expire after one year and can be reused until then. Creating a replacement
+invalidates the previous code, but leaves existing browser sessions intact.
+“Forget this browser” revokes that browser session, not the saved recovery code.
+The UI explains both behaviors. Losing access without a saved valid code still
+has no self-service recovery path; email recovery is not implemented.
+
+Schema 35 stores code hashes and per-order access grants tied to expiring buyer
+sessions. Code issuance and redemption require a current session and CSRF token;
+redemption is retry-safe and does not extend that session's lifetime. Codes are
+sent in POST bodies, never URLs, and are not saved in browser storage. Generated
+codes are displayed only until navigation, a different order or sign-out. A lost
+issuance response requires creating a replacement while access is still available.
+Anyone holding a valid code can view that order, so treat it as a credential.
