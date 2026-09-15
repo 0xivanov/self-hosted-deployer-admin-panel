@@ -1841,3 +1841,17 @@ No registrar purchase or customer payment was made, and no live deployment chang
 Sandbox endpoint/access was requested to continue actual registrar integration.
 Registrant contacts, payment authorization, registration, ownership/renewal
 lifecycle and the other hosting/account/payment release requirements remain.
+
+## Buyer sessions and browser sign-out (2026-09-15)
+
+Added server-enforced 30-day buyer sessions and CSRF-protected revocation, plus
+“Forget this browser” in checkout. Schema 34 preserves legacy buyer order cookies
+for one bounded migration window. Session data stores credential hashes only;
+revocation survives restart and never restores access to the old cookie.
+
+Luna implemented the UI; root reviewed it, corrected recovery wording and added
+the backend and migration. Focused buyer/shop/refund/fulfillment and migration
+checks passed. Synthetic UI checks cover failed logout, successful 204 cleanup,
+duplicate actions and existing checkout retry behavior. Buyer recovery remains
+unfinished. No live deployment or database was changed. The four-part goal remains
+active, including actual registrar and payment-provider qualification.

@@ -444,3 +444,21 @@ expectation of delivery. Product forms remain intact during history refresh.
 Automated delivery integrations and tracking details are not implemented. External
 refunds/disputes are not yet fully reconciled, so production fulfillment decisions
 still require those release-stage payment controls.
+
+## Buyer session expiry and sign-out
+
+Schema 34 stores only hashed buyer credentials and a fixed 30-day expiry. Public
+order access requires a persisted, unexpired session. Existing order cookies are
+backfilled once with a 30-day migration window, preserving access during upgrade.
+Reloading does not extend a session's lifetime; expired or revoked cookies receive
+a new, unrelated session. Raw credentials remain in Secure, HttpOnly cookies.
+
+The buyer's “Forget this browser” action uses a same-origin, CSRF-protected POST
+to revoke the session on the server and expire its cookie. After success the UI
+clears buyer order references and pending checkout keys from session storage.
+Other local storage entries remain intact. Failure preserves the displayed state;
+concurrent actions in the same page are blocked. Other tabs lose server access
+but may retain already displayed information until refreshed.
+
+Self-service buyer order recovery is not implemented. Sign-out warns about this
+before removing access. Session expiry does not delete merchant order history.

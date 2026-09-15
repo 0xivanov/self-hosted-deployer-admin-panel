@@ -117,7 +117,7 @@ func TestMerchantShopUnknownCreationAndRateLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cookie := &http.Cookie{Name: "__Host-merchant-buyer", Value: randomToken()}
+	cookie := &http.Cookie{Name: "__Host-merchant-buyer", Value: newBuyerToken(t, s)}
 	input := `{"product":"` + product.ID + `","revision":1,"key":"` + randomToken() + `"}`
 	for range 2 {
 		w := portalRequest(h, "POST", "/api/shop/orders", input, h.origin, csrfFor(cookie.Value), cookie)
@@ -147,7 +147,7 @@ func TestMerchantShopUnknownCreationAndRateLimit(t *testing.T) {
 
 func TestMerchantShopRetryBeforeSubmission(t *testing.T) {
 	s, _, _, _, product := orderFixture(t)
-	buyer := randomToken()
+	buyer := newBuyerToken(t, s)
 	order, err := s.RequestMerchantOrder(t.Context(), buyer, product.ID, product.Revision, randomToken())
 	if err != nil {
 		t.Fatal(err)

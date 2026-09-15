@@ -94,6 +94,9 @@ func (h *HTTP) shopBuyer(r *http.Request) (string, error) {
 	if err != nil || !validMerchantOrderToken(cookie.Value) {
 		return "", ErrDenied
 	}
+	if err = h.store.AuthenticateMerchantBuyer(r.Context(), cookie.Value); err != nil {
+		return "", err
+	}
 	return cookie.Value, nil
 }
 
@@ -143,15 +146,42 @@ func (h *HTTP) shopHTTP(w http.ResponseWriter, r *http.Request) {
 			httpError(w, http.StatusMethodNotAllowed, "Method not allowed")
 			return
 		}
-		token := ""
-		if cookie, err := r.Cookie(merchantBuyerCookie); err == nil && validMerchantOrderToken(cookie.Value) {
-			token = cookie.Value
-		}
-		if token == "" {
-			token = randomToken()
-			http.SetCookie(w, &http.Cookie{Name: merchantBuyerCookie, Value: token, Path: "/", MaxAge: 30 * 24 * 60 * 60, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		token, err := h.shopBuyer(r)
+		if err != nil {
+			if !errors.Is(err, ErrDenied) {
+				httpError(w, 503, "Shop session unavailable")
+				return
+			}
+			session, err := h.store.CreateMerchantBuyerSession(r.Context())
+			if err != nil {
+				httpError(w, 503, "Shop session unavailable")
+				return
+			}
+			token = session.Token
+			http.SetCookie(w, &http.Cookie{Name: merchantBuyerCookie, Value: token, Path: "/", MaxAge: 30 * 24 * 60 * 60, Expires: session.ExpiresAt, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 		}
 		httpJSON(w, map[string]string{"csrf": csrfFor(token)})
+		return
+	case "/api/shop/logout":
+		if r.Method != "POST" {
+			httpError(w, 405, "Method not allowed")
+			return
+		}
+		token, err := h.shopBuyer(r)
+		if err != nil {
+			httpError(w, 401, "Shop session required")
+			return
+		}
+		if !h.shopCSRF(r, token) {
+			httpError(w, 403, "Reload the shop and retry")
+			return
+		}
+		if err = h.store.RevokeMerchantBuyer(r.Context(), token); err != nil {
+			httpError(w, 503, "Shop session unavailable")
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: merchantBuyerCookie, Value: "", Path: "/", MaxAge: -1, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		w.WriteHeader(204)
 		return
 	case "/api/shop/orders":
 		if r.Method != http.MethodPost {

@@ -13,7 +13,7 @@ import (
 func TestMerchantFulfillmentOwnerReplayAndBuyerVisibility(t *testing.T) {
 	s, path, a, session, order := paidOrderFixture(t)
 	ctx := t.Context()
-	buyer := randomToken()
+	buyer := newBuyerToken(t, s)
 	if _, err := s.db.Exec("UPDATE merchant_orders SET buyer_hash=? WHERE id=?", digest(buyer), order.ID); err != nil {
 		t.Fatal(err)
 	}

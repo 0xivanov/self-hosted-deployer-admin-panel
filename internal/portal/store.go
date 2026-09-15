@@ -112,7 +112,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 33 {
+	if version > 34 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -305,6 +305,19 @@ PRAGMA user_version=1;`)
 
 	if version < 33 {
 		if _, err = tx.Exec(`CREATE TABLE domain_orders(id TEXT PRIMARY KEY,quote_id TEXT NOT NULL UNIQUE REFERENCES domain_quotes(id),workspace_id TEXT NOT NULL REFERENCES workspaces(id),actor_id TEXT NOT NULL,name TEXT NOT NULL,offer BLOB NOT NULL,state TEXT NOT NULL CHECK(state IN ('awaiting_payment','canceled')),created_at INTEGER NOT NULL); CREATE INDEX domain_orders_workspace ON domain_orders(workspace_id,created_at,id); CREATE UNIQUE INDEX domain_orders_active ON domain_orders(workspace_id,name) WHERE state='awaiting_payment'; PRAGMA user_version=33;`); err != nil {
+			return err
+		}
+	}
+
+	if version < 34 {
+		if _, err = tx.Exec(`CREATE TABLE merchant_buyer_sessions(token_hash TEXT PRIMARY KEY,expires_at INTEGER NOT NULL); CREATE INDEX merchant_buyer_sessions_expiry ON merchant_buyer_sessions(expires_at);`); err != nil {
+			return err
+		}
+		// Preserve previously issued order cookies for one bounded migration window.
+		if _, err = tx.Exec(`INSERT INTO merchant_buyer_sessions(token_hash,expires_at) SELECT DISTINCT buyer_hash,? FROM merchant_orders`, s.now().Add(30*24*time.Hour).Unix()); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(`PRAGMA user_version=34`); err != nil {
 			return err
 		}
 	}

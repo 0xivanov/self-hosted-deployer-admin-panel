@@ -15,7 +15,7 @@ import (
 func TestBuyerRefundStatusIsPrivateAndCurrent(t *testing.T) {
 	s, _, a, session, order := paidOrderFixture(t)
 	ctx := t.Context()
-	buyer := randomToken()
+	buyer := newBuyerToken(t, s)
 	if _, err := s.db.Exec("UPDATE merchant_orders SET buyer_hash=? WHERE id=?", digest(buyer), order.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestBuyerRefundStatusIsPrivateAndCurrent(t *testing.T) {
 		}
 		read(state)
 	}
-	foreign := &http.Cookie{Name: merchantBuyerCookie, Value: randomToken()}
+	foreign := &http.Cookie{Name: merchantBuyerCookie, Value: newBuyerToken(t, s)}
 	if w := portalRequest(h, "GET", path, "", "", "", foreign); w.Code != 404 {
 		t.Fatal("foreign buyer", w.Code)
 	}

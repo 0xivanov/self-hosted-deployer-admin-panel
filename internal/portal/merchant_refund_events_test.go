@@ -98,7 +98,7 @@ func TestMerchantRefundEventMigrationKeepsCheckoutReceipts(t *testing.T) {
 	if _, err := s.db.Exec("INSERT INTO merchant_events(id,account_id,order_id,session_id,event_type,body_hash,created_at,received_at) VALUES('evt_old','acct_orders',?,'cs_test_paid','checkout.session.completed','saved-hash',1,1)", order.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec("ALTER TABLE merchant_events DROP COLUMN refund_request_id; ALTER TABLE merchant_events DROP COLUMN provider_refund_id; ALTER TABLE merchant_orders DROP COLUMN fulfilled_at; ALTER TABLE merchant_orders DROP COLUMN fulfilled_by; DROP TABLE domain_orders; PRAGMA user_version=30"); err != nil {
+	if _, err := s.db.Exec("ALTER TABLE merchant_events DROP COLUMN refund_request_id; ALTER TABLE merchant_events DROP COLUMN provider_refund_id; ALTER TABLE merchant_orders DROP COLUMN fulfilled_at; ALTER TABLE merchant_orders DROP COLUMN fulfilled_by; DROP TABLE merchant_buyer_sessions; DROP TABLE domain_orders; PRAGMA user_version=30"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {
