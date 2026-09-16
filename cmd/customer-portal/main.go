@@ -49,6 +49,7 @@ func run() error {
 	nodeProjectsFile := flag.String("node-projects", "", "private JSON mapping Node project IDs to assigned build settings and runtimes")
 	publicationFile := flag.String("publication-sites", "", "private JSON mapping assigned static project IDs to HTTPS content origins")
 	signup := flag.Bool("signup", false, "enable public signup when mail is configured")
+	signupAllowlist := flag.String("signup-allowlist", "", "private JSON email allowlist for invitation-only signup")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return errors.New("unexpected arguments")
@@ -165,14 +166,13 @@ func run() error {
 		}
 	}
 	nodeProjects := map[string]portal.NodeProjectConfig{}
+	var nodeProjectProvider *portal.NodeProjectProvider
 	if *nodeProjectsFile != "" {
-		raw, e := privateFile(*nodeProjectsFile)
-		if e != nil {
-			return e
+		nodeProjectProvider, err = portal.NewNodeProjectProvider(*nodeProjectsFile)
+		if err != nil {
+			return err
 		}
-		if len(raw) > 65536 || json.Unmarshal(raw, &nodeProjects) != nil {
-			return errors.New("invalid Node project mapping")
-		}
+		nodeProjects = nodeProjectProvider.Snapshot()
 	}
 	var management *hostingbilling.Management
 	if *managementFile != "" {
@@ -239,7 +239,17 @@ func run() error {
 		merchantProvider = client
 		merchantCountries = cfg.Countries
 	}
-	opts := portal.HTTPOptions{TestMerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup}
+	var signupAllowed func(string) bool
+	if *signupAllowlist != "" {
+		if *demo {
+			return errors.New("signup allowlist is unavailable in demo mode")
+		}
+		signupAllowed = portal.SignupAllowlist(*signupAllowlist)
+	}
+	opts := portal.HTTPOptions{TestMerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
+	if nodeProjectProvider != nil {
+		opts.NodeProjectLookup = nodeProjectProvider.Snapshot
+	}
 	if publicationSites != nil {
 		opts.PublicationSitesLookup = publicationSites.Snapshot
 	}

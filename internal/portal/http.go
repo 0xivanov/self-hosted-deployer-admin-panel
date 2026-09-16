@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ type HTTPOptions struct {
 	Merchant                  MerchantProvider
 	MerchantCountries         []string
 	NodeProjects              map[string]NodeProjectConfig
+	NodeProjectLookup         func() map[string]NodeProjectConfig
 	DomainQuotes              DomainQuoteReader
 	DomainMarkupMinor         int64
 	BillingManagement         BillingManagement
@@ -37,6 +39,7 @@ type HTTPOptions struct {
 	Development               bool
 	Mail                      *AccountMail
 	Signup                    bool
+	SignupAllowed             func(string) bool
 	PublicationSites          map[string]string
 	PublicationSitesLookup    func() map[string]string
 }
@@ -50,6 +53,7 @@ type HTTP struct {
 	merchantCountries    []string
 	shopAttempts         map[string]attemptWindow
 	nodeProjects         map[string]NodeProjectConfig
+	nodeProjectLookup    func() map[string]NodeProjectConfig
 	domainQuotes         DomainQuoteReader
 	domainMarkupMinor    int64
 	domainAttempts       map[string]attemptWindow
@@ -59,6 +63,7 @@ type HTTP struct {
 	mail                 *AccountMail
 	publicationSites     func() map[string]string
 	signup               bool
+	signupAllowed        func(string) bool
 	store                *Store
 	origin, host, cookie string
 	development          bool
@@ -139,7 +144,44 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if opts.Development {
 		cookie = "portal-dev-session"
 	}
-	return &HTTP{merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+}
+
+func (h *HTTP) nodeProjectSnapshot() map[string]NodeProjectConfig {
+	if h.nodeProjectLookup != nil {
+		return h.nodeProjectLookup()
+	}
+	return h.nodeProjects
+}
+
+// SignupAllowlist returns a fail-closed callback that reloads a private JSON
+// email array for every registration attempt.
+func SignupAllowlist(path string) func(string) bool {
+	return func(email string) bool {
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || info.Size() > 16*1024 {
+			return false
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return false
+		}
+		var values []string
+		if json.Unmarshal(raw, &values) != nil || values == nil {
+			return false
+		}
+		want, err := normalizeEmail(email)
+		if err != nil {
+			return false
+		}
+		for _, value := range values {
+			got, err := normalizeEmail(value)
+			if err == nil && got == want {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 func (h *HTTP) publicationSiteSnapshot() map[string]string {
@@ -280,7 +322,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/config" && r.Method == "GET" {
-		httpJSON(w, map[string]any{"merchant": h.merchant != nil, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
+		httpJSON(w, map[string]any{"merchant": h.merchant != nil, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
 		return
 	}
 	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/verification/resend" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {
@@ -651,6 +693,12 @@ func (h *HTTP) accountAction(w http.ResponseWriter, r *http.Request) {
 		}
 		if !httpDecode(w, r, &input) {
 			return
+		}
+		if h.signupAllowed != nil {
+			if email, err := normalizeEmail(input.Email); err == nil && !h.signupAllowed(email) {
+				httpError(w, 403, "Registration is by invitation. Contact the operator for an invitation.")
+				return
+			}
 		}
 		err := h.mail.Register(r.Context(), input.Email, input.Password, input.Workspace)
 		if errors.Is(err, ErrInvalid) {

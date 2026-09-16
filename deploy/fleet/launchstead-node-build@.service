@@ -1,0 +1,19 @@
+[Unit]
+Description=Launchstead project build worker %i
+After=network-online.target customer-portal.service
+[Service]
+User=launchstead-portal
+Group=launchstead-portal
+ExecStart=/opt/launchstead-portal/node-build-worker --database /var/lib/launchstead-portal/portal.sqlite --assignment /etc/launchstead-portal/node-builds/%i.json
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/launchstead-portal
+MemoryMax=384M
+TasksMax=64
+[Install]
+WantedBy=multi-user.target

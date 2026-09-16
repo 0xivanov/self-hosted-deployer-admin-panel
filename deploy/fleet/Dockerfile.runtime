@@ -1,0 +1,5 @@
+FROM node@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553
+COPY toolchain /opt/deployer-node/toolchain
+ENV PATH=/opt/deployer-node/toolchain/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+COPY node-build-guest /usr/local/bin/node-build-guest
+RUN mkdir -p /opt/deployer-node/toolchains && ln -s /opt/deployer-node/toolchain /opt/deployer-node/toolchains/5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7

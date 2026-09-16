@@ -30,6 +30,7 @@ func copyNodeProjects(input map[string]NodeProjectConfig) (map[string]NodeProjec
 	return output, nil
 }
 func (h *HTTP) nodeHTTP(w http.ResponseWriter, r *http.Request, token string) {
+	assignments := h.nodeProjectSnapshot()
 	if r.Method == "GET" && r.URL.Path == "/api/node" {
 		project := r.URL.Query().Get("project")
 		p, err := h.store.GetProject(r.Context(), token, project)
@@ -72,7 +73,7 @@ func (h *HTTP) nodeHTTP(w http.ResponseWriter, r *http.Request, token string) {
 		for _, b := range builds {
 			views = append(views, buildView{b.ID, b.UploadID, b.State, b.CreatedAt})
 		}
-		_, available := h.nodeProjects[project]
+		_, available := assignments[project]
 		httpJSON(w, map[string]any{"available": available, "builds": views, "releases": releases, "deployments": deployments, "active": active, "site": h.publicationSiteSnapshot()[project]})
 		return
 	}
@@ -99,7 +100,7 @@ func (h *HTTP) nodeHTTP(w http.ResponseWriter, r *http.Request, token string) {
 		httpError(w, 400, "Choose a Node.js project")
 		return
 	}
-	assignment, available := h.nodeProjects[input.Project]
+	assignment, available := assignments[input.Project]
 	if (r.URL.Path == "/api/node/builds" || r.URL.Path == "/api/node/deployments") && !available {
 		httpError(w, 403, "Hosting is not enabled for this project yet")
 		return

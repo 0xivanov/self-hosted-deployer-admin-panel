@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,billingGeneration=0,merchantEnabled=false,merchantCountries=[],merchantGeneration=0,productGeneration=0,merchantOrdersGeneration=0,domainQuotes=false,domainOrderGeneration=0,domainExpiryTimer;
+let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,inviteOnly=false,billingGeneration=0,merchantEnabled=false,merchantCountries=[],merchantGeneration=0,productGeneration=0,merchantOrdersGeneration=0,domainQuotes=false,domainOrderGeneration=0,domainExpiryTimer;
 let nodeStatusCards=new Map(),nodeStatusState=null;
 const nodeStatusInterval=5000;
 const workspacePanels={projects:'projects-panel',billing:'billing-panel',team:'member-panel',domains:'domain-panel',store:'merchant-panel'};
@@ -50,7 +50,7 @@ $('logout').addEventListener('click',async()=>{try{await api('/api/logout',{});s
 function showFlow(kind){
  flow=kind;$('error').hidden=true;$('login').hidden=true;$('workspace-view').hidden=true;$('account-flow').hidden=false;$('account-form').hidden=false;
  const titles={register:'Create your account',resend:'Resend verification email',forgot:'Reset your password',reset:'Choose a new password',verify:'Verify your email',invite:'Join a workspace'};
- $('flow-title').textContent=titles[kind];$('flow-copy').textContent=kind==='resend'?'Enter your account email. Check your spam folder and wait at least a minute between requests.':kind==='invite'?'Accept this invitation using the verified account for the invited email address.':kind==='verify'?'Confirm that you want to verify this email address.':kind==='register'?'Create a workspace for your websites. Use a password of at least 12 characters.':kind==='reset'?'Use a password of at least 12 characters. Existing sessions will be signed out.':'Enter your account email to request a reset link.';
+ $('flow-title').textContent=titles[kind];$('flow-copy').textContent=kind==='resend'?'Enter your account email. Check your spam folder and wait at least a minute between requests.':kind==='invite'?'Accept this invitation using the verified account for the invited email address.':kind==='verify'?'Confirm that you want to verify this email address.':kind==='register'?(inviteOnly?'Create your invited account.':'Create a workspace for your websites.'):kind==='reset'?'Use a password of at least 12 characters. Existing sessions will be signed out.':'Enter your account email to request a reset link.';
  for(const [name,visible] of [['email',kind==='register'||kind==='forgot'||kind==='resend'],['password',kind==='register'||kind==='reset'],['workspace',kind==='register']]){ $('flow-'+name+'-label').hidden=!visible;$('flow-'+name).required=visible;$('flow-'+name).value=''; }
  $('flow-submit').textContent=kind==='resend'?'Send verification link':kind==='invite'?'Join workspace':kind==='verify'?'Verify email':kind==='reset'?'Change password':kind==='register'?'Create account':'Send reset link';
 }
@@ -69,7 +69,7 @@ $('account-form').addEventListener('submit',event=>{event.preventDefault();submi
  const data=await api(path,body);$('flow-password').value='';$('account-form').hidden=true;$('flow-copy').textContent=data.message;if(flow==='reset'||flow==='verify')actionToken='';if(flow==='invite'){pendingInvite='';actionToken='';$('account-flow').hidden=true;await loadSession();}
  });});
 async function initialize(){
- const config=await api('/api/config');domainQuotes=config.domain_quotes===true;testBilling=config.test_billing===true;billingManagement=config.billing_management===true;merchantEnabled=config.merchant===true;merchantCountries=Array.isArray(config.merchant_countries)?config.merchant_countries.filter(country=>typeof country==='string'):[];$('open-signup').hidden=!config.signup;$('open-forgot').hidden=!config.account_mail;$('open-resend').hidden=!config.account_mail;$('registration-note').textContent=config.signup?'Verify your email before signing in.':'Registration is closed.';
+ const config=await api('/api/config');domainQuotes=config.domain_quotes===true;testBilling=config.test_billing===true;billingManagement=config.billing_management===true;inviteOnly=config.invite_only===true;merchantEnabled=config.merchant===true;merchantCountries=Array.isArray(config.merchant_countries)?config.merchant_countries.filter(country=>typeof country==='string'):[];$('open-signup').hidden=!config.signup;$('open-forgot').hidden=!config.account_mail;$('open-resend').hidden=!config.account_mail;$('registration-note').textContent=config.signup?(inviteOnly?'Registration is by invitation.':'Verify your email before signing in.'):'Registration is closed.';
  if(initialFlow==='invite'){try{await loadSession();}catch(e){signedOut();if(e.status===401)error(new Error('Sign in with the invited email to accept. New users must register and verify their email first.'));else throw e;}return;}
  if(initialFlow){if(!config.account_mail)throw new Error('Account recovery is unavailable. Contact the operator.');showFlow(initialFlow);return;}
  try{await loadSession();}catch(e){signedOut();if(e.status!==401)throw e;}
@@ -155,7 +155,7 @@ function renderNodeLive(entry,node){
  const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh release status';refresh.addEventListener('click',()=>loadProjects().catch(error));live.append(refresh);
  for(const build of builds){
   const line=document.createElement('p');line.textContent='Build · '+build.state+' · '+new Date(build.created_at*1000).toLocaleString();live.append(line);
-  if(build.state==='failed'){const hint=document.createElement('p');hint.textContent=role==='viewer'?'Build failed.':'Build failed. Check your build script and uploaded files, then upload a corrected version or choose Build again.';live.append(hint);}
+  if(build.state==='failed'){const hint=document.createElement('p');hint.textContent=role==='viewer'?'Build failed.':'Build failed. Review your project or contact the operator, then choose Build again.';live.append(hint);}
   if(role!=='viewer'&&build.state==='queued'){
    const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel build';cancel.addEventListener('click',async()=>{cancel.disabled=true;entry.mutating=true;try{await api('/api/node/builds/cancel',{project:project.id,id:build.id});if(version===generation)await loadProjects();}catch(e){if(version===generation)error(e);cancel.disabled=false;}finally{entry.mutating=false;}});live.append(cancel);
   }

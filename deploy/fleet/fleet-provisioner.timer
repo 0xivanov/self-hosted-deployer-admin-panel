@@ -1,0 +1,10 @@
+[Unit]
+Description=Reconcile Launchstead fleet project enrollment
+
+[Timer]
+OnBootSec=60
+OnUnitInactiveSec=60
+Unit=fleet-provisioner.service
+
+[Install]
+WantedBy=timers.target

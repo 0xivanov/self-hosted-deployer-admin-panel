@@ -1,0 +1,3 @@
+#!/bin/sh
+set -eu
+exec tar -czf - --exclude='*.ext4' --exclude='output-*' --exclude='*.pending' --exclude='controller.lock' -C / etc/launchstead-builder var/lib/launchstead-builder/executions opt/launchstead-builder/node-build-container-executor etc/systemd/system/launchstead-builder.service

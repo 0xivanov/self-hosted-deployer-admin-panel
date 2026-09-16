@@ -1,0 +1,10 @@
+[Unit]
+Description=Launchstead fleet project enrollment
+After=network-online.target customer-portal.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/launchstead-fleet/provision-projects.py
+UMask=0077
+TimeoutStartSec=30

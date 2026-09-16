@@ -1,0 +1,12 @@
+[Unit]
+Description=Launchstead private release registry
+After=docker.service wg-quick@wg0.service
+Requires=docker.service
+[Service]
+ExecStart=/usr/bin/docker run --rm --name launchstead-registry --network host --read-only --cap-drop ALL --security-opt no-new-privileges --memory 256m --pids-limit 64 --mount type=bind,src=/etc/launchstead-registry,dst=/etc/distribution,readonly --mount type=bind,src=/var/lib/launchstead-registry,dst=/var/lib/registry registry@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373 /etc/distribution/config.yml
+ExecStop=/usr/bin/docker stop -t 20 launchstead-registry
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+[Install]
+WantedBy=multi-user.target

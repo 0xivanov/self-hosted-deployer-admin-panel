@@ -1,0 +1,14 @@
+[Unit]
+Description=Launchstead restricted Node build controller
+After=network-online.target docker.service wg-quick@wg0.service
+Requires=docker.service
+[Service]
+ExecStart=/opt/launchstead-builder/node-build-container-executor --config /etc/launchstead-builder/config.json
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=40
+UMask=0077
+MemoryMax=384M
+TasksMax=128
+[Install]
+WantedBy=multi-user.target
