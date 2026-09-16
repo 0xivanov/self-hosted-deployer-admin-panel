@@ -155,3 +155,32 @@ workers, since older binaries reject newer schema versions. Take a consistent
 SQLite backup before migration. The root-owned domain reconciler and its systemd
 timer live alongside the fleet provisioner; database operations retain the
 `launchstead-portal` account's private file ownership.
+
+## Deleting a project
+
+Workspace owners can delete a project from its **Danger zone** by typing the
+exact project name. Developers and viewers cannot delete projects. In-flight
+builds and deployments must finish first. A deletion request fences new project
+writes and marks custom domains for removal in the same transaction. The card
+shows cleanup progress until the background worker finishes; other cards retain
+their open panels and inputs.
+
+`project-deletion.timer` runs the root-owned `delete-projects.py` every 15 seconds.
+It shares the enrollment and domain reconciliation locks, removes owned domain
+routes, retires the project's builder controller, calls the original deployer's
+`delete --yes` command, removes private assignments and retained portal data,
+and finally deletes the project row. Failed cleanup keeps the row and retries.
+The original deployer checks Kubernetes resource ownership and removes the
+application's runtime and routing records. Domain registrations and billing
+subscriptions are unchanged. The slot is freed after cleanup completes.
+
+The builder persists a deletion tombstone to reject stale execution requests,
+while removing its per-project source/dependency files and freeing controller
+capacity. Operational backups, deployer audit history, and cached OCI image
+layers follow their existing retention lifecycle; project deletion is not an
+immediate secure erase of backups or shared caches.
+
+Schema version 40 adds deletion state to projects. Upgrade all portal database
+readers together, plus the fleet provisioner, deletion worker, deployer CLI, and
+Pi builder binary. The fleet worker supports zero assigned projects so deleting
+the last project does not break enrollment of the next one.

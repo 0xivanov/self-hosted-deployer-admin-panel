@@ -67,6 +67,16 @@ p{margin-bottom:16px}
 .project details form button{background:#246d50;color:#fff;border-color:#246d50}
 .project-domains{margin-top:18px}
 .project-domains>summary{color:#21674b}
+.project-danger{margin-top:22px;border-top-color:#efcec7}
+.project-danger>summary{color:#9c352b}
+.project-danger p{color:#8c3b31}
+.project-danger form{margin:16px 0 4px}
+.project-danger label{color:var(--ink)}
+.project-danger input{border-color:#e1b8b0}
+.button-danger{background:#9c352b;color:#fff;border-color:#9c352b}
+.project-deleting{border-color:#efcec7}
+.project-deleting .project-status{color:#8c3b31;background:#fff4f1;border-color:#efcec7}
+.deletion-error{color:#9c352b!important;background:#fff0ed;border:1px solid #efcec7;border-radius:7px;padding:10px}
 .domain-content{min-width:0;overflow:hidden}
 .domain-connect-form{max-width:none;margin-bottom:18px}
 .domain-connect-form label{margin-top:0}

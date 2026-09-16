@@ -1,0 +1,8 @@
+[Unit]
+Description=Reconcile requested Launchstead project deletions
+[Timer]
+OnBootSec=90
+OnUnitInactiveSec=15
+Unit=project-deletion.service
+[Install]
+WantedBy=timers.target

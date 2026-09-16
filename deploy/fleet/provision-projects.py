@@ -39,7 +39,7 @@ def load(path, default):
 def eligible(db):
     # The portal queue already enforces the authoritative billing/hosting gate.
     # This controller only enrolls projects from the current schema.
-    rows = db.execute("SELECT id,kind FROM projects ORDER BY id").fetchall()
+    rows = db.execute("SELECT id,kind FROM projects WHERE deletion_requested_at=0 ORDER BY id").fetchall()
     result = []
     for project, kind in rows:
         if not ID_RE.fullmatch(project): raise RuntimeError("invalid project identity")

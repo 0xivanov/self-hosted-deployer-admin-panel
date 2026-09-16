@@ -39,6 +39,13 @@ func (s *Store) CustomDomainWriteAccess(ctx context.Context, token, project, id 
 	if _, err = s.authorize(ctx, tx, token, workspace, true); err != nil {
 		return err
 	}
+	var deleting int
+	if err = tx.QueryRowContext(ctx, "SELECT deletion_requested_at<>0 FROM projects WHERE id=?", project).Scan(&deleting); err != nil {
+		return err
+	}
+	if deleting != 0 {
+		return ErrProjectDeleting
+	}
 	return tx.Commit()
 }
 
@@ -123,6 +130,13 @@ func (s *Store) CreateCustomDomain(ctx context.Context, token, project, hostname
 	if err != nil {
 		return CustomDomain{}, err
 	}
+	var deleting int
+	if err = tx.QueryRowContext(ctx, "SELECT deletion_requested_at<>0 FROM projects WHERE id=?", project).Scan(&deleting); err != nil {
+		return CustomDomain{}, err
+	}
+	if deleting != 0 {
+		return CustomDomain{}, ErrProjectDeleting
+	}
 	var count int
 	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM project_domains WHERE project_id=?", project).Scan(&count); err != nil {
 		return CustomDomain{}, err
@@ -164,6 +178,13 @@ func (s *Store) VerifyCustomDomain(ctx context.Context, token, project, id strin
 	actor, err := s.authorize(ctx, tx, token, workspace, true)
 	if err != nil {
 		return CustomDomain{}, err
+	}
+	var deleting int
+	if err = tx.QueryRowContext(ctx, "SELECT deletion_requested_at<>0 FROM projects WHERE id=?", project).Scan(&deleting); err != nil {
+		return CustomDomain{}, err
+	}
+	if deleting != 0 {
+		return CustomDomain{}, ErrProjectDeleting
 	}
 	wantTXT := "launchstead-verification=" + d.Token
 	goodTXT := false

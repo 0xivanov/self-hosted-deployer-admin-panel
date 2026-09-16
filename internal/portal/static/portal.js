@@ -2,6 +2,7 @@
 const $=id=>document.getElementById(id);
 let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,inviteOnly=false,billingGeneration=0,merchantEnabled=false,merchantCountries=[],merchantGeneration=0,productGeneration=0,merchantOrdersGeneration=0,domainQuotes=false,domainOrderGeneration=0,domainExpiryTimer;
 let nodeStatusCards=new Map(),nodeStatusState=null;
+let projectDeletionTimer=null,projectDeletionPollVersion=0,projectDeletionPollWorkspace='';
 const projectDomainStates=new Map();
 const projectRefreshes=new Map();
 const domainRefreshes=new WeakMap();
@@ -44,7 +45,7 @@ function error(e){$('error').textContent=e.message;$('error').hidden=false;}
 function stopNodeStatusRefresh(){const state=nodeStatusState;nodeStatusCards.clear();if(!state)return;state.stopped=true;clearTimeout(state.timer);state.timer=null;if(state.controller)state.controller.abort();if(nodeStatusState===state)nodeStatusState=null;nodeStatusCards.clear();}
 function signedOut(){stopBillingRefresh();currentView='projects';stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
 async function loadProjects(){stopBillingRefresh();billingPollCount=0;stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();configureWorkspaceNavigation(selected);if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){await appendProject(project,selected.role,version);if(version!==generation)return;}if(!data.projects.length){$('projects').textContent='Your first website starts here. Create a project, then upload your files.';$('new-project-details').open=true;}if(selected.role==='owner'){if(domainQuotes)loadDomainOrders(workspace,version);await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
-async function appendProject(project,role,version){if(version!==generation)return;const card=document.createElement('div');card.className='project';card.dataset.projectId=project.id;const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');const heading=document.createElement('div');heading.className='project-heading';const icon=document.createElement('span');icon.className='project-icon';icon.textContent=project.kind==='node'?'JS':'</>';heading.append(icon,name,kind);card.append(heading);$('projects').append(card);await projectUploads(card,project,role,version);if(version!==generation)return;organizeProject(card);await renderProjectDomains(card,project,role,version);}
+async function appendProject(project,role,version){if(version!==generation)return;const card=document.createElement('div');card.className='project';card.dataset.projectId=project.id;const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');const heading=document.createElement('div');heading.className='project-heading';const icon=document.createElement('span');icon.className='project-icon';icon.textContent=project.kind==='node'?'JS':'</>';heading.append(icon,name,kind);card.append(heading);$('projects').append(card);if(project.deleting){renderDeletingProject(card,project,version);startProjectDeletionPolling(version,$('workspace').value);return;}await projectUploads(card,project,role,version);if(version!==generation||!card.isConnected)return;organizeProject(card);await renderProjectDomains(card,project,role,version);if(version!==generation||!card.isConnected)return;renderProjectDeletion(card,project,role,version);}
 async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();if(pendingInvite)showFlow('invite');}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;}}
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();});});
@@ -107,15 +108,37 @@ async function loadInvitations(workspace,version){
 $('invite-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{const workspace=$('workspace').value;const version=generation;await api('/api/invitations',{workspace,email:$('invite-email').value,role:$('invite-role').value});if(version!==generation)return;$('invite-email').value='';await loadInvitations(workspace,version);});});
 
 function projectCard(project){return [...$('projects').children].find(card=>card.dataset.projectId===project.id);}
+function renderDeletingProject(card,project,version){
+ card.dataset.deleting='true';card.classList.add('project-deleting');nodeStatusCards.delete(project.id);for(const child of [...card.children])if(!child.classList.contains('project-heading'))child.remove();
+ const status=document.createElement('p');status.className='project-status';status.setAttribute('role','status');status.textContent=project.deletion_error?'Project deletion needs attention: '+project.deletion_error:'Deleting project… Disconnecting the website and removing its uploads and releases.';card.append(status);
+ if(project.deletion_error){const note=document.createElement('p');note.className='deletion-error';note.textContent='Cleanup retries automatically. Contact support if this continues.';card.append(note);}
+}
+function renderProjectDeletion(card,project,role,version){
+ if(role!=='owner'||!card.isConnected||version!==generation||project.deleting)return;
+ const details=disclosure('Danger zone','project-danger');const intro=document.createElement('p');intro.textContent='Deleting this project is irreversible. The website will go offline, uploads and releases will be deleted, and any custom domain will be disconnected. Domain registrations are unaffected.';details.append(intro);
+ const form=document.createElement('form');const label=document.createElement('label');label.textContent='Type '+project.name+' to confirm';const input=document.createElement('input');input.type='text';input.required=true;input.autocomplete='off';input.spellcheck=false;input.setAttribute('aria-label','Type '+project.name+' to confirm');const button=document.createElement('button');button.type='submit';button.className='button-danger';button.textContent='Delete project';button.disabled=true;input.addEventListener('input',()=>{button.disabled=input.value!==project.name;});form.append(label,button);label.append(input);details.append(form);form.addEventListener('submit',event=>{event.preventDefault();if(input.value!==project.name)return;submit(form,async()=>{const accepted=await api('/api/projects/delete',{project:project.id,name:input.value});if(version!==generation)return;project.deleting=true;project.deletion_error=accepted.deletion_error||'';renderDeletingProject(card,project,version);startProjectDeletionPolling(version,$('workspace').value);});});card.append(details);
+}
+function removeProjectCard(card){const id=card.dataset.projectId;nodeStatusCards.delete(id);projectRefreshes.delete(id);projectDomainStates.delete(id);card.remove();}
+function updateProjectsEmptyState(){if($('projects').querySelector('.project'))return;$('projects').textContent='Your first website starts here. Create a project, then upload your files.';$('new-project-details').open=true;}
+async function pollProjectDeletion(version,workspace){
+ if(version!==generation||workspace!==$('workspace').value){projectDeletionTimer=null;return;}
+ try{const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation||workspace!==$('workspace').value)return;const projects=Array.isArray(data.projects)?data.projects:[];const byID=new Map(projects.map(project=>[project.id,project]));
+  for(const card of [...$('projects').querySelectorAll('.project[data-deleting="true"]')]){const project=byID.get(card.dataset.projectId);if(!project){removeProjectCard(card);}else if(!project.deleting){removeProjectCard(card);}else{const status=card.querySelector('.project-status');if(status)status.textContent=project.deletion_error?'Project deletion needs attention: '+project.deletion_error:'Deleting project… Disconnecting the website and removing its uploads and releases.';}}
+  updateProjectsEmptyState();
+  if([...$('projects').querySelectorAll('.project[data-deleting="true"]')].length)projectDeletionTimer=setTimeout(()=>pollProjectDeletion(version,workspace),5000);else projectDeletionTimer=null;
+ }catch(e){if(e.status===401)signedOut();else if(version===generation&&workspace===$('workspace').value)projectDeletionTimer=setTimeout(()=>pollProjectDeletion(version,workspace),5000);}
+}
+function startProjectDeletionPolling(version,workspace){if(version!==generation||workspace!==$('workspace').value)return;if(projectDeletionTimer!==null&&(projectDeletionPollVersion!==version||projectDeletionPollWorkspace!==workspace)){clearTimeout(projectDeletionTimer);projectDeletionTimer=null;}projectDeletionPollVersion=version;projectDeletionPollWorkspace=workspace;if(projectDeletionTimer===null)projectDeletionTimer=setTimeout(()=>pollProjectDeletion(version,workspace),5000);}
+function stopProjectDeletionPolling(){clearTimeout(projectDeletionTimer);projectDeletionTimer=null;projectDeletionPollVersion=0;projectDeletionPollWorkspace='';}
 function refreshProject(project,role,version){
  const previous=projectRefreshes.get(project.id)||Promise.resolve();
  const pending=previous.catch(()=>{}).then(async()=>{
-  const card=projectCard(project);if(version!==generation||!card)return;
+  const card=projectCard(project);if(version!==generation||!card||!card.isConnected||project.deleting||card.dataset.deleting==='true')return;
   card.setAttribute('aria-busy','true');
   try{
    const staging=document.createElement('div');
    await projectUploads(staging,project,role,version);
-   if(version!==generation||!card.isConnected)return;
+   if(version!==generation||!card.isConnected||card.dataset.deleting==='true'||project.deleting)return;
    organizeProject(staging);
    const oldDetails=[...card.querySelectorAll('details')];
    const freshDetails=[...staging.querySelectorAll('details')];
@@ -126,8 +149,8 @@ function refreshProject(project,role,version){
    const upload=card.querySelector('.upload-details form');const freshUpload=staging.querySelector('.upload-details form');
    if(upload&&freshUpload)freshUpload.replaceWith(upload);
    const focusText=focused?.textContent;const focusTag=focused?.tagName;
-   const heading=card.querySelector('.project-heading');const domains=card.querySelector('.project-domains');
-   const children=[heading,...staging.childNodes,domains].filter(Boolean);
+   const heading=card.querySelector('.project-heading');const domains=card.querySelector('.project-domains');const danger=card.querySelector('.project-danger');
+   const children=[heading,...staging.childNodes,domains,danger].filter(Boolean);
    // Move retained nodes in place rather than detaching their inputs.
    for(const child of [...card.childNodes])if(!children.includes(child))child.remove();
    for(const child of children)card.append(child);
@@ -182,7 +205,7 @@ async function renderProjectDomains(card,project,role,version){
  const content=document.createElement('div');content.className='domain-content';details.append(content);
  try{
   const data=await api('/api/project-domains?project='+encodeURIComponent(project.id));
-  if(version!==generation||workspace!==$('workspace').value)return;
+  if(version!==generation||workspace!==$('workspace').value||card.dataset.deleting==='true')return;
   const domains=Array.isArray(data.domains)?data.domains:[];const target=domainText(data.target)||'159.195.146.26';
   const intro=document.createElement('p');intro.className='muted';intro.textContent='Connect your root domain or www as a separate connection. Keep DNS records DNS-only, turn off Cloudflare proxying, and do not add an AAAA record. Your domain stays with your current provider. Connect the root and www separately if you want both.';content.append(intro);
   if(role!=='viewer'){
@@ -204,11 +227,11 @@ async function renderProjectDomains(card,project,role,version){
    row.append(actions);content.append(row);
   }
  }catch(e){
-  if(version!==generation||workspace!==$('workspace').value)return;
+  if(version!==generation||workspace!==$('workspace').value||card.dataset.deleting==='true')return;
   if(existing){error(e);return;}
   content.replaceChildren();const note=document.createElement('p');note.className='domain-error';note.textContent='Custom domain status is unavailable. Use Refresh status to try again.';content.append(note);
  }
- if(version!==generation||workspace!==$('workspace').value||!card.isConnected||domainRefreshes.get(card)!==request)return;
+ if(version!==generation||workspace!==$('workspace').value||!card.isConnected||card.dataset.deleting==='true'||domainRefreshes.get(card)!==request)return;
  const previous=card.querySelector('.project-domains');
  if(previous){const active=document.activeElement;const focused=previous.contains(active)?active:null;const text=focused?.textContent;details.open=previous.open;const form=previous.querySelector('form');const fresh=details.querySelector('form');if(form&&fresh)fresh.replaceWith(form);previous.replaceWith(details);if(focused?.isConnected)focused.focus({preventScroll:true});else if(text)[...details.querySelectorAll('button,summary,a')].find(item=>item.tagName===focused.tagName&&item.textContent===text)?.focus({preventScroll:true});}else card.append(details);
 }
@@ -320,7 +343,7 @@ async function pollNodeStatus(state){
  const results=await Promise.allSettled(entries.map(entry=>api('/api/node?project='+encodeURIComponent(entry.project.id),undefined,state.controller.signal)));
  if(nodeStatusState!==state||state.stopped||state.version!==generation||state.workspace!==$('workspace').value){state.inFlight=false;return;}
  let unauthorized=false;
- results.forEach((result,index)=>{if(result.status==='fulfilled')renderNodeLive(entries[index],result.value);else if(result.reason?.status===401)unauthorized=true;else{const note=entries[index].live.firstElementChild;if(note)note.textContent='Status refresh unavailable. Retry with Refresh release status.';entries[index].snapshot=null;if(result.reason?.status===403||result.reason?.status===404)entries[index].active=false;}});
+   results.forEach((result,index)=>{if(!entries[index].card.isConnected||entries[index].card.dataset.deleting==='true'){nodeStatusCards.delete(entries[index].project.id);return;}if(result.status==='fulfilled')renderNodeLive(entries[index],result.value);else if(result.reason?.status===401)unauthorized=true;else{const note=entries[index].live.firstElementChild;if(note)note.textContent='Status refresh unavailable. Retry with Refresh release status.';entries[index].snapshot=null;if(result.reason?.status===403||result.reason?.status===404)entries[index].active=false;}});
  state.inFlight=false;state.controller=null;
  if(!unauthorized&&[...nodeStatusCards.values()].some(entry=>entry.version===state.version&&entry.active))state.timer=setTimeout(()=>pollNodeStatus(state),nodeStatusInterval);else if(unauthorized)signedOut();
 }

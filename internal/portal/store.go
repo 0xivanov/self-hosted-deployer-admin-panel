@@ -45,10 +45,12 @@ type Session struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 type Project struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-	Name        string `json:"name"`
-	Kind        string `json:"kind"`
+	ID            string `json:"id"`
+	WorkspaceID   string `json:"workspace_id"`
+	Name          string `json:"name"`
+	Kind          string `json:"kind"`
+	Deleting      bool   `json:"deleting"`
+	DeletionError string `json:"deletion_error"`
 }
 
 // Open requires a private directory because SQLite can create journal files.
@@ -112,7 +114,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 39 {
+	if version > 40 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -349,6 +351,11 @@ PRAGMA user_version=1;`)
 	}
 	if version < 39 {
 		if _, err = tx.Exec(`CREATE TABLE project_domains(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),hostname TEXT NOT NULL UNIQUE,token TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN ('pending','verified','active','removing')),message TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL); CREATE INDEX project_domains_project ON project_domains(project_id,created_at); PRAGMA user_version=39`); err != nil {
+			return err
+		}
+	}
+	if version < 40 {
+		if _, err = tx.Exec(`ALTER TABLE projects ADD COLUMN deletion_requested_at INTEGER NOT NULL DEFAULT 0; ALTER TABLE projects ADD COLUMN deletion_error TEXT NOT NULL DEFAULT ''; PRAGMA user_version=40`); err != nil {
 			return err
 		}
 	}
@@ -667,7 +674,7 @@ func (s *Store) CreateProject(ctx context.Context, token, workspace, name, kind 
 		return Project{}, err
 	}
 	p := Project{ID: randomToken(), WorkspaceID: workspace, Name: name, Kind: kind}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO projects VALUES(?,?,?,?)", p.ID, workspace, name, kind); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO projects(id,workspace_id,name,kind) VALUES(?,?,?,?)", p.ID, workspace, name, kind); err != nil {
 		return Project{}, fmt.Errorf("create project: %w", err)
 	}
 	if err = audit(ctx, tx, actor, workspace, "project.created", s.now().Unix()); err != nil {
@@ -682,7 +689,9 @@ func (s *Store) GetProject(ctx context.Context, token, id string) (Project, erro
 	}
 	defer tx.Rollback()
 	var p Project
-	err = tx.QueryRowContext(ctx, "SELECT id,workspace_id,name,kind FROM projects WHERE id=?", id).Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind)
+	var requestedAt int64
+	err = tx.QueryRowContext(ctx, "SELECT id,workspace_id,name,kind,deletion_requested_at,deletion_error FROM projects WHERE id=?", id).Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind, &requestedAt, &p.DeletionError)
+	p.Deleting = requestedAt != 0
 	if errors.Is(err, sql.ErrNoRows) {
 		return Project{}, ErrDenied
 	}
@@ -745,17 +754,19 @@ func (s *Store) Projects(ctx context.Context, token, workspace string) ([]Projec
 	if _, err = s.authorize(ctx, tx, token, workspace, false); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT id,workspace_id,name,kind FROM projects WHERE workspace_id=? ORDER BY name,id", workspace)
+	rows, err := tx.QueryContext(ctx, "SELECT id,workspace_id,name,kind,deletion_requested_at,deletion_error FROM projects WHERE workspace_id=? ORDER BY name,id", workspace)
 	if err != nil {
 		return nil, err
 	}
 	out := []Project{}
 	for rows.Next() {
 		var p Project
-		if err = rows.Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind); err != nil {
+		var requestedAt int64
+		if err = rows.Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind, &requestedAt, &p.DeletionError); err != nil {
 			rows.Close()
 			return nil, err
 		}
+		p.Deleting = requestedAt != 0
 		out = append(out, p)
 	}
 	err = rows.Err()

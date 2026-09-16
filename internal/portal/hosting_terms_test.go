@@ -44,7 +44,7 @@ func TestHostingCheckoutTermsMigration(t *testing.T) {
 	original := HostingPlanLimits{Projects: 3, Uploads: 4, UploadBytes: 5 << 20, Node: true}
 	s, path, a, session := hostingLimitsFixture(t, original)
 	ctx := t.Context()
-	if _, err := s.db.Exec("ALTER TABLE billing_checkouts DROP COLUMN hosting_limits; PRAGMA user_version=37"); err != nil {
+	if _, err := s.db.Exec("DROP TABLE project_domains; ALTER TABLE projects DROP COLUMN deletion_requested_at; ALTER TABLE projects DROP COLUMN deletion_error; ALTER TABLE billing_checkouts DROP COLUMN hosting_limits; PRAGMA user_version=37"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {

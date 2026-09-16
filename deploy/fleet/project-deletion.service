@@ -1,0 +1,11 @@
+[Unit]
+Description=Finish owner-confirmed Launchstead project deletion
+After=network-online.target customer-portal.service k3s.service
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /opt/launchstead-fleet/delete-projects.py
+UMask=0077
+TimeoutStartSec=300

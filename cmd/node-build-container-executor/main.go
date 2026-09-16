@@ -147,6 +147,15 @@ type projectRouter struct {
 
 func newProjectRouter(cfg containerbuild.Config, token string) (*projectRouter, error) {
 	r := &projectRouter{cfg: cfg, token: token, expected: sha256.Sum256([]byte("Bearer " + token)), controllers: map[string]projectController{}}
+	for _, root := range []string{cfg.StateDirectory, cfg.DependenciesDirectory} {
+		if info, err := os.Lstat(root); err == nil {
+			if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+				return nil, errors.New("project storage root is unsafe")
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	}
 	if err := os.MkdirAll(cfg.StateDirectory, 0700); err != nil {
 		return nil, err
 	}
@@ -156,6 +165,13 @@ func newProjectRouter(cfg containerbuild.Config, token string) (*projectRouter, 
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() || !validProjectID(entry.Name()) {
+			continue
+		}
+		deleted, err := r.isDeleted(entry.Name())
+		if err != nil {
+			return nil, err
+		}
+		if deleted {
 			continue
 		}
 		if len(r.controllers) >= maxProjectControllers {
@@ -181,6 +197,13 @@ func (r *projectRouter) authenticate(req *http.Request, project string) bool {
 	return req.TLS != nil && req.Host == r.cfg.Host && validProjectID(project) && len(req.Header.Values("Authorization")) == 1 && subtle.ConstantTimeCompare(r.expected[:], auth[:]) == 1 && len(req.Header.Values("Origin")) == 0 && req.Header.Get("Sec-Fetch-Site") == ""
 }
 func (r *projectRouter) open(project string) (projectController, error) {
+	deleted, err := r.isDeleted(project)
+	if err != nil {
+		return projectController{}, err
+	}
+	if deleted {
+		return projectController{}, errors.New("project has been deleted")
+	}
 	cfg := r.cfg
 	cfg.Project = project
 	cfg.StateDirectory = filepath.Join(r.cfg.StateDirectory, project)
@@ -208,25 +231,139 @@ func (r *projectRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "Management access denied", http.StatusForbidden)
 		return
 	}
+	if req.Method == http.MethodDelete && req.URL.EscapedPath() == "/v1/project" && req.URL.RawQuery == "" && req.ContentLength == 0 {
+		r.deleteProject(w, req.Context(), project)
+		return
+	}
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	controller, ok := r.controllers[project]
 	if !ok {
 		if len(r.controllers) >= maxProjectControllers {
-			r.mu.Unlock()
 			http.Error(w, "Build executor unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		var err error
 		controller, err = r.open(project)
 		if err != nil {
-			r.mu.Unlock()
 			http.Error(w, "Build executor unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		r.controllers[project] = controller
 	}
-	r.mu.Unlock()
 	controller.handler.ServeHTTP(w, req)
+}
+
+func (r *projectRouter) deleteProject(w http.ResponseWriter, ctx context.Context, project string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if deleted, err := r.isDeleted(project); err != nil {
+		http.Error(w, "project deletion unavailable", http.StatusInternalServerError)
+		return
+	} else if deleted {
+		if err := r.removeProjectDirs(project); err != nil {
+			http.Error(w, "project deletion unavailable", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if controller, ok := r.controllers[project]; ok {
+		if err := controller.executor.Shutdown(ctx); err != nil {
+			http.Error(w, "project deletion unavailable", http.StatusInternalServerError)
+			return
+		}
+		delete(r.controllers, project)
+	}
+	if err := r.markDeleted(project); err != nil {
+		http.Error(w, "project deletion unavailable", http.StatusInternalServerError)
+		return
+	}
+	if err := r.removeProjectDirs(project); err != nil {
+		http.Error(w, "project deletion unavailable", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (r *projectRouter) isDeleted(project string) (bool, error) {
+	if !validProjectID(project) {
+		return false, errors.New("invalid project id")
+	}
+	root, err := os.OpenRoot(r.cfg.StateDirectory)
+	if err != nil {
+		return false, err
+	}
+	defer root.Close()
+	f, err := root.Open(project + ".deleted")
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, f.Close()
+}
+
+func (r *projectRouter) markDeleted(project string) error {
+	root, err := os.OpenRoot(r.cfg.StateDirectory)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	f, err := root.OpenFile(project+".deleted", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err = f.Sync(); err == nil {
+		err = f.Close()
+	} else {
+		_ = f.Close()
+	}
+	if err != nil {
+		return err
+	}
+	return syncDirectory(r.cfg.StateDirectory)
+}
+
+func (r *projectRouter) removeProjectDirs(project string) error {
+	for _, parent := range []string{r.cfg.StateDirectory, r.cfg.DependenciesDirectory} {
+		info, err := os.Lstat(parent)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return errors.New("project storage root is unsafe")
+		}
+		root, err := os.OpenRoot(parent)
+		if err != nil {
+			return err
+		}
+		err = root.RemoveAll(project)
+		if err == nil {
+			err = syncDirectory(parent)
+		}
+		_ = root.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func syncDirectory(path string) error {
+	d, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	err = d.Sync()
+	if closeErr := d.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 func (r *projectRouter) shutdown(ctx context.Context) error {
 	r.mu.Lock()

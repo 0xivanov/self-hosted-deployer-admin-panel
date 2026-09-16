@@ -80,7 +80,7 @@ func LoadConfig(path string) (Config, error) {
 	if e = d.Decode(&c); e != nil {
 		return c, e
 	}
-	if c.Database == "" || c.DeployerBinary == "" || c.DeployerConfig == "" || c.StateDirectory == "" || c.ImageBuilder == "" || len(c.Projects) == 0 {
+	if c.Database == "" || c.DeployerBinary == "" || c.DeployerConfig == "" || c.StateDirectory == "" || c.ImageBuilder == "" {
 		return c, errors.New("required fleet config field missing")
 	}
 	for id, p := range c.Projects {

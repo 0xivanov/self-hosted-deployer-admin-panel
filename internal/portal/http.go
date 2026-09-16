@@ -730,6 +730,20 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpJSON(w, project)
+	case r.URL.Path == "/api/projects/delete" && r.Method == "POST":
+		var input struct {
+			Project string `json:"project"`
+			Name    string `json:"name"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		project, err := h.store.DeleteProject(r.Context(), cookie.Value, input.Project, input.Name)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, project)
 	default:
 		httpError(w, 404, "Not found")
 	}
@@ -746,6 +760,12 @@ func (h *HTTP) storeError(w http.ResponseWriter, err error) {
 		httpError(w, 409, "Publication request conflicts with an existing operation")
 	case errors.Is(err, ErrRetained):
 		httpError(w, 409, "This upload is retained by build or publication history")
+	case errors.Is(err, ErrProjectBusy):
+		httpError(w, 409, "Project has a publication, build, or deployment in progress")
+	case errors.Is(err, ErrProjectDeleting):
+		httpError(w, 409, "Project deletion is already in progress")
+	case errors.Is(err, ErrProjectNameMismatch):
+		httpError(w, 409, "Project name confirmation does not match")
 	case errors.Is(err, ErrQuota):
 		httpError(w, 409, "Workspace upload limit reached (20 archives or 100 MiB). Delete unused uploads first.")
 	case errors.Is(err, ErrArchive):
