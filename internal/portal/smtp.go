@@ -10,6 +10,7 @@ import (
 	"net/smtp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type SMTPOptions struct {
@@ -18,11 +19,13 @@ type SMTPOptions struct {
 	Password    string `json:"password"`
 	From        string `json:"from"`
 	ImplicitTLS bool   `json:"implicit_tls"`
+	ServerName  string `json:"server_name,omitempty"`
 }
 type SMTPSender struct {
-	options   SMTPOptions
-	host      string
-	tlsConfig *tls.Config
+	options    SMTPOptions
+	host       string
+	serverName string
+	tlsConfig  *tls.Config
 }
 
 func NewSMTPSender(opts SMTPOptions) (*SMTPSender, error) {
@@ -37,7 +40,37 @@ func NewSMTPSender(opts SMTPOptions) (*SMTPSender, error) {
 	if (opts.Username == "") != (opts.Password == "") {
 		return nil, errors.New("SMTP username and password must be supplied together")
 	}
-	return &SMTPSender{options: opts, host: host, tlsConfig: &tls.Config{MinVersion: tls.VersionTLS12, ServerName: host}}, nil
+	serverName := host
+	if opts.ServerName != "" {
+		if err := validateSMTPServerName(opts.ServerName); err != nil {
+			return nil, err
+		}
+		serverName = opts.ServerName
+	}
+	return &SMTPSender{options: opts, host: host, serverName: serverName, tlsConfig: &tls.Config{MinVersion: tls.VersionTLS12, ServerName: serverName}}, nil
+}
+
+func validateSMTPServerName(serverName string) error {
+	if serverName == "" || strings.TrimSpace(serverName) != serverName || strings.IndexFunc(serverName, unicode.IsSpace) >= 0 {
+		return errors.New("SMTP server_name must be a hostname")
+	}
+	if net.ParseIP(serverName) != nil {
+		return nil
+	}
+	if len(serverName) > 253 || strings.ContainsAny(serverName, "/\\:@") || strings.HasSuffix(serverName, ".") {
+		return errors.New("SMTP server_name must be a hostname")
+	}
+	for _, label := range strings.Split(serverName, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return errors.New("SMTP server_name must be a hostname")
+		}
+		for _, r := range label {
+			if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' {
+				return errors.New("SMTP server_name must be a hostname")
+			}
+		}
+	}
+	return nil
 }
 
 // Send requires verified TLS, either implicit or STARTTLS. It never falls back
@@ -66,7 +99,7 @@ func (s *SMTPSender) Send(ctx context.Context, message Mail) error {
 		}
 		conn = secure
 	}
-	client, err := smtp.NewClient(conn, s.host)
+	client, err := smtp.NewClient(conn, s.serverName)
 	if err != nil {
 		return errors.New("SMTP greeting failed")
 	}
@@ -80,7 +113,7 @@ func (s *SMTPSender) Send(ctx context.Context, message Mail) error {
 		}
 	}
 	if s.options.Username != "" {
-		if err = client.Auth(smtp.PlainAuth("", s.options.Username, s.options.Password, s.host)); err != nil {
+		if err = client.Auth(smtp.PlainAuth("", s.options.Username, s.options.Password, s.serverName)); err != nil {
 			return errors.New("SMTP authentication failed")
 		}
 	}

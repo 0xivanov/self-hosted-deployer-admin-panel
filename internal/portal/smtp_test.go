@@ -102,6 +102,46 @@ func TestSMTPRequiresVerifiedTLS(t *testing.T) {
 		})
 	}
 }
+
+func TestSMTPServerNameIdentity(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		serverName string
+		want       string
+	}{
+		{name: "defaults to address host", want: "10.43.128.251"},
+		{name: "overrides relay address", serverName: "smtp.gmail.com", want: "smtp.gmail.com"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := SMTPOptions{Address: "10.43.128.251:587", From: "sender@example.test", ServerName: tt.serverName}
+			sender, err := NewSMTPSender(opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if sender.host != "10.43.128.251" {
+				t.Fatalf("dial host = %q, want relay host", sender.host)
+			}
+			if sender.serverName != tt.want || sender.tlsConfig.ServerName != tt.want {
+				t.Fatalf("TLS/SMTP identity = %q/%q, want %q", sender.serverName, sender.tlsConfig.ServerName, tt.want)
+			}
+		})
+	}
+}
+
+func TestSMTPRejectsInvalidServerName(t *testing.T) {
+	t.Parallel()
+	for _, serverName := range []string{"", "https://smtp.gmail.com", "smtp.gmail.com:587", "smtp.gmail.com/path", "smtp.gmail.com\n", "smtp gmail.com", "-smtp.gmail.com", "smtp..gmail.com"} {
+		if serverName == "" {
+			continue // An omitted value selects the safe default address host.
+		}
+		if _, err := NewSMTPSender(SMTPOptions{Address: "10.43.128.251:587", From: "sender@example.test", ServerName: serverName}); err == nil {
+			t.Errorf("server_name %q was accepted", serverName)
+		}
+	}
+}
+
 func TestSMTPRejectsInjectedHeaders(t *testing.T) {
 	sender, err := NewSMTPSender(SMTPOptions{Address: "127.0.0.1:1", From: "sender@example.test"})
 	if err != nil {

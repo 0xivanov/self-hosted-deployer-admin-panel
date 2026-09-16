@@ -9,7 +9,7 @@ for the private configuration and TLS files.
 Build locally, copy the binaries to the VPS, then install the units from
 `deploy/customer-portal.service` and
 `deploy/launchstead-portal-billing-worker.service`. The units enable HTTPS on
-the VPN address `10.8.0.1:8791`, disable signup, enable test billing, and run both processes as
+the VPN address `10.8.0.1:8791`, enable email-verified signup and test billing, and run both processes as
 `launchstead-portal`.
 
 Create these mode `0600` files on the VPS, owned by `launchstead-portal`:
@@ -21,6 +21,8 @@ Create these mode `0600` files on the VPS, owned by `launchstead-portal`:
 * `billing-worker.json`, for `billing-worker --config`. It contains only the
   worker fields `secret_key`, `success_url`, `cancel_url`, and `plans`.
 * `stripe-webhook-secret`, containing the test endpoint signing secret.
+* `smtp.json`, containing the SMTP settings including relay `server_name`.
+* `mail-key`, containing the durable 32-byte mail encryption key as 64 hex characters.
 
 The two billing JSON files must be separate because the worker rejects the
 portal management `configuration` field. Keep all values local and use
@@ -75,3 +77,13 @@ An unpaid test Checkout Session was created and immediately expired. Stripe deli
 Signup remains disabled and no customer accounts were provisioned. Before user onboarding: configure account email, enable controlled signup, enroll a test workspace and complete a mapped checkout/subscription/management flow. Add this separate database and its encryption/signing settings to the backup and recovery procedure before storing customer data. Merchant Connect sales, live payments and website runtime workers are not enabled by this deployment.
 
 To roll back this addition, disable and stop `customer-portal` and `launchstead-portal-billing-worker`, remove only the `launchstead-portal` ingress, and disable its Stripe test endpoint. Preserve `/var/lib/launchstead-portal` and private configuration. Do not alter the existing operator services or application namespaces.
+
+## Account email and backups, 2026-09-16
+
+Account mail uses the existing Gmail alert credentials through the cluster TCP relay at `10.43.128.251:587`. SMTP configuration explicitly sets `server_name` to `smtp.gmail.com` so STARTTLS and authentication verify Gmail's identity, independently of the relay dial address. No certificate validation is disabled. Credentials remain in `/etc/launchstead-portal/smtp.json`, mode 0600; the durable outbox encryption key is `/etc/launchstead-portal/mail-key`, also 0600. Neither file belongs in Git.
+
+The portal unit enables signup, verification emails and password-reset emails. Registration requires email verification before login. Public signup is intended for the test preview only; live payments and customer runtime provisioning remain separate release gates. Existing account and shared-peer throttles still apply behind Traefik; proxy-aware limits and broader abuse controls remain unfinished.
+
+The VPS recovery configuration now captures the portal SQLite database using the SQLite online-backup API, private configuration and mail key, binaries, and both service units. The pre-change recovery configuration is retained privately at `/etc/deployer/backup/recovery.before-portal.json`. A manual run of the existing offsite recovery backup completed successfully with the added sources. Restore the database together with private configuration, preserve file ownership and permissions, and verify outbox behavior before starting services.
+
+Validation: `go test ./internal/portal` passed, including SMTP certificate checks and relay identity/validation tests. Focused `-tags integration` account lifecycle tests passed. After deployment `/api/config` reports `signup: true` and `account_mail: true`. First real mailbox receipt is awaiting operator confirmation; SMTP authentication success alone does not establish inbox delivery.

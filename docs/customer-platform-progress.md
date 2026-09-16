@@ -1943,3 +1943,9 @@ passed. No live database, deployment or provider transaction changed.
 
 Explicit upgrades/downgrades, catalog-to-checkout price/allowance consent versioning,
 runtime metering and provider/pilot qualification remain. The full goal is active.
+
+## VPS preview signup and email, 2026-09-16
+
+The customer portal at https://portal.0xivanov.dev now has signup, verification and password-reset mail enabled. The existing Gmail account authenticates over verified STARTTLS through the cluster SMTP relay. The new optional `server_name` setting separates the verified TLS/authentication identity from the TCP relay address; existing direct SMTP configurations retain their default behavior. The portal unit was rebuilt and deployed, and its public config reports account mail and signup enabled.
+
+The portal database, private settings, mail encryption key, binaries and service units were added to the existing VPS recovery backup. An offsite run succeeded after adding these sources. SMTP tests passed, and focused integration checks covered signup, queued mail, verification, login and password reset/session revocation. Existing operator services remained active. Actual first-account mailbox receipt and the mapped Stripe checkout still await the operator creating and verifying their account. No real payment was made, and live mode and merchant sales remain disabled.
