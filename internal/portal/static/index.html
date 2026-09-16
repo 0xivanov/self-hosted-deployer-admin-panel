@@ -1,1 +1,73 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Deployer customer portal</title><link rel="stylesheet" href="/portal.css"><script defer src="/portal.js"></script></head><body><header><strong>Deployer</strong><span>Customer workspace</span><button id="logout" hidden>Sign out</button></header><main><p class="notice">Development preview · Upload projects and manage releases. Publishing requires an assigned runtime.</p><div id="error" role="alert" hidden></div><section id="login"><p class="eyebrow">YOUR HOSTING WORKSPACE</p><h1>Welcome back.</h1><p>Sign in to manage your websites and applications.</p><form id="login-form"><label>Email<input id="email" type="email" autocomplete="username" required maxlength="254"></label><label>Password<input id="password" type="password" autocomplete="current-password" required maxlength="1024"></label><button>Sign in</button></form><p><button type="button" id="open-signup" hidden>Create account</button> <button type="button" id="open-forgot" hidden>Forgot password</button> <button type="button" id="open-resend" hidden>Resend verification email</button></p><p class="muted" id="registration-note">Registration is closed.</p></section><section id="account-flow" hidden><h1 id="flow-title"></h1><p id="flow-copy"></p><form id="account-form"><label id="flow-email-label">Email<input id="flow-email" type="email" autocomplete="email" maxlength="254"></label><label id="flow-password-label">Password<input id="flow-password" type="password" autocomplete="new-password" minlength="12" maxlength="1024"></label><label id="flow-workspace-label">Workspace name<input id="flow-workspace" maxlength="100"></label><button id="flow-submit">Continue</button></form><p><button type="button" id="back-login">Back to sign in</button></p></section><section id="workspace-view" hidden><p class="eyebrow" id="account"></p><h1>Your projects</h1><label>Workspace<select id="workspace"></select></label><form id="project-form"><h2>Create a project</h2><label>Project name<input id="project-name" required maxlength="100"></label><label>Project type<select id="project-kind"><option value="static">HTML / CSS / JavaScript</option><option value="node">Node.js application</option></select></label><button>Create project</button></form><div id="projects" aria-live="polite"></div><section id="domain-panel" hidden><h2>Find a domain</h2><p>Search for a .com, .net or .org domain for your website.</p><form id="domain-form"><label>Domain name<input id="domain-name" placeholder="yourwebsite.com" required maxlength="67" autocomplete="off" spellcheck="false"></label><button>Check availability and price</button></form><div id="domain-result" aria-live="polite"></div><h3>Domain orders</h3><button id="domain-orders-refresh" type="button">Refresh domain orders</button><div id="domain-orders" aria-live="polite"></div><p class="muted">A quote or prepared order does not reserve a domain. Payment and registration are not connected yet.</p></section><section id="billing-panel" hidden><h2>Hosting billing</h2><p class="notice">Test payments only. No real payment is collected.</p><button id="billing-refresh" type="button">Refresh billing status</button><div id="billing-content" aria-live="polite"></div></section><section id="merchant-panel" hidden><h2>Merchant account</h2><p class="notice">Test merchant accounts only. No real payments are processed.</p><div id="merchant-content" aria-live="polite"></div><h2>Product catalog</h2><p>Share a product purchase link to try website checkout. A payment-ready test merchant account is required.</p><div id="product-content" aria-live="polite"></div><h2>Order history</h2><p>Saved order history, latest 100 orders. Refresh reads saved history only.</p><button id="merchant-orders-refresh" type="button">Refresh saved history</button><div id="merchant-orders-content" aria-live="polite"></div></section><section id="member-panel" hidden><h2>Workspace members</h2><p>Role changes sign the affected member out. At least one active owner must remain.</p><form id="invite-form"><label>Invite by email<input id="invite-email" type="email" required maxlength="254"></label><label>Access<select id="invite-role"><option value="developer">Developer</option><option value="viewer">Viewer</option><option value="owner">Owner</option></select></label><button>Send invitation</button></form><div id="invitations"></div><div id="members"></div></section></section></main></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Launchstead workspace</title>
+    <link rel="stylesheet" href="/portal.css">
+    <script defer src="/portal.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="wordmark" href="#top" aria-label="Launchstead home"><span class="mark">L</span><span>launchstead</span></a>
+      <span class="header-context">Customer workspace</span>
+      <button id="logout" class="button button-quiet" type="button" hidden>Sign out</button>
+    </header>
+    <main id="top">
+      <p class="notice preview-notice">Private preview · Test payments only. Website publishing is being rolled out.</p>
+      <div id="error" role="alert" hidden></div>
+
+      <section id="login" class="auth-card">
+        <p class="eyebrow"><span class="eyebrow-dot"></span>Your hosting workspace</p>
+        <h1>Welcome back.</h1>
+        <p>Sign in to manage your websites and applications.</p>
+        <form id="login-form">
+          <label>Email<input id="email" type="email" autocomplete="username" required maxlength="254"></label>
+          <label>Password<input id="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
+          <button class="button button-dark">Sign in <span aria-hidden="true">↗</span></button>
+        </form>
+        <p><button type="button" id="open-signup" hidden>Create account</button> <button type="button" id="open-forgot" hidden>Forgot password</button> <button type="button" id="open-resend" hidden>Resend verification email</button></p>
+        <p class="muted" id="registration-note">Registration is closed.</p>
+      </section>
+
+      <section id="account-flow" class="auth-card" hidden>
+        <p class="eyebrow"><span class="eyebrow-dot"></span>Launchstead</p>
+        <h1 id="flow-title"></h1><p id="flow-copy"></p>
+        <form id="account-form">
+          <label id="flow-email-label">Email<input id="flow-email" type="email" autocomplete="email" maxlength="254"></label>
+          <label id="flow-password-label">Password<input id="flow-password" type="password" autocomplete="new-password" minlength="12" maxlength="1024"></label>
+          <label id="flow-workspace-label">Workspace name<input id="flow-workspace" maxlength="100"></label>
+          <button id="flow-submit" class="button button-dark">Continue <span aria-hidden="true">↗</span></button>
+        </form>
+        <p><button type="button" id="back-login" class="button button-quiet">Back to sign in</button></p>
+      </section>
+
+      <section id="workspace-view" hidden>
+        <div class="workspace-heading">
+          <div><p class="eyebrow"><span class="eyebrow-dot"></span>Launchstead workspace</p><h1>Your workspace</h1><p class="workspace-intro">Upload your code, review projects, and keep workspace access in one place.</p></div>
+          <div class="account-block"><span class="account-label">Signed in as</span><strong id="account"></strong><div class="workspace-selector"><label for="workspace">Workspace</label><select id="workspace"></select></div></div>
+        </div>
+        <nav class="workspace-nav" aria-label="Workspace sections">
+          <button id="nav-projects" type="button" data-view="projects" aria-current="page">Projects</button>
+          <button id="nav-billing" type="button" data-view="billing">Billing</button>
+          <button id="nav-team" type="button" data-view="team">Team</button>
+          <button id="nav-domains" type="button" data-view="domains">Domains</button>
+          <button id="nav-store" type="button" data-view="store">Store</button>
+        </nav>
+
+        <div id="projects-panel" data-view-panel="projects">
+          <div class="section-heading"><p class="eyebrow">Projects</p><h2>Your projects</h2><p>Create a project, upload your website files, and manage releases.</p></div>
+          <details id="new-project-details" class="new-project-details"><summary>New project <span aria-hidden="true">+</span></summary>
+            <form id="project-form"><h2>Create a project</h2><label>Project name<input id="project-name" required maxlength="100"></label><label>Project type<select id="project-kind"><option value="static">HTML / CSS / JavaScript</option><option value="node">Node.js application</option></select></label><button class="button button-dark">Create project <span aria-hidden="true">↗</span></button></form>
+          </details>
+          <div id="projects" aria-live="polite"></div>
+        </div>
+
+        <section id="domain-panel" data-view-panel="domains" hidden><p class="eyebrow">Domains</p><h2>Find a domain</h2><p>Search for a .com, .net or .org domain for your website.</p><form id="domain-form"><label>Domain name<input id="domain-name" placeholder="yourwebsite.com" required maxlength="67" autocomplete="off" spellcheck="false"></label><button class="button button-dark">Check availability and price</button></form><div id="domain-result" aria-live="polite"></div><h3>Domain orders</h3><button id="domain-orders-refresh" class="button button-light" type="button">Refresh domain orders</button><div id="domain-orders" aria-live="polite"></div><p class="muted">A quote or prepared order does not reserve a domain. Payment and registration are not connected yet.</p></section>
+        <section id="billing-panel" data-view-panel="billing" hidden><p class="eyebrow">Billing</p><h2>Hosting billing</h2><p class="notice">Test payments only. No real payment is collected.</p><p id="billing-return-message" role="status" hidden></p><button id="billing-refresh" class="button button-light" type="button">Refresh billing status</button><div id="billing-content" aria-live="polite"></div></section>
+        <section id="merchant-panel" data-view-panel="store" hidden><p class="eyebrow">Store</p><h2>Merchant account</h2><p class="notice">Test merchant accounts only. No real payments are processed.</p><div id="merchant-content" aria-live="polite"></div><h2>Product catalog</h2><p>Share a product purchase link to try website checkout. A payment-ready test merchant account is required.</p><div id="product-content" aria-live="polite"></div><h2>Order history</h2><p>Saved order history, latest 100 orders. Refresh reads saved history only.</p><button id="merchant-orders-refresh" class="button button-light" type="button">Refresh saved history</button><div id="merchant-orders-content" aria-live="polite"></div></section>
+        <section id="member-panel" data-view-panel="team" hidden><p class="eyebrow">Team</p><h2>Workspace members</h2><p>Role changes sign the affected member out. At least one active owner must remain.</p><form id="invite-form"><label>Invite by email<input id="invite-email" type="email" required maxlength="254"></label><label>Access<select id="invite-role"><option value="developer">Developer</option><option value="viewer">Viewer</option><option value="owner">Owner</option></select></label><button class="button button-dark">Send invitation <span aria-hidden="true">↗</span></button></form><div id="invitations"></div><div id="members"></div></section>
+      </section>
+    </main>
+  </body>
+</html>
