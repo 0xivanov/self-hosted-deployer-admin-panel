@@ -213,6 +213,19 @@ async function renderProjectDomains(card,project,role,version){
  if(previous){const active=document.activeElement;const focused=previous.contains(active)?active:null;const text=focused?.textContent;details.open=previous.open;const form=previous.querySelector('form');const fresh=details.querySelector('form');if(form&&fresh)fresh.replaceWith(form);previous.replaceWith(details);if(focused?.isConnected)focused.focus({preventScroll:true});else if(text)[...details.querySelectorAll('button,summary,a')].find(item=>item.tagName===focused.tagName&&item.textContent===text)?.focus({preventScroll:true});}else card.append(details);
 }
 
+function uploadDeleteControl(row,upload,project,role,version){
+ if(role==='viewer')return;
+ const button=document.createElement('button');button.type='button';button.textContent=upload.retention_reason?'Protected upload':'Delete upload';button.disabled=!!upload.retention_reason;
+ const note=document.createElement('p');note.className='muted';note.setAttribute('role','status');note.textContent=upload.retention_reason||'';note.hidden=!upload.retention_reason;
+ button.addEventListener('click',async()=>{
+  if(!confirm('Delete this unused saved upload? This cannot be undone.'))return;
+  $('error').hidden=true;button.disabled=true;button.textContent='Deleting…';note.hidden=true;
+  try{await api('/api/uploads/delete',{project:project.id,id:upload.id});if(version!==generation)return;await refreshProject(project,role,version);}
+  catch(e){if(version!==generation)return;note.textContent=e.message;note.hidden=false;note.setAttribute('role','alert');button.disabled=false;button.textContent='Delete upload';}
+ });
+ row.append(button,note);
+}
+
 async function projectUploads(card,project,role,version){
  const result=await api('/api/uploads?project='+encodeURIComponent(project.id));if(version!==generation)return;
  if(project.kind==='node')return nodeProjectUploads(card,project,role,version,result);
@@ -231,7 +244,7 @@ async function projectUploads(card,project,role,version){
  }
  for(const upload of result.uploads){const row=document.createElement('div');const text=document.createElement('p');text.textContent='Validated · '+upload.files+(upload.files===1?' file · ':' files · ')+(upload.compressed_bytes/1024).toFixed(1)+' KiB · '+new Date(upload.created_at*1000).toLocaleString();row.append(text);
  if(publication.available&&role!=='viewer'){const publish=document.createElement('button');const previous=publication.jobs.some(j=>j.upload_id===upload.id&&j.state==='succeeded');const isCurrent=active&&active.upload_id===upload.id;publish.textContent=isCurrent?'Current upload':previous?'Restore this upload':'Publish this upload';publish.disabled=pending||isCurrent;const requestKey=crypto.randomUUID();publish.addEventListener('click',async()=>{publish.disabled=true;try{await api('/api/publications',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await refreshProject(project,role,version);}catch(e){error(e);publish.disabled=false;}});row.append(publish);}
-  if(role!=='viewer'){const button=document.createElement('button');button.textContent='Delete upload';button.addEventListener('click',async()=>{if(!confirm('Delete this saved upload?'))return;button.disabled=true;try{await api('/api/uploads/delete',{project:project.id,id:upload.id});if(version===generation)await refreshProject(project,role,version);}catch(e){error(e);button.disabled=false;}});row.append(button);}card.append(row);
+  uploadDeleteControl(row,upload,project,role,version);card.append(row);
  }
 }
 
@@ -327,7 +340,7 @@ function nodeUploadRows(card,project,role,version,result,state){
   if(state&&role!=='viewer'){
    const build=state.builds.find(item=>item.upload_id===upload.id);const saved=build&&state.releases.some(release=>release.build_id===build.id);const busy=state.builds.some(item=>item.state==='queued'||item.state==='running');const button=document.createElement('button');button.type='button';button.textContent=saved?'Built':build&&build.state==='queued'?'Build queued':build&&build.state==='running'?'Building':build?'Build again':'Build';button.disabled=busy||!!saved||!state.node.available;nodeStatusCards.get(project.id).uploadButtons.push({button,upload});const requestKey=crypto.randomUUID();button.addEventListener('click',async()=>{button.disabled=true;const entry=nodeStatusCards.get(project.id);entry.mutating=true;try{await api('/api/node/builds',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation)error(e);button.disabled=false;}finally{entry.mutating=false;}});row.append(button);
   }
-  if(role!=='viewer'){const button=document.createElement('button');button.type='button';button.textContent='Delete upload';button.addEventListener('click',async()=>{if(!confirm('Delete this saved upload?'))return;button.disabled=true;try{await api('/api/uploads/delete',{project:project.id,id:upload.id});if(version===generation)await refreshProject(project,role,version);}catch(e){error(e);button.disabled=false;}});row.append(button);}card.append(row);
+  uploadDeleteControl(row,upload,project,role,version);card.append(row);
  }
 }
 

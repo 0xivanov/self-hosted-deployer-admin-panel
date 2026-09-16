@@ -246,3 +246,34 @@ func TestUploadMigrationPreservesExistingAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUploadRetentionReasonMatchesDeletion(t *testing.T) {
+	s, _, _, session, p, u := publicationFixture(t)
+	ctx := t.Context()
+	rows, err := s.Uploads(ctx, session.Token, p.ID)
+	if err != nil || len(rows) != 1 || rows[0].RetentionReason != "" {
+		t.Fatal("unused upload protected", rows, err)
+	}
+	job, err := s.RequestPublication(ctx, session.Token, p.ID, u.ID, "retention-reason-request")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err = s.Uploads(ctx, session.Token, p.ID)
+	if err != nil || rows[0].RetentionReason == "" {
+		t.Fatal("pending upload lacks explanation", err)
+	}
+	claim, err := s.ClaimPublication(ctx, p.ID)
+	if err != nil || claim == nil {
+		t.Fatal(err)
+	}
+	if err = s.FinishPublication(ctx, job.ID, claim.Lease, claim.SHA256, true); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = s.Uploads(ctx, session.Token, p.ID)
+	if err != nil || rows[0].RetentionReason != "This upload is used by your live website and cannot be deleted." {
+		t.Fatal("live upload explanation", rows, err)
+	}
+	if err = s.DeleteUpload(ctx, session.Token, p.ID, u.ID); !errors.Is(err, ErrRetained) {
+		t.Fatal("live upload deletion not blocked", err)
+	}
+}

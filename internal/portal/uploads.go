@@ -16,6 +16,7 @@ var ErrQuota = errors.New("workspace upload quota reached")
 var ErrArchive = errors.New("invalid project archive")
 
 type Upload struct {
+	RetentionReason string `json:"retention_reason,omitempty"`
 	ID              string `json:"id"`
 	ProjectID       string `json:"project_id"`
 	SHA256          string `json:"sha256"`
@@ -109,14 +110,22 @@ func (s *Store) Uploads(ctx context.Context, token, project string) ([]Upload, e
 	if _, _, err = s.uploadProject(ctx, tx, token, project, false); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT id,project_id,sha256,files,expanded_bytes,length(archive),created_at FROM uploads WHERE project_id=? ORDER BY created_at DESC,id", project)
+	rows, err := tx.QueryContext(ctx, `SELECT u.id,u.project_id,u.sha256,u.files,u.expanded_bytes,length(u.archive),u.created_at,
+ CASE
+ WHEN EXISTS(SELECT 1 FROM publications p JOIN publication_jobs j ON j.id=p.job_id WHERE j.upload_id=u.id) THEN 'This upload is used by your live website and cannot be deleted.'
+ WHEN EXISTS(SELECT 1 FROM publication_jobs j WHERE j.upload_id=u.id AND j.state IN ('queued','running')) THEN 'This upload is being published. Wait for the operation to finish.'
+ WHEN EXISTS(SELECT 1 FROM publication_jobs j WHERE j.upload_id=u.id) THEN 'Kept for publication history and restoring previous versions. Deleting historical uploads is not supported yet.'
+ WHEN EXISTS(SELECT 1 FROM node_builds b WHERE b.upload_id=u.id AND b.state IN ('queued','running')) THEN 'This upload is being built. Wait for the build to finish.'
+ WHEN EXISTS(SELECT 1 FROM node_builds b WHERE b.upload_id=u.id) THEN 'Kept for build history. Deleting uploads referenced by builds is not supported yet.'
+ ELSE '' END
+ FROM uploads u WHERE u.project_id=? ORDER BY u.created_at DESC,u.id`, project)
 	if err != nil {
 		return nil, err
 	}
 	out := []Upload{}
 	for rows.Next() {
 		var u Upload
-		if err = rows.Scan(&u.ID, &u.ProjectID, &u.SHA256, &u.Files, &u.ExpandedBytes, &u.CompressedBytes, &u.CreatedAt); err != nil {
+		if err = rows.Scan(&u.ID, &u.ProjectID, &u.SHA256, &u.Files, &u.ExpandedBytes, &u.CompressedBytes, &u.CreatedAt, &u.RetentionReason); err != nil {
 			rows.Close()
 			return nil, err
 		}
