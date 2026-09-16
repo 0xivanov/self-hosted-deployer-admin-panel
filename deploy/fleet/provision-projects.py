@@ -4,7 +4,7 @@
 Assignments and credentials remain operator controlled. The portal enforces
 workspace permissions and hosting entitlement before accepting jobs.
 """
-import fcntl, json, os, pwd, re, secrets, sqlite3, subprocess, tempfile
+import fcntl, hashlib, json, os, pwd, re, secrets, sqlite3, subprocess, tempfile
 from pathlib import Path
 
 DATABASE = Path(os.environ.get("PORTAL_DATABASE", "/var/lib/launchstead-portal/portal.sqlite"))
@@ -75,8 +75,10 @@ def main():
                 assignment={"kind":"node","domain":host,"runtime_id":runtime,"toolchain_sha256":pin,"architecture":"arm64"}
                 worker=dict(build_template);worker["project"]=project
                 worker["dependencies_directory"]="/var/lib/launchstead-portal/dependencies/"+project
-                directory=Path(worker["dependencies_directory"]);directory.mkdir(mode=0o700,parents=True,exist_ok=True)
-                account=pwd.getpwnam("launchstead-portal");os.chown(directory,account.pw_uid,account.pw_gid)
+                account=pwd.getpwnam("launchstead-portal")
+                directory=Path(worker["dependencies_directory"]);directory.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+                os.chown(directory.parent,account.pw_uid,account.pw_gid)
+                directory.mkdir(mode=0o700,exist_ok=True);os.chown(directory,account.pw_uid,account.pw_gid)
                 configdir=Path("/etc/launchstead-portal/node-builds");configdir.mkdir(mode=0o700,exist_ok=True);os.chown(configdir,account.pw_uid,account.pw_gid)
                 atomic(configdir/(project+".json"),worker,"launchstead-portal")
                 subprocess.run(["systemctl","enable","--now","launchstead-node-build@"+project+".service"],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -106,7 +108,11 @@ def main():
             atomic(FLEET_CONFIG, fleet, "launchstead-portal")
             atomic(PUBLICATION_SITES, sites, "launchstead-portal")
             atomic(node_path,nodes,"launchstead-portal")
-            subprocess.run(["systemctl", "try-restart", "launchstead-fleet-worker.service"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        fingerprint=hashlib.sha256(json.dumps(fleet,sort_keys=True).encode()).hexdigest()
+        applied=LOCK.parent/"provision-applied.json"
+        if load(applied,None)!=fingerprint:
+            subprocess.run(["systemctl", "restart", "launchstead-fleet-worker.service"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            atomic(applied,fingerprint)
         for project in pending_nodes:
             print(project + ": node runtime assignment pending", flush=True)
 
