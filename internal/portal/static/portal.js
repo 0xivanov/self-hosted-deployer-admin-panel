@@ -3,6 +3,8 @@ const $=id=>document.getElementById(id);
 let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,inviteOnly=false,billingGeneration=0,merchantEnabled=false,merchantCountries=[],merchantGeneration=0,productGeneration=0,merchantOrdersGeneration=0,domainQuotes=false,domainOrderGeneration=0,domainExpiryTimer;
 let nodeStatusCards=new Map(),nodeStatusState=null;
 const projectDomainStates=new Map();
+const projectRefreshes=new Map();
+const domainRefreshes=new WeakMap();
 const nodeStatusInterval=5000;
 const workspacePanels={projects:'projects-panel',billing:'billing-panel',team:'member-panel',domains:'domain-panel',store:'merchant-panel'};
 let currentView=location.pathname.startsWith('/billing/')?'billing':'projects';
@@ -41,11 +43,12 @@ async function api(path,body,signal){const response=await fetch(path,{method:bod
 function error(e){$('error').textContent=e.message;$('error').hidden=false;}
 function stopNodeStatusRefresh(){const state=nodeStatusState;nodeStatusCards.clear();if(!state)return;state.stopped=true;clearTimeout(state.timer);state.timer=null;if(state.controller)state.controller.abort();if(nodeStatusState===state)nodeStatusState=null;nodeStatusCards.clear();}
 function signedOut(){stopBillingRefresh();currentView='projects';stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
-async function loadProjects(){stopBillingRefresh();billingPollCount=0;stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();configureWorkspaceNavigation(selected);if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){const card=document.createElement('div');card.className='project';card.dataset.projectId=project.id;const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');const heading=document.createElement('div');heading.className='project-heading';const icon=document.createElement('span');icon.className='project-icon';icon.textContent=project.kind==='node'?'JS':'</>';heading.append(icon,name,kind);card.append(heading);$('projects').append(card);await projectUploads(card,project,selected.role,version);organizeProject(card);await renderProjectDomains(card,project,selected.role,version);if(version!==generation)return;}if(!data.projects.length){$('projects').textContent='Your first website starts here. Create a project, then upload your files.';$('new-project-details').open=true;}if(selected.role==='owner'){if(domainQuotes)loadDomainOrders(workspace,version);await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
+async function loadProjects(){stopBillingRefresh();billingPollCount=0;stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();configureWorkspaceNavigation(selected);if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){await appendProject(project,selected.role,version);if(version!==generation)return;}if(!data.projects.length){$('projects').textContent='Your first website starts here. Create a project, then upload your files.';$('new-project-details').open=true;}if(selected.role==='owner'){if(domainQuotes)loadDomainOrders(workspace,version);await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
+async function appendProject(project,role,version){if(version!==generation)return;const card=document.createElement('div');card.className='project';card.dataset.projectId=project.id;const name=document.createElement('strong');name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');const heading=document.createElement('div');heading.className='project-heading';const icon=document.createElement('span');icon.className='project-icon';icon.textContent=project.kind==='node'?'JS':'</>';heading.append(icon,name,kind);card.append(heading);$('projects').append(card);await projectUploads(card,project,role,version);if(version!==generation)return;organizeProject(card);await renderProjectDomains(card,project,role,version);}
 async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();if(pendingInvite)showFlow('invite');}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;}}
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();});});
-$('project-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{await api('/api/projects',{workspace:$('workspace').value,name:$('project-name').value,kind:$('project-kind').value});$('project-name').value='';$('new-project-details').open=false;await loadProjects();});});
+$('project-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{const version=generation;const workspace=$('workspace').value;await api('/api/projects',{workspace,name:$('project-name').value,kind:$('project-kind').value});if(version!==generation)return;$('project-name').value='';$('new-project-details').open=false;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;const role=workspaces.find(w=>w.id===workspace)?.role;for(const project of data.projects){if(!projectCard(project)){if(!$('projects').querySelector('.project'))$('projects').replaceChildren();await appendProject(project,role,version);}}startNodeStatusRefresh(version,workspace);});});
 $('workspace').addEventListener('change',()=>loadProjects().catch(error));
 $('logout').addEventListener('click',async()=>{try{await api('/api/logout',{});signedOut();}catch(e){error(e);}});
 function showFlow(kind){
@@ -84,14 +87,14 @@ window.addEventListener('hashchange',()=>{
 });
 
 async function loadMembers(workspace,version){
- const data=await api('/api/members?workspace='+encodeURIComponent(workspace));if(version!==generation)return;
+ const data=await api('/api/members?workspace='+encodeURIComponent(workspace));if(version!==generation)return;$('members').replaceChildren();
  for(const member of data.members){
   const row=document.createElement('form');row.className='project';const title=document.createElement('strong');title.textContent=member.email;
   const label=document.createElement('label');label.textContent='Role for '+member.email;
   const select=document.createElement('select');for(const [value,text] of [['owner','Owner'],['developer','Developer'],['viewer','Viewer'],['','Remove from workspace']]){const option=document.createElement('option');option.value=value;option.textContent=text;select.append(option);}select.value=member.role;label.append(select);
   const button=document.createElement('button');button.textContent='Apply change';row.append(title,label,button);
   row.addEventListener('submit',event=>{event.preventDefault();if(select.value===member.role)return;if(!confirm('Change access for '+member.email+' to '+(select.value||'removed')+'? Their sessions will be signed out.'))return;
-   submit(row,async()=>{await api('/api/members',{workspace,user:member.id,role:select.value});try{await loadSession();}catch(e){if(e.status===401)signedOut();else throw e;}});
+   submit(row,async()=>{await api('/api/members',{workspace,user:member.id,role:select.value});try{await api('/api/session');await loadMembers(workspace,version);}catch(e){if(e.status===401)signedOut();else throw e;}});
   });$('members').append(row);
  }
  await loadInvitations(workspace,version);
@@ -99,9 +102,44 @@ async function loadMembers(workspace,version){
 
 async function loadInvitations(workspace,version){
  const data=await api('/api/invitations?workspace='+encodeURIComponent(workspace));if(version!==generation)return;$('invitations').replaceChildren();
- for(const invite of data.invitations){const row=document.createElement('div');row.className='project';const label=document.createElement('span');label.textContent=invite.email+' · '+invite.role+' · expires '+new Date(invite.expires_at*1000).toLocaleDateString();const button=document.createElement('button');button.textContent='Revoke invitation';button.addEventListener('click',async()=>{button.disabled=true;try{await api('/api/invitations/revoke',{workspace,id:invite.id});await loadProjects();}catch(e){error(e);button.disabled=false;}});row.append(label,button);$('invitations').append(row);}
+ for(const invite of data.invitations){const row=document.createElement('div');row.className='project';const label=document.createElement('span');label.textContent=invite.email+' · '+invite.role+' · expires '+new Date(invite.expires_at*1000).toLocaleDateString();const button=document.createElement('button');button.textContent='Revoke invitation';button.addEventListener('click',async()=>{button.disabled=true;try{await api('/api/invitations/revoke',{workspace,id:invite.id});await loadInvitations(workspace,version);}catch(e){error(e);button.disabled=false;}});row.append(label,button);$('invitations').append(row);}
 }
-$('invite-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{await api('/api/invitations',{workspace:$('workspace').value,email:$('invite-email').value,role:$('invite-role').value});$('invite-email').value='';await loadProjects();});});
+$('invite-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{const workspace=$('workspace').value;const version=generation;await api('/api/invitations',{workspace,email:$('invite-email').value,role:$('invite-role').value});if(version!==generation)return;$('invite-email').value='';await loadInvitations(workspace,version);});});
+
+function projectCard(project){return [...$('projects').children].find(card=>card.dataset.projectId===project.id);}
+function refreshProject(project,role,version){
+ const previous=projectRefreshes.get(project.id)||Promise.resolve();
+ const pending=previous.catch(()=>{}).then(async()=>{
+  const card=projectCard(project);if(version!==generation||!card)return;
+  card.setAttribute('aria-busy','true');
+  try{
+   const staging=document.createElement('div');
+   await projectUploads(staging,project,role,version);
+   if(version!==generation||!card.isConnected)return;
+   organizeProject(staging);
+   const oldDetails=[...card.querySelectorAll('details')];
+   const freshDetails=[...staging.querySelectorAll('details')];
+   const used=new Set();
+   for(const fresh of freshDetails){const old=oldDetails.find(item=>!used.has(item)&&item.className===fresh.className);if(old){fresh.open=old.open;used.add(old);}}
+   // Keep the actual file input, not a copied value: browsers protect FileList.
+   const active=document.activeElement;const focused=card.contains(active)?active:null;
+   const upload=card.querySelector('.upload-details form');const freshUpload=staging.querySelector('.upload-details form');
+   if(upload&&freshUpload)freshUpload.replaceWith(upload);
+   const focusText=focused?.textContent;const focusTag=focused?.tagName;
+   const heading=card.querySelector('.project-heading');const domains=card.querySelector('.project-domains');
+   const children=[heading,...staging.childNodes,domains].filter(Boolean);
+   // Move retained nodes in place rather than detaching their inputs.
+   for(const child of [...card.childNodes])if(!children.includes(child))child.remove();
+   for(const child of children)card.append(child);
+   if(focused?.isConnected)focused.focus({preventScroll:true});
+   else if(focusText){const replacement=[...card.querySelectorAll('button,summary,a')].find(item=>item.tagName===focusTag&&item.textContent===focusText);replacement?.focus({preventScroll:true});}
+   startNodeStatusRefresh(version,$('workspace').value);
+  }finally{card.removeAttribute('aria-busy');}
+ });
+ projectRefreshes.set(project.id,pending);
+ pending.finally(()=>{if(projectRefreshes.get(project.id)===pending)projectRefreshes.delete(project.id);}).catch(()=>{});
+ return pending;
+}
 
 function disclosure(title,className){
  const details=document.createElement('details');details.className=className;
@@ -135,18 +173,20 @@ function domainRecord(label,name,value){
  row.append(kind,host,entry);return row;
 }
 async function renderProjectDomains(card,project,role,version){
+ const request=(domainRefreshes.get(card)||0)+1;domainRefreshes.set(card,request);
  const workspace=$('workspace').value;
  const state=projectDomainStates.get(project.id)||{};
- const details=disclosure('Connect a domain','project-domains');details.open=state.open===true;
+ const existing=card.querySelector('.project-domains');
+ const details=disclosure('Connect a domain','project-domains');details.open=existing?existing.open:state.open===true;
  const summary=details.querySelector('summary');summary.addEventListener('click',()=>{state.open=!details.open;projectDomainStates.set(project.id,state);});
- const content=document.createElement('div');content.className='domain-content';details.append(content);card.append(details);
+ const content=document.createElement('div');content.className='domain-content';details.append(content);
  try{
   const data=await api('/api/project-domains?project='+encodeURIComponent(project.id));
   if(version!==generation||workspace!==$('workspace').value)return;
   const domains=Array.isArray(data.domains)?data.domains:[];const target=domainText(data.target)||'159.195.146.26';
   const intro=document.createElement('p');intro.className='muted';intro.textContent='Connect your root domain or www as a separate connection. Keep DNS records DNS-only, turn off Cloudflare proxying, and do not add an AAAA record. Your domain stays with your current provider. Connect the root and www separately if you want both.';content.append(intro);
   if(role!=='viewer'){
-   const form=document.createElement('form');form.className='domain-connect-form';const label=document.createElement('label');label.textContent='Hostname';const input=document.createElement('input');input.type='text';input.maxLength=253;input.required=true;input.autocomplete='off';input.spellcheck=false;input.placeholder='www.example.com';input.value=domainText(state.input);input.addEventListener('input',()=>{state.input=input.value;projectDomainStates.set(project.id,state);});label.append(input);const button=document.createElement('button');button.type='submit';button.textContent='Connect domain';form.append(label,button);form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{const hostname=input.value.trim();if(!hostname)throw new Error('Enter a hostname.');await api('/api/project-domains',{project:project.id,hostname});state.input='';projectDomainStates.set(project.id,state);if(version===generation&&workspace===$('workspace').value)await loadProjects();});});content.append(form);
+   const form=document.createElement('form');form.className='domain-connect-form';const label=document.createElement('label');label.textContent='Hostname';const input=document.createElement('input');input.type='text';input.maxLength=253;input.required=true;input.autocomplete='off';input.spellcheck=false;input.placeholder='www.example.com';input.value=domainText(state.input);input.addEventListener('input',()=>{state.input=input.value;projectDomainStates.set(project.id,state);});label.append(input);const button=document.createElement('button');button.type='submit';button.textContent='Connect domain';form.append(label,button);form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{const hostname=input.value.trim();if(!hostname)throw new Error('Enter a hostname.');await api('/api/project-domains',{project:project.id,hostname});state.input='';input.value='';projectDomainStates.set(project.id,state);if(version===generation&&workspace===$('workspace').value)await renderProjectDomains(card,project,role,version);});});content.append(form);
   }
   if(!domains.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='No custom domains connected yet.';content.append(empty);}
   for(const domain of domains){
@@ -158,14 +198,19 @@ async function renderProjectDomains(card,project,role,version){
     const note=document.createElement('p');note.className='muted';note.textContent='Add these records at your DNS provider, then verify. Some providers expect @ for the root domain and only the subdomain part for other record names. HTTPS is set up automatically after verification.';row.append(note);
    }
    const actions=document.createElement('div');actions.className='domain-actions';if(domain.state==='active'){const visit=document.createElement('a');visit.href='https://'+domain.hostname;visit.target='_blank';visit.rel='noopener noreferrer';visit.className='site-link';visit.textContent='Visit website ↗';actions.append(visit);}
-   if(role!=='viewer'&&domain.state!=='active'&&domain.state!=='removing'){const verify=document.createElement('button');verify.type='button';verify.textContent='Verify DNS';verify.addEventListener('click',async()=>{verify.disabled=true;try{await api('/api/project-domains/verify',{project:project.id,id:domain.id});if(version===generation&&workspace===$('workspace').value)await loadProjects();}catch(e){if(version===generation&&workspace===$('workspace').value){error(e);verify.disabled=false;}}});actions.append(verify);}
-   const refresh=document.createElement('button');refresh.type='button';refresh.className='button-quiet';refresh.textContent='Refresh status';refresh.addEventListener('click',()=>loadProjects().catch(e=>{if(version===generation&&workspace===$('workspace').value)error(e);}));actions.append(refresh);
-   if(role!=='viewer'&&domain.state!=='removing'){const remove=document.createElement('button');remove.type='button';remove.className='button-quiet';remove.textContent='Remove';remove.addEventListener('click',async()=>{if(!confirm('Remove '+domainText(domain.hostname)+' from this project?'))return;remove.disabled=true;try{await api('/api/project-domains/remove',{project:project.id,id:domain.id});if(version===generation&&workspace===$('workspace').value)await loadProjects();}catch(e){if(version===generation&&workspace===$('workspace').value){error(e);remove.disabled=false;}}});actions.append(remove);}
+   if(role!=='viewer'&&domain.state!=='active'&&domain.state!=='removing'){const verify=document.createElement('button');verify.type='button';verify.textContent='Verify DNS';verify.addEventListener('click',async()=>{verify.disabled=true;try{await api('/api/project-domains/verify',{project:project.id,id:domain.id});if(version===generation&&workspace===$('workspace').value)await renderProjectDomains(card,project,role,version);}catch(e){if(version===generation&&workspace===$('workspace').value){error(e);verify.disabled=false;}}});actions.append(verify);}
+   const refresh=document.createElement('button');refresh.type='button';refresh.className='button-quiet';refresh.textContent='Refresh status';refresh.addEventListener('click',()=>renderProjectDomains(card,project,role,version).catch(e=>{if(version===generation&&workspace===$('workspace').value)error(e);}));actions.append(refresh);
+   if(role!=='viewer'&&domain.state!=='removing'){const remove=document.createElement('button');remove.type='button';remove.className='button-quiet';remove.textContent='Remove';remove.addEventListener('click',async()=>{if(!confirm('Remove '+domainText(domain.hostname)+' from this project?'))return;remove.disabled=true;try{await api('/api/project-domains/remove',{project:project.id,id:domain.id});if(version===generation&&workspace===$('workspace').value)await renderProjectDomains(card,project,role,version);}catch(e){if(version===generation&&workspace===$('workspace').value){error(e);remove.disabled=false;}}});actions.append(remove);}
    row.append(actions);content.append(row);
   }
  }catch(e){
+  if(version!==generation||workspace!==$('workspace').value)return;
+  if(existing){error(e);return;}
   content.replaceChildren();const note=document.createElement('p');note.className='domain-error';note.textContent='Custom domain status is unavailable. Use Refresh status to try again.';content.append(note);
  }
+ if(version!==generation||workspace!==$('workspace').value||!card.isConnected||domainRefreshes.get(card)!==request)return;
+ const previous=card.querySelector('.project-domains');
+ if(previous){const active=document.activeElement;const focused=previous.contains(active)?active:null;const text=focused?.textContent;details.open=previous.open;const form=previous.querySelector('form');const fresh=details.querySelector('form');if(form&&fresh)fresh.replaceWith(form);previous.replaceWith(details);if(focused?.isConnected)focused.focus({preventScroll:true});else if(text)[...details.querySelectorAll('button,summary,a')].find(item=>item.tagName===focused.tagName&&item.textContent===text)?.focus({preventScroll:true});}else card.append(details);
 }
 
 async function projectUploads(card,project,role,version){
@@ -175,18 +220,18 @@ async function projectUploads(card,project,role,version){
  const pending=publication.jobs.some(j=>j.state==='queued'||j.state==='running');const active=publication.jobs.find(j=>j.id===publication.active);
  const status=document.createElement('p');status.textContent=pending?(active?'Publication pending · Current revision '+active.revision:'Publication pending'):active?'Published revision '+active.revision:publication.available?'Ready to publish':'Hosting setup pending. You can upload files now; publishing will be available once setup is complete.';card.append(status);
  if(active&&publication.site){const link=document.createElement('a');link.href=publication.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Visit website ↗';card.append(link);}
- const refresh=document.createElement('button');refresh.textContent='Refresh release status';refresh.addEventListener('click',()=>loadProjects().catch(error));card.append(refresh);
+ const refresh=document.createElement('button');refresh.textContent='Refresh release status';refresh.addEventListener('click',()=>refreshProject(project,role,version).catch(error));card.append(refresh);
  for(const job of publication.jobs){const line=document.createElement('p');line.textContent='Revision '+job.revision+' · '+job.state+(job.id===publication.active?' · Current':'')+(job.state==='running'?' · Applying or awaiting reconciliation':'');card.append(line);
-  if(publication.available&&role==='owner'&&job.state==='running'){const resume=document.createElement('button');resume.textContent='Resume revision '+job.revision;resume.addEventListener('click',async()=>{if(!confirm('Resume revision '+job.revision+'? Its saved website files will be published using your permission. A worker that is still active cannot be interrupted.'))return;resume.disabled=true;try{await api('/api/publications/resume',{project:project.id,job:job.id,upload:job.upload_id});if(version===generation)await loadProjects();}catch(e){error(e);resume.disabled=false;}});card.append(resume);}
+  if(publication.available&&role==='owner'&&job.state==='running'){const resume=document.createElement('button');resume.textContent='Resume revision '+job.revision;resume.addEventListener('click',async()=>{if(!confirm('Resume revision '+job.revision+'? Its saved website files will be published using your permission. A worker that is still active cannot be interrupted.'))return;resume.disabled=true;try{await api('/api/publications/resume',{project:project.id,job:job.id,upload:job.upload_id});if(version===generation)await refreshProject(project,role,version);}catch(e){error(e);resume.disabled=false;}});card.append(resume);}
  }
  const copy=document.createElement('p');copy.textContent=project.kind==='node'?'ZIP up to 10 MiB. Include package.json with a start script and package-lock.json at the root. Omit node_modules and secrets.':'ZIP up to 10 MiB. Include index.html at the root. Omit secrets.';card.append(copy);
  if(role!=='viewer'){
   const form=document.createElement('form');const label=document.createElement('label');label.textContent='Project ZIP';const input=document.createElement('input');input.type='file';input.accept='.zip,application/zip';input.required=true;label.append(input);const button=document.createElement('button');button.textContent='Upload ZIP';form.append(label,button);card.append(form);
-  form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{const file=input.files[0];if(!file||file.size>10*1024*1024)throw new Error('Select a ZIP no larger than 10 MiB.');const response=await fetch('/api/uploads?project='+encodeURIComponent(project.id),{method:'POST',headers:{'Content-Type':'application/zip','X-CSRF-Token':csrf},body:file});const data=await response.json();if(!response.ok)throw new Error(data.error||'Upload failed');if(version===generation)await loadProjects();});});
+  form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{const file=input.files[0];if(!file||file.size>10*1024*1024)throw new Error('Select a ZIP no larger than 10 MiB.');const response=await fetch('/api/uploads?project='+encodeURIComponent(project.id),{method:'POST',headers:{'Content-Type':'application/zip','X-CSRF-Token':csrf},body:file});const data=await response.json();if(!response.ok)throw new Error(data.error||'Upload failed');input.value='';if(version===generation)await refreshProject(project,role,version);});});
  }
  for(const upload of result.uploads){const row=document.createElement('div');const text=document.createElement('p');text.textContent='Validated · '+upload.files+(upload.files===1?' file · ':' files · ')+(upload.compressed_bytes/1024).toFixed(1)+' KiB · '+new Date(upload.created_at*1000).toLocaleString();row.append(text);
- if(publication.available&&role!=='viewer'){const publish=document.createElement('button');const previous=publication.jobs.some(j=>j.upload_id===upload.id&&j.state==='succeeded');const isCurrent=active&&active.upload_id===upload.id;publish.textContent=isCurrent?'Current upload':previous?'Restore this upload':'Publish this upload';publish.disabled=pending||isCurrent;const requestKey=crypto.randomUUID();publish.addEventListener('click',async()=>{publish.disabled=true;try{await api('/api/publications',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await loadProjects();}catch(e){error(e);publish.disabled=false;}});row.append(publish);}
-  if(role!=='viewer'){const button=document.createElement('button');button.textContent='Delete upload';button.addEventListener('click',async()=>{if(!confirm('Delete this saved upload?'))return;button.disabled=true;try{await api('/api/uploads/delete',{project:project.id,id:upload.id});if(version===generation)await loadProjects();}catch(e){error(e);button.disabled=false;}});row.append(button);}card.append(row);
+ if(publication.available&&role!=='viewer'){const publish=document.createElement('button');const previous=publication.jobs.some(j=>j.upload_id===upload.id&&j.state==='succeeded');const isCurrent=active&&active.upload_id===upload.id;publish.textContent=isCurrent?'Current upload':previous?'Restore this upload':'Publish this upload';publish.disabled=pending||isCurrent;const requestKey=crypto.randomUUID();publish.addEventListener('click',async()=>{publish.disabled=true;try{await api('/api/publications',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await refreshProject(project,role,version);}catch(e){error(e);publish.disabled=false;}});row.append(publish);}
+  if(role!=='viewer'){const button=document.createElement('button');button.textContent='Delete upload';button.addEventListener('click',async()=>{if(!confirm('Delete this saved upload?'))return;button.disabled=true;try{await api('/api/uploads/delete',{project:project.id,id:upload.id});if(version===generation)await refreshProject(project,role,version);}catch(e){error(e);button.disabled=false;}});row.append(button);}card.append(row);
  }
 }
 
@@ -218,12 +263,12 @@ function renderNodeLive(entry,node){
  if(active&&node.site){
   const link=document.createElement('a');link.href=node.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Visit website ↗';link.className='site-link';live.append(link);
  }
- const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh status';refresh.className='refresh-status';refresh.addEventListener('click',()=>loadProjects().catch(error));live.append(refresh);const history=disclosure('Builds & releases','project-history');history.open=historyOpen;live.append(history);
+ const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh status';refresh.className='refresh-status';refresh.addEventListener('click',()=>refreshProject(project,role,version).catch(error));live.append(refresh);const history=disclosure('Builds & releases','project-history');history.open=historyOpen;live.append(history);
  for(const build of builds){
   const line=document.createElement('p');line.textContent='Build · '+build.state+' · '+new Date(build.created_at*1000).toLocaleString();history.append(line);
   if(build.state==='failed'){const hint=document.createElement('p');hint.textContent=role==='viewer'?'Build failed.':'Build failed. Review your project or contact the operator, then choose Build again.';history.append(hint);}
   if(role!=='viewer'&&build.state==='queued'){
-   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel build';cancel.addEventListener('click',async()=>{cancel.disabled=true;entry.mutating=true;try{await api('/api/node/builds/cancel',{project:project.id,id:build.id});if(version===generation)await loadProjects();}catch(e){if(version===generation)error(e);cancel.disabled=false;}finally{entry.mutating=false;}});history.append(cancel);
+   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel build';cancel.addEventListener('click',async()=>{cancel.disabled=true;entry.mutating=true;try{await api('/api/node/builds/cancel',{project:project.id,id:build.id});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation)error(e);cancel.disabled=false;}finally{entry.mutating=false;}});history.append(cancel);
   }
  }
  const releaseHeading=document.createElement('p');releaseHeading.textContent='Saved releases';history.append(releaseHeading);
@@ -233,18 +278,18 @@ function renderNodeLive(entry,node){
   label.textContent='Release from '+new Date(release.created_at*1000).toLocaleString()+(deployment?' · '+deployment.state:'');row.append(label);
   if(node.available&&role!=='viewer'){
    const deploy=document.createElement('button');deploy.type='button';deploy.textContent=release.build_id===activeRelease?'Current':deployment?'Restore':'Deploy';deploy.disabled=pendingDeployment||release.build_id===activeRelease;
-   const requestKey=entry.deployKeys.get(release.build_id)||crypto.randomUUID();entry.deployKeys.set(release.build_id,requestKey);deploy.addEventListener('click',async()=>{deploy.disabled=true;entry.mutating=true;try{await api('/api/node/deployments',{project:project.id,release:release.build_id,key:requestKey});if(version===generation)await loadProjects();}catch(e){if(version===generation)error(e);deploy.disabled=false;}finally{entry.mutating=false;}});row.append(deploy);
+   const requestKey=entry.deployKeys.get(release.build_id)||crypto.randomUUID();entry.deployKeys.set(release.build_id,requestKey);deploy.addEventListener('click',async()=>{deploy.disabled=true;entry.mutating=true;try{await api('/api/node/deployments',{project:project.id,release:release.build_id,key:requestKey});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation)error(e);deploy.disabled=false;}finally{entry.mutating=false;}});row.append(deploy);
   }
   const releasePending=deployments.some(item=>item.release_id===release.build_id&&(item.state==='queued'||item.state==='running'));
   if(role!=='viewer'&&release.build_id!==activeRelease&&!releasePending){
-   const remove=document.createElement('button');remove.type='button';remove.textContent='Delete release';remove.addEventListener('click',async()=>{if(!confirm('Delete this saved release?'))return;remove.disabled=true;entry.mutating=true;try{await api('/api/node/releases/delete',{project:project.id,id:release.build_id});if(version===generation)await loadProjects();}catch(e){if(version===generation)error(e);remove.disabled=false;}finally{entry.mutating=false;}});row.append(remove);
+   const remove=document.createElement('button');remove.type='button';remove.textContent='Delete release';remove.addEventListener('click',async()=>{if(!confirm('Delete this saved release?'))return;remove.disabled=true;entry.mutating=true;try{await api('/api/node/releases/delete',{project:project.id,id:release.build_id});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation)error(e);remove.disabled=false;}finally{entry.mutating=false;}});row.append(remove);
   }
   history.append(row);
  }
  const historyHeading=document.createElement('p');historyHeading.textContent='Deployment history';history.append(historyHeading);
  for(const deployment of deployments){
   const row=document.createElement('div');const label=document.createElement('p');label.textContent='Revision '+deployment.revision+' · '+deployment.state+(deployment.id===active?.id?' · Current':'');row.append(label);
-  if(role!=='viewer'&&deployment.state==='queued'){const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel deployment';cancel.addEventListener('click',async()=>{cancel.disabled=true;entry.mutating=true;try{await api('/api/node/deployments/cancel',{project:project.id,id:deployment.id});if(version===generation)await loadProjects();}catch(e){if(version===generation)error(e);cancel.disabled=false;}finally{entry.mutating=false;}});row.append(cancel);}
+  if(role!=='viewer'&&deployment.state==='queued'){const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel deployment';cancel.addEventListener('click',async()=>{cancel.disabled=true;entry.mutating=true;try{await api('/api/node/deployments/cancel',{project:project.id,id:deployment.id});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation)error(e);cancel.disabled=false;}finally{entry.mutating=false;}});row.append(cancel);}
   history.append(row);
  }
  entry.node=node;entry.active=builds.some(nodeJobActive)||deployments.some(nodeJobActive);
@@ -268,7 +313,7 @@ async function pollNodeStatus(state){
 }
 function startNodeStatusRefresh(version,workspace){
  if(version!==generation||workspace!==$('workspace').value)return;
- if([...nodeStatusCards.values()].some(entry=>entry.version===version&&entry.active)){const state={version,workspace,timer:null,inFlight:false,stopped:false,controller:null};nodeStatusState=state;state.timer=setTimeout(()=>pollNodeStatus(state),nodeStatusInterval);}
+ if([...nodeStatusCards.values()].some(entry=>entry.version===version&&entry.active)){if(nodeStatusState){nodeStatusState.stopped=true;clearTimeout(nodeStatusState.timer);nodeStatusState.controller?.abort();}const state={version,workspace,timer:null,inFlight:false,stopped:false,controller:null};nodeStatusState=state;state.timer=setTimeout(()=>pollNodeStatus(state),nodeStatusInterval);}
 }
 
 function nodeUploadRows(card,project,role,version,result,state){
@@ -276,13 +321,13 @@ function nodeUploadRows(card,project,role,version,result,state){
  if(role!=='viewer'){
   const starter=document.createElement('a');starter.href='/examples/node-website.zip';starter.download='node-website.zip';starter.textContent='Download a starter website';card.append(starter);
   const form=document.createElement('form');const label=document.createElement('label');label.textContent='Project ZIP';const input=document.createElement('input');input.type='file';input.accept='.zip,application/zip';input.required=true;label.append(input);const button=document.createElement('button');button.textContent='Upload ZIP';form.append(label,button);card.append(form);
-  form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{const file=input.files[0];if(!file||file.size>10*1024*1024)throw new Error('Select a ZIP no larger than 10 MiB.');const response=await fetch('/api/uploads?project='+encodeURIComponent(project.id),{method:'POST',headers:{'Content-Type':'application/zip','X-CSRF-Token':csrf},body:file});const data=await response.json();if(!response.ok)throw new Error(data.error||'Upload failed');if(version===generation)await loadProjects();});});
+  form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{const file=input.files[0];if(!file||file.size>10*1024*1024)throw new Error('Select a ZIP no larger than 10 MiB.');const response=await fetch('/api/uploads?project='+encodeURIComponent(project.id),{method:'POST',headers:{'Content-Type':'application/zip','X-CSRF-Token':csrf},body:file});const data=await response.json();if(!response.ok)throw new Error(data.error||'Upload failed');input.value='';if(version===generation)await refreshProject(project,role,version);});});
  }
  for(const upload of result.uploads){const row=document.createElement('div');const text=document.createElement('p');text.textContent='Validated · '+upload.files+(upload.files===1?' file · ':' files · ')+(upload.compressed_bytes/1024).toFixed(1)+' KiB · '+new Date(upload.created_at*1000).toLocaleString();row.append(text);
   if(state&&role!=='viewer'){
-   const build=state.builds.find(item=>item.upload_id===upload.id);const saved=build&&state.releases.some(release=>release.build_id===build.id);const busy=state.builds.some(item=>item.state==='queued'||item.state==='running');const button=document.createElement('button');button.type='button';button.textContent=saved?'Built':build&&build.state==='queued'?'Build queued':build&&build.state==='running'?'Building':build?'Build again':'Build';button.disabled=busy||!!saved||!state.node.available;nodeStatusCards.get(project.id).uploadButtons.push({button,upload});const requestKey=crypto.randomUUID();button.addEventListener('click',async()=>{button.disabled=true;const entry=nodeStatusCards.get(project.id);entry.mutating=true;try{await api('/api/node/builds',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await loadProjects();}catch(e){if(version===generation)error(e);button.disabled=false;}finally{entry.mutating=false;}});row.append(button);
+   const build=state.builds.find(item=>item.upload_id===upload.id);const saved=build&&state.releases.some(release=>release.build_id===build.id);const busy=state.builds.some(item=>item.state==='queued'||item.state==='running');const button=document.createElement('button');button.type='button';button.textContent=saved?'Built':build&&build.state==='queued'?'Build queued':build&&build.state==='running'?'Building':build?'Build again':'Build';button.disabled=busy||!!saved||!state.node.available;nodeStatusCards.get(project.id).uploadButtons.push({button,upload});const requestKey=crypto.randomUUID();button.addEventListener('click',async()=>{button.disabled=true;const entry=nodeStatusCards.get(project.id);entry.mutating=true;try{await api('/api/node/builds',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation)error(e);button.disabled=false;}finally{entry.mutating=false;}});row.append(button);
   }
-  if(role!=='viewer'){const button=document.createElement('button');button.type='button';button.textContent='Delete upload';button.addEventListener('click',async()=>{if(!confirm('Delete this saved upload?'))return;button.disabled=true;try{await api('/api/uploads/delete',{project:project.id,id:upload.id});if(version===generation)await loadProjects();}catch(e){error(e);button.disabled=false;}});row.append(button);}card.append(row);
+  if(role!=='viewer'){const button=document.createElement('button');button.type='button';button.textContent='Delete upload';button.addEventListener('click',async()=>{if(!confirm('Delete this saved upload?'))return;button.disabled=true;try{await api('/api/uploads/delete',{project:project.id,id:upload.id});if(version===generation)await refreshProject(project,role,version);}catch(e){error(e);button.disabled=false;}});row.append(button);}card.append(row);
  }
 }
 
