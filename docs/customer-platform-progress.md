@@ -1957,3 +1957,29 @@ Reviewed the signed-in portal in Brave and deployed a Launchstead visual refresh
 Billing defaults to the Billing view on checkout return, reads server-confirmed subscription status, and refreshes when the tab regains focus or becomes visible. Pending billing requests are polled every five seconds for up to two minutes, with workspace/generation guards and cancellation on navigation/signout. A return URL alone never marks payment successful. Subscription status is shown above expandable history/usage, and payment-method management is distinguished from subscription checkout.
 
 Validation: JavaScript syntax and preserved unique HTML IDs checked; Linux portal rebuilt and deployed. Brave walkthrough confirmed active/paid subscription display, Projects/Team navigation, and preservation of an unsubmitted project draft across views. The draft was cleared without creating a project. No account, payment or workspace membership data was changed.
+
+## Live static website pilot, 2026-09-16
+
+Enabled the assigned static project `testing 2` in workspace `testing` at
+https://testing-two.159-195-146-26.sslip.io. Dedicated runtime user, private
+loopback management, a project-bound publication worker and verified origin TLS
+connect the existing portal ZIP/publish/restore features to a public HTTPS site.
+Public TLS is issued by the existing cert-manager issuer. Deployment units and
+route are in `deploy/static-pilot`; private settings remain outside the repo.
+
+A Brave walkthrough uploaded and published version 1, uploaded and published
+version 2, and restored version 1 as revision 3. Public responses matched all
+three releases. The restored release survived runtime restart. Management
+without authentication returned 403 and content POST returned 405. Existing
+operator and portal services remained active. Focused static runtime,
+publication, site and publisher integration checks passed.
+
+Added static state, private configuration, binaries and units to the existing
+Backblaze recovery backup. A manual offsite run completed successfully while
+the publication worker was briefly stopped; serving continued and the worker
+was restarted. Full recovery qualification remains separate.
+
+This completes the one-project static publishing demonstration. New projects
+still need manual runtime/route assignment. Automatic provisioning, a live
+Node.js pilot, domain resale and production payment/merchant qualification
+remain outside this milestone. No real payment or domain purchase was made.

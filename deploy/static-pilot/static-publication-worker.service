@@ -1,0 +1,29 @@
+[Unit]
+Description=Launchstead static publication worker
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=simple
+User=launchstead-portal
+Group=launchstead-portal
+ExecStart=/opt/launchstead-portal/publication-worker --database /var/lib/launchstead-portal/portal.sqlite --assignment /etc/launchstead-portal/static-assignment.json
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/launchstead-portal
+MemoryMax=256M
+TasksMax=64
+[Install]
+WantedBy=multi-user.target

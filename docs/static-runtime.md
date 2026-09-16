@@ -1,6 +1,6 @@
 # Static runtime process
 
-This is a development runtime for one assigned static project. It has no portal database, fleet credentials or payment keys. Production rollout still requires the project assignment and reconciliation UI, certificate provisioning, network deployment and recovery qualification. Do not install it on the existing VPS/Pi fleet as an unreviewed deployment step.
+This is a development runtime for one assigned static project. It has no portal database, fleet credentials or payment keys. A reviewed one-project VPS pilot is documented in [static-pilot-deployment.md](static-pilot-deployment.md). General rollout still requires automatic project assignment, provisioning and recovery qualification.
 
 Build with `go build -o static-runtime ./cmd/static-runtime`. Start with `static-runtime --config /private/runtime/config.json`.
 
@@ -29,4 +29,4 @@ Management binds only an explicit private or loopback IP, never a wildcard, host
 
 The process validates configuration and loads certificates before listening. If either listener cannot start, it closes the other and releases the site directory. HTTP headers, reads, writes and idle connections have time limits. SIGINT/SIGTERM drains requests, closes both listeners and releases the runtime owner lock. Sources and the active revision survive restart. Filesystem durability and operating-system process-kill qualification still need testing on the production runtime platform.
 
-The worker uses the management origin as its `endpoint`, the same `project` and `token`, and optionally a management CA file. Its only runtime routes are authenticated `POST /publish` and `GET /status`. The content listener does not expose these operations. A publication transport error is an uncertain outcome, not proof that nothing changed; retain the job and reconcile/retry the same revision. The panel's Publish button remains unavailable until assignment and reconciliation work is complete.
+The worker uses the management origin as its `endpoint`, the same `project` and `token`, and optionally a management CA file. Its only runtime routes are authenticated `POST /publish` and `GET /status`. The content listener does not expose these operations. A publication transport error is an uncertain outcome, not proof that nothing changed; retain the job and reconcile/retry the same revision. The panel exposes Publish and Restore for projects in the operator's publication-sites mapping. Unassigned projects remain unavailable for publishing.
