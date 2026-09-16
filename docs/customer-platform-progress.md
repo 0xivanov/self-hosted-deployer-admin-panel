@@ -1,6 +1,17 @@
 # Customer platform implementation progress
 
-Updated: 2026-09-14. The four-part goal remains active and incomplete. Delivery prioritizes usable features with focused checks, as reaffirmed by the user. The separate customer portal and hosting test billing worker were deployed to the VPS on 2026-09-16 with signup disabled. See customer-portal-deployment.md; customer website runtime workers and live payments remain undeployed.
+Updated: 2026-09-17. The four-part goal remains active and incomplete. The private portal now runs customer websites through the self-hosted deployer on the two Pi workers. The Mac is no longer in the hosting/build path. Registration is limited by the operator's allowlist; Stripe remains in test mode, and live merchant sales and domain resale are not enabled. See the current snapshot below and [fleet deployment](../deploy/fleet/README.md). Older chronological entries describe superseded implementation stages.
+
+## Current snapshot, September 17
+
+- Accounts: verified multi-user accounts, workspace roles, invitations and account mail are implemented. Private-launch registration is allowlisted. Public-service abuse controls and operator recovery qualification remain gates.
+- Websites: static and Node uploads, builds, publishing and prior-release restoration connect to the existing deployer fleet. Runtime replicas run on both Pi workers; the home Pi performs restricted container builds. This is shared-kernel private-launch isolation, not certification for hostile public uploads.
+- Website management: customer-owned domains support DNS verification, attachment and HTTPS. Actions update in place. Protected uploads explain why they cannot be removed. Owner-confirmed project deletion was deployed from `296e3c6`, using core CLI `d4a14ca`; cleanup retries before releasing the hosting slot. Four existing projects remained present and healthy after that rollout. No user project was deleted during verification.
+- Payments: hosting checkout and management work in Stripe test mode. Live hosting charges and merchant Connect sales still require provider configuration and end-to-end release evidence.
+- Domain resale: purchasing, renewal and transfer-out remain a separate unfinished goal. Connecting an already-owned domain does not complete resale.
+- Next local feature: project display-name editing, described in the latest entry below. No live changes are made by the September 17 scheduled run.
+
+Release gates still include provider activation, payment/registrar reconciliation, backup recovery, appropriate isolation and a real invited-customer pilot. Do not infer completion from historical component test results.
 
 ## Implemented and verified
 
@@ -2043,3 +2054,10 @@ running. Host reboot/recovery, automatic provisioning, storage cleanup/quotas,
 general frameworks/dependencies and always-on hosting remain. VPS offsite backup
 includes portal jobs/releases and the new worker/route units; it does not cover
 the Mac VM disks/runtime state. No payment or domain purchase was performed.
+
+
+## Project display-name editing, September 17
+
+Added `POST /api/projects/rename` and a project-card name editor for owners and developers. Names are trimmed, limited to 100 bytes and unique within a workspace. Viewers and other workspaces cannot rename a project; projects awaiting deletion reject changes. Renaming preserves the project ID, hosting address, custom-domain mapping, uploads and runtime assignment. It records an audit event and does not require a new hosting subscription or redeployment.
+
+The browser updates only the affected heading and refreshes the typed-name deletion confirmation; it preserves the rest of the project card. Focused checks cover tenant and role boundaries, CSRF, duplicate/invalid names, stable identity and the deletion fence. No schema migration is required. This scheduled-run feature is implemented locally and is not yet deployed to the public portal. No live project, payment, domain registration or node was changed.

@@ -730,6 +730,20 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpJSON(w, project)
+	case r.URL.Path == "/api/projects/rename" && r.Method == "POST":
+		var input struct {
+			Project string `json:"project"`
+			Name    string `json:"name"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		project, err := h.store.RenameProject(r.Context(), cookie.Value, input.Project, input.Name)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, project)
 	case r.URL.Path == "/api/projects/delete" && r.Method == "POST":
 		var input struct {
 			Project string `json:"project"`
