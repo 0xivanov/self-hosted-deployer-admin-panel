@@ -1,0 +1,11 @@
+[Unit]
+Description=Launchstead Node demo runtime controller
+After=network-online.target
+[Service]
+ExecStart=/opt/launchstead-node-demo/node-runtime --config /etc/launchstead-node-demo/runtime.json
+Restart=on-failure
+RestartSec=10
+UMask=0077
+TimeoutStopSec=30
+[Install]
+WantedBy=multi-user.target

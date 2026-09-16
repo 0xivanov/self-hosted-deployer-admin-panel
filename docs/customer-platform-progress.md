@@ -2008,3 +2008,38 @@ exhaustion currently leaves hosting setup pending with an operator log; no
 automatic teardown/reclamation, disk/bandwidth metering or private-certificate
 renewal is provided. Node.js live demonstration and remaining provider/payment
 qualification are separate milestones. No real financial transaction occurred.
+
+## Public Node.js upload/build/deploy demo, 2026-09-16
+
+Added the assigned Mac HTTPS executor (`cmd/node-build-executor`) to connect the
+live VPS build worker to the existing isolated VM pipeline. It independently
+verifies downloaded dependency bundles, persists execution requests before
+launch, fences duplicate/conflicting submissions, locks the execution root and
+drains active work on shutdown. Completed results use the existing VM stop and
+artifact evidence reader. Root review corrected dependency paths, replay
+identity checks, persistence, token-file handling and shutdown behavior before
+live use. Focused race-enabled executor, build transport and pipeline checks pass.
+
+Created `Node.js demo` in the existing workspace through Brave, uploaded the
+starter ZIP and selected Build. Execution
+`8c55b82286e4acbb17ab1889472073ea0f95233fd1801747b9057bfe53c19091`
+completed both isolated VM stages and retained artifact
+`c751e7516616c9bffe0139099d533321bca504a81f20d20362b5060b5628cc15`.
+Selecting Deploy activated revision 1. The portal showed Live, the HTTPS page at
+https://node-demo.159-195-146-26.sslip.io exactly matched the built starter,
+`/health` returned `ok`, and the page's demo button worked in Brave.
+
+The builder and Linux runtime run on the operator's Mac. Authenticated HTTPS
+management travels over loopback SSH tunnels; only content reaches the public
+VPS ingress. The Linux runtime uses reserved UIDs 60010/60011 and the existing
+restricted launch profile. The frozen builder template is separate from the
+running lab VM. The portal database stays on the VPS. Existing static sites and
+operator services remain active. Deployment units and boundaries are recorded in
+`deploy/node-pilot/README.md`; private configuration is outside Git.
+
+This completes the assigned public Node demo, not automatic production Node
+hosting. The Mac must remain awake, logged in and connected with its lab VM
+running. Host reboot/recovery, automatic provisioning, storage cleanup/quotas,
+general frameworks/dependencies and always-on hosting remain. VPS offsite backup
+includes portal jobs/releases and the new worker/route units; it does not cover
+the Mac VM disks/runtime state. No payment or domain purchase was performed.

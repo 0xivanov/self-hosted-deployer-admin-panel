@@ -1,0 +1,7 @@
+[Unit]
+Description=Launchstead Node demo content ingress
+[Socket]
+ListenStream=10.8.0.1:8943
+NoDelay=true
+[Install]
+WantedBy=sockets.target
