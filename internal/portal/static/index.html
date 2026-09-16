@@ -10,11 +10,11 @@
   <body>
     <header class="site-header">
       <a class="wordmark" href="#top" aria-label="Launchstead home"><span class="mark">L</span><span>launchstead</span></a>
-      <span class="header-context">Customer workspace</span>
+      <span class="header-context">Cloud hosting</span>
       <button id="logout" class="button button-quiet" type="button" hidden>Sign out</button>
     </header>
     <main id="top">
-      <p class="notice preview-notice">Private launch · Website hosting is live. Payments remain in test mode.</p>
+      <p class="notice preview-notice"><span class="launch-label">PRIVATE LAUNCH</span> Your websites are live. Billing is in test mode.</p>
       <div id="error" role="alert" hidden></div>
 
       <section id="login" class="auth-card">
@@ -44,8 +44,8 @@
 
       <section id="workspace-view" hidden>
         <div class="workspace-heading">
-          <div><p class="eyebrow"><span class="eyebrow-dot"></span>Launchstead workspace</p><h1>Your workspace</h1><p class="workspace-intro">Upload your code, review projects, and keep workspace access in one place.</p></div>
-          <div class="account-block"><span class="account-label">Signed in as</span><strong id="account"></strong><div class="workspace-selector"><label for="workspace">Workspace</label><select id="workspace"></select></div></div>
+          <div><p class="eyebrow"><span class="eyebrow-dot"></span>Launchstead workspace</p><h1>A home for your next idea.</h1><p class="workspace-intro">From your files to a live website. Everything you need, in one workspace.</p></div>
+          <div class="account-block"><span class="account-label">Signed in as</span><strong id="account"></strong><div class="workspace-selector"><label for="workspace">Workspace</label><select id="workspace" aria-label="Workspace"></select></div></div>
         </div>
         <nav class="workspace-nav" aria-label="Workspace sections">
           <button id="nav-projects" type="button" data-view="projects" aria-current="page">Projects</button>
@@ -56,7 +56,7 @@
         </nav>
 
         <div id="projects-panel" data-view-panel="projects">
-          <div class="section-heading"><p class="eyebrow">Projects</p><h2>Your projects</h2><p>Create a project, upload your website files, and manage releases.</p></div>
+          <div class="section-heading"><p class="eyebrow">Projects</p><h2>Projects</h2><p>Your websites, ready for the world.</p></div>
           <details id="new-project-details" class="new-project-details"><summary>New project <span aria-hidden="true">+</span></summary>
             <form id="project-form"><h2>Create a project</h2><label>Project name<input id="project-name" required maxlength="100"></label><label>Project type<select id="project-kind"><option value="static">HTML / CSS / JavaScript</option><option value="node">Node.js application</option></select></label><button class="button button-dark">Create project <span aria-hidden="true">↗</span></button></form>
           </details>
