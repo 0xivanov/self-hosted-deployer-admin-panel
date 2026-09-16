@@ -157,14 +157,11 @@ func run() error {
 			return err
 		}
 	}
-	sites := map[string]string{}
+	var publicationSites *portal.PublicationSitesProvider
 	if *publicationFile != "" {
-		raw, e := privateFile(*publicationFile)
-		if e != nil {
-			return e
-		}
-		if len(raw) > 16384 || json.Unmarshal(raw, &sites) != nil {
-			return errors.New("invalid publication site mapping")
+		publicationSites, err = portal.NewPublicationSitesProvider(*publicationFile, *origin)
+		if err != nil {
+			return err
 		}
 	}
 	nodeProjects := map[string]portal.NodeProjectConfig{}
@@ -242,7 +239,11 @@ func run() error {
 		merchantProvider = client
 		merchantCountries = cfg.Countries
 	}
-	handler, err := portal.NewHTTP(store, portal.HTTPOptions{TestMerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, PublicationSites: sites})
+	opts := portal.HTTPOptions{TestMerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup}
+	if publicationSites != nil {
+		opts.PublicationSitesLookup = publicationSites.Snapshot
+	}
+	handler, err := portal.NewHTTP(store, opts)
 	if err != nil {
 		return err
 	}

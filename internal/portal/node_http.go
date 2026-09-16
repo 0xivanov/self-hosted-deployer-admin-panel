@@ -73,7 +73,7 @@ func (h *HTTP) nodeHTTP(w http.ResponseWriter, r *http.Request, token string) {
 			views = append(views, buildView{b.ID, b.UploadID, b.State, b.CreatedAt})
 		}
 		_, available := h.nodeProjects[project]
-		httpJSON(w, map[string]any{"available": available, "builds": views, "releases": releases, "deployments": deployments, "active": active, "site": h.publicationSites[project]})
+		httpJSON(w, map[string]any{"available": available, "builds": views, "releases": releases, "deployments": deployments, "active": active, "site": h.publicationSiteSnapshot()[project]})
 		return
 	}
 	if r.Method != "POST" {

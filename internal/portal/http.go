@@ -38,6 +38,7 @@ type HTTPOptions struct {
 	Mail                      *AccountMail
 	Signup                    bool
 	PublicationSites          map[string]string
+	PublicationSitesLookup    func() map[string]string
 }
 type attemptWindow struct {
 	start time.Time
@@ -56,7 +57,7 @@ type HTTP struct {
 	billingWebhook       http.Handler
 	testBilling          bool
 	mail                 *AccountMail
-	publicationSites     map[string]string
+	publicationSites     func() map[string]string
 	signup               bool
 	store                *Store
 	origin, host, cookie string
@@ -103,14 +104,13 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if err != nil {
 		return nil, err
 	}
-	sites := map[string]string{}
-	for project, origin := range opts.PublicationSites {
-		id, err := hex.DecodeString(project)
-		site, e := url.Parse(origin)
-		if err != nil || len(id) != 32 || e != nil || site.Scheme != "https" || site.Host == "" || site.User != nil || site.Path != "" || site.RawQuery != "" || site.ForceQuery || site.Fragment != "" || strings.EqualFold(site.Hostname(), u.Hostname()) {
-			return nil, errors.New("invalid assigned content origin")
-		}
-		sites[project] = origin
+	sites, err := validatePublicationSites(opts.PublicationSites, u.Hostname())
+	if err != nil {
+		return nil, err
+	}
+	lookup := opts.PublicationSitesLookup
+	if lookup == nil {
+		lookup = func() map[string]string { return sites }
 	}
 	var webhook http.Handler
 	if opts.TestWebhookSecret != "" {
@@ -139,7 +139,18 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if opts.Development {
 		cookie = "portal-dev-session"
 	}
-	return &HTTP{merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: sites, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+}
+
+func (h *HTTP) publicationSiteSnapshot() map[string]string {
+	if h.publicationSites == nil {
+		return map[string]string{}
+	}
+	sites := h.publicationSites()
+	if sites == nil {
+		return map[string]string{}
+	}
+	return sites
 }
 func csrfFor(token string) string {
 	sum := sha256.Sum256([]byte("portal-csrf:" + token))
@@ -353,7 +364,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !httpDecode(w, r, &input) {
 			return
 		}
-		if h.publicationSites[input.Project] == "" {
+		if h.publicationSiteSnapshot()[input.Project] == "" {
 			httpError(w, 403, "Publishing is not enabled for this project")
 			return
 		}
@@ -375,7 +386,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.storeError(w, err)
 			return
 		}
-		site := h.publicationSites[project]
+		site := h.publicationSiteSnapshot()[project]
 		httpJSON(w, map[string]any{"jobs": jobs, "active": active, "site": site, "available": site != "" && p.Kind == "static"})
 	case r.URL.Path == "/api/publications" && r.Method == "POST":
 		var input struct {
@@ -386,7 +397,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !httpDecode(w, r, &input) {
 			return
 		}
-		if h.publicationSites[input.Project] == "" {
+		if h.publicationSiteSnapshot()[input.Project] == "" {
 			httpError(w, 403, "Publishing is not enabled for this project")
 			return
 		}

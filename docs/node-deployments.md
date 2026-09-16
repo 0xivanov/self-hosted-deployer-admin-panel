@@ -142,8 +142,13 @@ file. For each project ID, supply `runtime_id` and `build`, for example:
 ```
 
 Use `--publication-sites` for the project's assigned HTTPS website origin.
-Configuration is copied and validates exact IDs, architecture and unique runtime
-assignment per project. Omit an assignment until its workers are configured.
+The private JSON file is validated at startup and reloaded on each portal request,
+so assignment changes do not require a portal restart. A missing, unreadable,
+malformed or unsafe reload disables publication until the file is valid again.
+Assignments validate exact IDs and must point to HTTPS origins distinct from the
+portal host, without credentials, paths or query strings. Operators must ensure
+the content origin uses a separate registrable domain. Omit an assignment until
+its workers are configured.
 The UI and API enqueue real work but do not execute customer code in the portal;
 the production runtime receiver and worker loop remain under implementation.
 

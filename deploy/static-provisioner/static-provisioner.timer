@@ -1,0 +1,7 @@
+[Unit]
+Description=Assign new static preview projects
+[Timer]
+OnBootSec=60
+OnUnitInactiveSec=30
+[Install]
+WantedBy=timers.target

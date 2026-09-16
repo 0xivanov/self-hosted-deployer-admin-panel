@@ -1,0 +1,8 @@
+[Unit]
+Description=Launchstead bounded static preview provisioning
+After=network-online.target k3s.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/libexec/launchstead-static-provision.py
+TimeoutStartSec=180
+UMask=0077

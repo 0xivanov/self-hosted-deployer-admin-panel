@@ -172,7 +172,7 @@ Usage and configuration are documented in `docs/static-runtime.md`. No runtime w
 
 ## Assigned publishing controls and release history
 
-The customer portal now has authenticated publication/history routes and upload-level Publish/Restore controls. Publishing remains disabled by default. Operators may pass `--publication-sites /private/portal/publication-sites.json`, a private bounded JSON map of static project IDs to their assigned HTTPS content origins, for controlled development/pilot use. The portal copies and validates this configuration at startup; customers cannot modify it or supply a runtime endpoint. Worker credentials and management endpoints remain in the separate worker configuration. Automatic runtime provisioning and a durable assignment administration workflow are still needed.
+The customer portal now has authenticated publication/history routes and upload-level Publish/Restore controls. Publishing remains disabled by default. Operators may pass `--publication-sites /private/portal/publication-sites.json`, a private bounded JSON map of static project IDs to their assigned HTTPS content origins, for controlled development/pilot use. The portal validates the initial file at startup and reloads it for each request, so assignment changes take effect without a portal restart. A missing, unreadable, malformed or unsafe reload fails closed by disabling publication until the file is valid again. Customers cannot modify it or supply a runtime endpoint. Worker credentials and management endpoints remain in the separate worker configuration. Automatic runtime provisioning and a durable assignment administration workflow are still needed.
 
 Example mapping structure: `{"64_HEX_PROJECT_ID":"https://customer-site.example.net"}`. Replace the key with the actual project ID and configure a distinct content domain, matching runtime and worker before enabling it. Same-host portal/content assignments, non-HTTPS URLs, credentials and URL paths/query/fragment are rejected. Operators must still ensure a separate registrable content domain and correct project/runtime mapping; a syntactically valid URL is not infrastructure qualification. No mapping was installed in a live service.
 
@@ -1983,3 +1983,28 @@ This completes the one-project static publishing demonstration. New projects
 still need manual runtime/route assignment. Automatic provisioning, a live
 Node.js pilot, domain resale and production payment/merchant qualification
 remain outside this milestone. No real payment or domain purchase was made.
+
+## Automatic static preview assignment, 2026-09-16
+
+Deployed a bounded VPS provisioning timer for up to five additional static
+projects. New projects receive a persisted slot, separate Linux user/content
+root, project-bound worker, verified origin TLS and public HTTPS route. Existing
+assignments are preserved. Mapping files are replaced atomically only after
+certificate readiness; the portal reloads them per request without restarting.
+Invalid/missing mapping reloads fail closed. See `deploy/static-provisioner` for
+installation, capacity, backup, certificate and retirement boundaries.
+
+Created `Automatic hosting demo` through Brave in the existing workspace. The
+timer assigned infrastructure and obtained its certificate without manual
+project configuration. ZIP upload and Publish succeeded through customer UI;
+the public site returned the expected content and the original demo retained
+its restored version. Focused publication reload/HTTP integration checks and
+Python syntax validation passed. Static provisioning and all site state/config
+are included in the existing offsite recovery backup; generated unit paths are
+added before publishing an assignment.
+
+This is capped preview automation, not production fleet scheduling. Capacity
+exhaustion currently leaves hosting setup pending with an operator log; no
+automatic teardown/reclamation, disk/bandwidth metering or private-certificate
+renewal is provided. Node.js live demonstration and remaining provider/payment
+qualification are separate milestones. No real financial transaction occurred.
