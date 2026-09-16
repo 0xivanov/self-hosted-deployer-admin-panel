@@ -65,6 +65,26 @@ p{margin-bottom:16px}
 .project details button{font-size:11px;min-height:32px;padding:6px 10px;margin:4px 6px 4px 0}
 .project details form{margin-bottom:18px}
 .project details form button{background:#246d50;color:#fff;border-color:#246d50}
+.project-domains{margin-top:18px}
+.project-domains>summary{color:#21674b}
+.domain-content{min-width:0;overflow:hidden}
+.domain-connect-form{max-width:none;margin-bottom:18px}
+.domain-connect-form label{margin-top:0}
+.domain-connect-form button{margin-top:8px}
+.project-domain{border-top:1px solid #edf0ed;padding:16px 0 4px}
+.project-domain:first-of-type{border-top:0;padding-top:4px}
+.project-domain-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.project-domain-heading strong{overflow-wrap:anywhere}
+.domain-state{font-size:10px;color:#44765c;background:#f0f6f1;border:1px solid #dce9de;border-radius:999px;padding:3px 8px;line-height:1.35}
+.domain-state-removing{color:#8a5b32;background:#fff6e9;border-color:#f0dec1}
+.domain-records{border:1px solid var(--line);border-radius:8px;margin:12px 0;overflow:hidden}
+.domain-record{display:grid;grid-template-columns:34px minmax(90px,145px) minmax(0,1fr);align-items:center;gap:8px;padding:8px 10px;border-top:1px solid #edf0ed;font-size:11px}
+.domain-record:first-child{border-top:0}
+.domain-record strong{font-size:10px;color:#5e8170}
+.domain-record span{overflow-wrap:anywhere;color:var(--muted)}
+.domain-record input{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;padding:7px 8px;margin:0;min-width:0;cursor:text}
+.domain-actions{display:flex;flex-wrap:wrap;gap:4px}
+.domain-error{color:#9c352b;background:#fff0ed;border:1px solid #efcec7;border-radius:7px;padding:10px}
 .upload-details>a{font-size:12px;text-decoration:underline;color:#247554}
 .new-project-details{align-self:start;min-width:148px;max-width:420px;border-radius:8px;background:#23694f;color:#fff;box-shadow:0 2px 4px #183a2020}
 .new-project-details>summary{list-style:none;cursor:pointer;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:22px;font-size:12px;font-weight:600}
@@ -137,8 +157,9 @@ main{padding:20px 24px 60px}
 .project{padding:20px}
 .auth-card{margin:30px auto;padding:26px}
 #domain-panel,#billing-panel,#merchant-panel,#member-panel{padding:22px}
+.domain-record{grid-template-columns:32px minmax(0,1fr)}
+.domain-record input{grid-column:1/-1}
 }
 
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}
 }
-

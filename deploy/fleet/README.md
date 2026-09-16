@@ -126,3 +126,32 @@ Two Pi replicas protect against one worker failing, not a VPS outage. Pi home is
 the single builder; running websites survive builder downtime but new builds wait.
 The current private launch cap is five assigned projects. Increasing this cap or
 opening public registration requires a deliberate capacity and isolation review.
+
+## Customer-owned domains
+
+Each project's **Connect domain** control connects an existing domain without
+transferring its registration. The customer adds an A record pointing to
+`159.195.146.26` and a project-specific TXT ownership proof under
+`_launchstead.<hostname>`, then selects **Verify DNS**. DNS must be unproxied
+(DNS only in Cloudflare) with no AAAA record for this first version. Apex and
+`www` are separate hostnames and should be connected separately. Wildcards and
+Unicode hostnames are not supported; use an ASCII/punycode hostname.
+
+The portal authorizes workspace access and verifies DNS before queuing the
+hostname. The domain reconciler adds a separate, labeled ingress to the existing
+core-managed service. The original project URL and application deployment stay
+in place. HTTPS is issued by the existing cert-manager issuer. A domain is shown
+as active only when the certificate is ready and the project has a service
+endpoint. Publish the project before expecting its custom hostname to activate.
+
+Removal is queued: the worker removes only its own ingress, certificate and TLS
+secret before freeing the hostname in the database. Keep the ownership TXT
+record while the domain is connected. Domain registration and renewal remain
+with the customer's existing registrar. This does not enable domain resale.
+
+The additive `project_domains` table is schema version 39. Upgrade every binary
+that opens the portal database together, including fleet, billing and Node build
+workers, since older binaries reject newer schema versions. Take a consistent
+SQLite backup before migration. The root-owned domain reconciler and its systemd
+timer live alongside the fleet provisioner; database operations retain the
+`launchstead-portal` account's private file ownership.

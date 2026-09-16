@@ -1,6 +1,7 @@
 package portal
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
@@ -25,6 +26,7 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
+	CustomDomainResolver      DNSResolver
 	TestMerchantWebhookSecret string
 	Merchant                  MerchantProvider
 	MerchantCountries         []string
@@ -48,6 +50,7 @@ type attemptWindow struct {
 	count int
 }
 type HTTP struct {
+	customDomainResolver DNSResolver
 	merchantWebhook      http.Handler
 	merchant             MerchantProvider
 	merchantCountries    []string
@@ -144,7 +147,11 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if opts.Development {
 		cookie = "portal-dev-session"
 	}
-	return &HTTP{merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	resolver := opts.CustomDomainResolver
+	if resolver == nil {
+		resolver = NetDNSResolver{Resolver: net.DefaultResolver}
+	}
+	return &HTTP{customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 
 func (h *HTTP) nodeProjectSnapshot() map[string]NodeProjectConfig {
@@ -396,6 +403,116 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.billingHTTP(w, r, cookie.Value)
 		return
 	}
+	if r.URL.Path == "/api/project-domains" || r.URL.Path == "/api/project-domains/verify" || r.URL.Path == "/api/project-domains/remove" {
+		if r.URL.EscapedPath() != r.URL.Path {
+			httpError(w, 400, "Invalid path")
+			return
+		}
+		if r.URL.Path == "/api/project-domains" && r.Method == "GET" {
+			project := r.URL.Query().Get("project")
+			if project == "" || r.URL.Query().Get("project") == "" {
+				httpError(w, 400, "Project is required")
+				return
+			}
+			domains, err := h.store.CustomDomains(r.Context(), cookie.Value, project)
+			if err != nil {
+				h.storeError(w, err)
+				return
+			}
+			items := make([]map[string]any, 0, len(domains))
+			for _, d := range domains {
+				items = append(items, customDomainJSON(d))
+			}
+			httpJSON(w, map[string]any{"project": project, "domains": items})
+			return
+		}
+		if r.Method != "POST" || r.URL.RawQuery != "" || r.URL.ForceQuery {
+			httpError(w, 405, "Method not allowed")
+			return
+		}
+		var input struct {
+			Project  string `json:"project"`
+			Hostname string `json:"hostname"`
+			ID       string `json:"id"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		if r.URL.Path == "/api/project-domains" {
+			d, err := h.store.CreateCustomDomain(r.Context(), cookie.Value, input.Project, input.Hostname)
+			if err != nil {
+				if errors.Is(err, ErrExists) {
+					httpError(w, 409, "This hostname is already registered")
+				} else {
+					h.storeError(w, err)
+				}
+				return
+			}
+			httpJSON(w, customDomainJSON(d))
+			return
+		}
+		if r.URL.Path == "/api/project-domains/remove" {
+			if err := h.store.RemoveCustomDomain(r.Context(), cookie.Value, input.Project, input.ID); err != nil {
+				h.storeError(w, err)
+				return
+			}
+			httpJSON(w, map[string]bool{"ok": true})
+			return
+		}
+		// Resolve the hostname from the authorized row. The client never supplies it for verify.
+		rows, lookupErr := h.store.CustomDomains(r.Context(), cookie.Value, input.Project)
+		if lookupErr != nil {
+			h.storeError(w, lookupErr)
+			return
+		}
+		var verifyHost string
+		for _, candidate := range rows {
+			if candidate.ID == input.ID {
+				verifyHost = candidate.Hostname
+				break
+			}
+		}
+		if verifyHost == "" {
+			h.storeError(w, ErrDenied)
+			return
+		}
+		if err := h.store.CustomDomainWriteAccess(r.Context(), cookie.Value, input.Project, input.ID); err != nil {
+			h.storeError(w, err)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+		defer cancel()
+		txt, te := h.customDomainResolver.LookupTXT(ctx, "_launchstead."+verifyHost)
+		if te != nil {
+			httpError(w, 409, "DNS verification unavailable or records do not match")
+			return
+		}
+		a, ae := h.customDomainResolver.LookupA(ctx, verifyHost)
+		if ae != nil {
+			httpError(w, 409, "DNS verification unavailable or records do not match")
+			return
+		}
+		aaaa, ae := h.customDomainResolver.LookupAAAA(ctx, verifyHost)
+		if ae != nil {
+			var dnsErr *net.DNSError
+			if !errors.As(ae, &dnsErr) || !dnsErr.IsNotFound {
+				httpError(w, 409, "DNS verification unavailable or records do not match")
+				return
+			}
+			aaaa = []string{}
+		}
+		d, err := h.store.VerifyCustomDomain(r.Context(), cookie.Value, input.Project, input.ID, txt, a, aaaa)
+		if err != nil {
+			if errors.Is(err, ErrDomainDNS) {
+				httpError(w, 409, d.Message)
+			} else {
+				h.storeError(w, err)
+			}
+			return
+		}
+		httpJSON(w, customDomainJSON(d))
+		return
+	}
 	switch {
 	case r.URL.Path == "/api/publications/resume" && r.Method == "POST":
 		var input struct {
@@ -639,6 +756,8 @@ func (h *HTTP) storeError(w http.ResponseWriter, err error) {
 		httpError(w, 409, "Keep at least one active workspace owner")
 	case errors.Is(err, ErrExists):
 		httpError(w, 409, "A project with this name already exists")
+	case errors.Is(err, ErrDomainLimit):
+		httpError(w, 409, "A project can have at most five custom domains")
 	case errors.Is(err, ErrInvalid):
 		httpError(w, 400, "Check the project name and type")
 	default:

@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic Launchstead custom domain reconciliation
+
+[Timer]
+OnBootSec=90
+OnUnitInactiveSec=30
+Unit=domain-reconciler.service
+
+[Install]
+WantedBy=timers.target
