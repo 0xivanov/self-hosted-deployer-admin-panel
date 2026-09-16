@@ -1,6 +1,6 @@
 # Customer platform implementation progress
 
-Updated: 2026-09-14. The four-part goal remains active and incomplete. Delivery prioritizes usable features with focused checks, as reaffirmed by the user. No customer-platform code has been deployed to the live VPS/Pi environment.
+Updated: 2026-09-14. The four-part goal remains active and incomplete. Delivery prioritizes usable features with focused checks, as reaffirmed by the user. The separate customer portal and hosting test billing worker were deployed to the VPS on 2026-09-16 with signup disabled. See customer-portal-deployment.md; customer website runtime workers and live payments remain undeployed.
 
 ## Implemented and verified
 

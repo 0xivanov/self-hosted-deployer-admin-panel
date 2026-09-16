@@ -1,0 +1,31 @@
+[Unit]
+Description=Launchstead Customer Portal Billing Worker (Stripe test mode)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=launchstead-portal
+Group=launchstead-portal
+ExecStart=/opt/launchstead-portal/billing-worker --database /var/lib/launchstead-portal/portal.sqlite --config /etc/launchstead-portal/billing-worker.json
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/launchstead-portal
+CapabilityBoundingSet=
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

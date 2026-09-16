@@ -75,7 +75,7 @@ Configure that Stripe test portal to allow payment-method updates, invoices and 
 
 POST /api/billing/manage accepts only workspace and requires an owner session, origin and CSRF token. The server resolves the saved customer, requests a short-lived management session, rechecks ownership and returns only a validated billing.stripe.com URL. It does not store that URL. Owner revocation after a URL was already issued cannot revoke the external session; Stripe controls its expiry. Cancellation or payment-method changes are completed in Stripe, and resulting events feed reconciliation. Returning to the portal never grants hosting access.
 
-Reference: https://docs.stripe.com/customer-management and https://docs.stripe.com/customer-management/configure-portal. No real sandbox configuration or cancellation has yet been qualified.
+Reference: https://docs.stripe.com/customer-management and https://docs.stripe.com/customer-management/configure-portal. The test portal configuration was created and read back on 2026-09-16 with the required feature restrictions. End-to-end session and cancellation qualification is still pending.
 
 ## Refund and dispute signals
 
@@ -183,3 +183,9 @@ Changing a paid customer's plan or renewing into different allowances still need
 an explicit upgrade/downgrade workflow. This change preserves hosting allowances;
 it does not freeze every platform safety limit, complete pricing consent/versioning
 between catalog display and checkout creation, or qualify live billing.
+
+## Operator Stripe setup, 2026-09-16
+
+The supplied test key successfully authenticated to Stripe. An existing EUR 5.00/month recurring test Price was discovered. A dedicated test billing portal configuration was created and retrieved, verifying invoice history, payment-method changes and cancellation at period end without proration. Public portal login and subscription edits are disabled. No customer, subscription, charge or live-mode configuration was created.
+
+Credentials and setup identifiers are stored outside this repository in private operator files. The source credential file has mode 0600. SSH access was restored and the customer portal and worker deployed on 2026-09-16. The webhook is registered at https://portal.0xivanov.dev/webhooks/stripe-test with the pinned SDK API version. A real Stripe test checkout-expiration event was received and stored. Full mapped checkout and subscription qualification remains pending. See customer-portal-deployment.md. The marketing site is static and is not a webhook receiver.
