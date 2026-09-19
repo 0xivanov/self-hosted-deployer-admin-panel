@@ -596,6 +596,22 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpJSON(w, upload)
+	case r.URL.Path == "/api/uploads/download" && r.Method == "POST":
+		var input struct {
+			Project string `json:"project"`
+			ID      string `json:"id"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		data, err := h.store.DownloadUpload(r.Context(), cookie.Value, input.Project, input.ID)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", `attachment; filename="project-upload.zip"`)
+		w.Write(data)
 	case r.URL.Path == "/api/uploads/delete" && r.Method == "POST":
 		var input struct {
 			Project string `json:"project"`

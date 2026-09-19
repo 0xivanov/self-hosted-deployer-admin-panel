@@ -1,4 +1,4 @@
-> September 17 status: this is the original plan and retains historical estimates and rollout assumptions. Use [current progress](customer-platform-progress.md#current-snapshot-september-17) and [fleet deployment](../deploy/fleet/README.md) for the implemented private launch. The user subsequently authorized connecting customer websites to the existing VPS/Pi fleet. All four product goals remain in scope; project-name editing is the latest local feature and is not deployed yet.
+> September 17 status: this is the original plan and retains historical estimates and rollout assumptions. Use [current progress](customer-platform-progress.md#current-snapshot-september-17) and [fleet deployment](../deploy/fleet/README.md) for the implemented private launch. The user subsequently authorized connecting customer websites to the existing VPS/Pi fleet. All four product goals remain in scope; project-name editing and original ZIP downloads are implemented locally and are not deployed yet.
 
 # Customer accounts, project hosting, payments, and domain resale
 

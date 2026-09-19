@@ -254,6 +254,35 @@ function uploadDeleteControl(row,upload,project,role,version){
  row.append(button,note);
 }
 
+function uploadDownloadControl(row,upload,project,role,version){
+ if(role!=='owner'&&role!=='developer')return;
+ const button=document.createElement('button');button.type='button';button.textContent='Download ZIP';
+ const note=document.createElement('p');note.className='muted upload-download-error';note.setAttribute('role','alert');note.hidden=true;
+ button.addEventListener('click',async()=>{
+  const card=row.closest('.project');
+  if(version!==generation||!card?.isConnected||card.dataset.deleting==='true'||button.disabled)return;
+  button.disabled=true;button.textContent='Preparing download…';note.hidden=true;
+  let objectURL='';
+  try{
+   const response=await fetch('/api/uploads/download',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({project:project.id,id:upload.id})});
+   if(!response.ok){let message='Download failed';try{const data=await response.json();message=data.error||message;}catch{try{const text=await response.text();if(text)message=text;}catch{}}const failure=new Error(message);failure.status=response.status;throw failure;}
+   if(!(response.headers.get('Content-Type')||'').startsWith('application/zip'))throw new Error('Archive response was invalid.');
+   const blob=await response.blob();
+   if(blob.size===0||blob.size>10*1024*1024)throw new Error('Archive response was invalid.');
+   if(version!==generation||!card?.isConnected||card.dataset.deleting==='true')return;
+   const downloadURL=URL.createObjectURL(blob);objectURL=downloadURL;const link=document.createElement('a');link.href=downloadURL;link.download=String(upload.id)+'.zip';link.hidden=true;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(downloadURL),1000);objectURL='';
+  }catch(e){
+   if(objectURL)URL.revokeObjectURL(objectURL);
+   if(e.status===401){signedOut();return;}
+   if(version!==generation||!card?.isConnected||card.dataset.deleting==='true')return;
+   note.textContent=e.message;note.hidden=false;
+  }finally{
+   if(version===generation&&card?.isConnected&&card.dataset.deleting!=='true'){button.disabled=false;button.textContent='Download ZIP';}
+  }
+ });
+ row.append(button,note);
+}
+
 async function projectUploads(card,project,role,version){
  const result=await api('/api/uploads?project='+encodeURIComponent(project.id));if(version!==generation)return;
  if(project.kind==='node')return nodeProjectUploads(card,project,role,version,result);
@@ -272,7 +301,7 @@ async function projectUploads(card,project,role,version){
  }
  for(const upload of result.uploads){const row=document.createElement('div');const text=document.createElement('p');text.textContent='Validated · '+upload.files+(upload.files===1?' file · ':' files · ')+(upload.compressed_bytes/1024).toFixed(1)+' KiB · '+new Date(upload.created_at*1000).toLocaleString();row.append(text);
  if(publication.available&&role!=='viewer'){const publish=document.createElement('button');const previous=publication.jobs.some(j=>j.upload_id===upload.id&&j.state==='succeeded');const isCurrent=active&&active.upload_id===upload.id;publish.textContent=isCurrent?'Current upload':previous?'Restore this upload':'Publish this upload';publish.disabled=pending||isCurrent;const requestKey=crypto.randomUUID();publish.addEventListener('click',async()=>{publish.disabled=true;try{await api('/api/publications',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await refreshProject(project,role,version);}catch(e){error(e);publish.disabled=false;}});row.append(publish);}
-  uploadDeleteControl(row,upload,project,role,version);card.append(row);
+  uploadDownloadControl(row,upload,project,role,version);uploadDeleteControl(row,upload,project,role,version);card.append(row);
  }
 }
 
@@ -368,7 +397,7 @@ function nodeUploadRows(card,project,role,version,result,state){
   if(state&&role!=='viewer'){
    const build=state.builds.find(item=>item.upload_id===upload.id);const saved=build&&state.releases.some(release=>release.build_id===build.id);const busy=state.builds.some(item=>item.state==='queued'||item.state==='running');const button=document.createElement('button');button.type='button';button.textContent=saved?'Built':build&&build.state==='queued'?'Build queued':build&&build.state==='running'?'Building':build?'Build again':'Build';button.disabled=busy||!!saved||!state.node.available;nodeStatusCards.get(project.id).uploadButtons.push({button,upload});const requestKey=crypto.randomUUID();button.addEventListener('click',async()=>{button.disabled=true;const entry=nodeStatusCards.get(project.id);entry.mutating=true;try{await api('/api/node/builds',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation)error(e);button.disabled=false;}finally{entry.mutating=false;}});row.append(button);
   }
-  uploadDeleteControl(row,upload,project,role,version);card.append(row);
+  uploadDownloadControl(row,upload,project,role,version);uploadDeleteControl(row,upload,project,role,version);card.append(row);
  }
 }
 

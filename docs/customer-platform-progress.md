@@ -1,6 +1,6 @@
 # Customer platform implementation progress
 
-Updated: 2026-09-17. The four-part goal remains active and incomplete. The private portal now runs customer websites through the self-hosted deployer on the two Pi workers. The Mac is no longer in the hosting/build path. Registration is limited by the operator's allowlist; Stripe remains in test mode, and live merchant sales and domain resale are not enabled. See the current snapshot below and [fleet deployment](../deploy/fleet/README.md). Older chronological entries describe superseded implementation stages.
+Updated: 2026-09-19. The four-part goal remains active and incomplete. The private portal now runs customer websites through the self-hosted deployer on the two Pi workers. The Mac is no longer in the hosting/build path. Registration is limited by the operator's allowlist; Stripe remains in test mode, and live merchant sales and domain resale are not enabled. See the current snapshot below and [fleet deployment](../deploy/fleet/README.md). Older chronological entries describe superseded implementation stages.
 
 ## Current snapshot, September 17
 
@@ -2061,3 +2061,12 @@ the Mac VM disks/runtime state. No payment or domain purchase was performed.
 Added `POST /api/projects/rename` and a project-card name editor for owners and developers. Names are trimmed, limited to 100 bytes and unique within a workspace. Viewers and other workspaces cannot rename a project; projects awaiting deletion reject changes. Renaming preserves the project ID, hosting address, custom-domain mapping, uploads and runtime assignment. It records an audit event and does not require a new hosting subscription or redeployment.
 
 The browser updates only the affected heading and refreshes the typed-name deletion confirmation; it preserves the rest of the project card. Focused checks cover tenant and role boundaries, CSRF, duplicate/invalid names, stable identity and the deletion fence. No schema migration is required. This scheduled-run feature is implemented locally and is not yet deployed to the public portal. No live project, payment, domain registration or node was changed.
+
+
+## Original upload export, September 19
+
+Added Download ZIP to static and Node upload histories for owners and developers. The authenticated `POST /api/uploads/download` checks current workspace permissions, binds the upload to the requested project, enforces the existing 10 MiB archive limit and verifies the retained SHA-256 before returning original bytes. Viewers and other workspaces cannot download source archives. Projects pending deletion reject exports. This does not remove publication/build retention or modify running websites.
+
+Downloads use an attachment with no-store/nosniff headers and require the existing CSRF/origin protections. The UI creates a temporary download link, shows errors beside the upload and stays on the current page. Review corrected the download handler to resolve the current card after incremental refreshes, instead of retaining the detached staging container.
+
+Focused integration checks passed for exact original bytes, editor access, viewer/cross-workspace denial, wrong-project upload IDs, CSRF, response headers, integrity failure and deletion fencing. JavaScript syntax and Linux portal build passed. This feature and the September 17 rename feature remain local, awaiting the next authorized portal release. No live node, customer project, payment or domain registration was changed. Domain resale, live hosting/merchant payments and release/pilot qualification remain incomplete.
