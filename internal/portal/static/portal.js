@@ -2,6 +2,7 @@
 const $=id=>document.getElementById(id);
 let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,inviteOnly=false,billingGeneration=0,merchantEnabled=false,merchantCountries=[],merchantGeneration=0,productGeneration=0,merchantOrdersGeneration=0,domainQuotes=false,domainOrderGeneration=0,domainExpiryTimer;
 let nodeStatusCards=new Map(),nodeStatusState=null;
+let staticStatusCards=new Map(),staticStatusState=null;
 let projectDeletionTimer=null,projectDeletionPollVersion=0,projectDeletionPollWorkspace='';
 const projectDomainStates=new Map();
 const projectRefreshes=new Map();
@@ -43,8 +44,8 @@ if(location.hash)history.replaceState(null,'',location.pathname+location.search)
 async function api(path,body,signal){const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined,signal});const data=await response.json();if(!response.ok){const error=new Error(data.error||'Request failed');error.status=response.status;throw error;}return data;}
 function error(e){$('error').textContent=e.message;$('error').hidden=false;}
 function stopNodeStatusRefresh(){const state=nodeStatusState;nodeStatusCards.clear();if(!state)return;state.stopped=true;clearTimeout(state.timer);state.timer=null;if(state.controller)state.controller.abort();if(nodeStatusState===state)nodeStatusState=null;nodeStatusCards.clear();}
-function signedOut(){stopBillingRefresh();currentView='projects';stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
-async function loadProjects(){stopBillingRefresh();billingPollCount=0;stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();configureWorkspaceNavigation(selected);if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){await appendProject(project,selected.role,version);if(version!==generation)return;}if(!data.projects.length){$('projects').textContent='Your first website starts here. Create a project, then upload your files.';$('new-project-details').open=true;}if(selected.role==='owner'){if(domainQuotes)loadDomainOrders(workspace,version);await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
+function signedOut(){stopStaticStatusRefresh();stopBillingRefresh();currentView='projects';stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
+async function loadProjects(){stopStaticStatusRefresh();stopBillingRefresh();billingPollCount=0;stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();configureWorkspaceNavigation(selected);if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){await appendProject(project,selected.role,version);if(version!==generation)return;}if(!data.projects.length){$('projects').textContent='Your first website starts here. Create a project, then upload your files.';$('new-project-details').open=true;}if(selected.role==='owner'){if(domainQuotes)loadDomainOrders(workspace,version);await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
 async function appendProject(project,role,version){if(version!==generation)return;const card=document.createElement('div');card.className='project';card.dataset.projectId=project.id;const name=document.createElement('strong');name.className='project-name';name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');const heading=document.createElement('div');heading.className='project-heading';const icon=document.createElement('span');icon.className='project-icon';icon.textContent=project.kind==='node'?'JS':'</>';const headingInfo=document.createElement('div');headingInfo.className='project-heading-info';headingInfo.append(name,kind);heading.append(icon,headingInfo);card.append(heading);$('projects').append(card);if(project.deleting){renderDeletingProject(card,project,version);startProjectDeletionPolling(version,$('workspace').value);return;}renderProjectRename(card,project,role,version);await projectUploads(card,project,role,version);if(version!==generation||!card.isConnected)return;organizeProject(card);await renderProjectDomains(card,project,role,version);if(version!==generation||!card.isConnected)return;renderProjectDeletion(card,project,role,version);}
 async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();if(pendingInvite)showFlow('invite');}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;}}
@@ -283,10 +284,64 @@ function uploadDownloadControl(row,upload,project,role,version){
  row.append(button,note);
 }
 
+// Static publication polling.
+function stopStaticStatusRefresh(){
+ const state=staticStatusState;staticStatusState=null;staticStatusCards.clear();
+ if(state){state.stopped=true;clearTimeout(state.timer);state.controller?.abort();}
+}
+function staticPublicationSnapshot(publication){return JSON.stringify([publication.available,publication.active,publication.site,publication.jobs]);}
+function trackStaticStatus(project,role,version,publication){
+ if(version!==generation||project.deleting)return;
+ const pending=!publication.available||publication.jobs.some(job=>job.state==='queued'||job.state==='running');
+ if(!pending){staticStatusCards.delete(project.id);return;}
+ staticStatusCards.set(project.id,{project,role,version,snapshot:staticPublicationSnapshot(publication)});
+ if(!staticStatusState||staticStatusState.stopped){staticStatusState={version,workspace:$('workspace').value,inFlight:false,stopped:false,timer:null,controller:null};}
+ const state=staticStatusState;
+ if(!state.inFlight&&state.timer===null)state.timer=setTimeout(()=>pollStaticStatus(state),5000);
+}
+async function pollStaticStatus(state){
+ if(!state||state.stopped||state!==staticStatusState||state.version!==generation||state.workspace!==$('workspace').value||state.inFlight)return;
+ clearTimeout(state.timer);state.timer=null;
+ if(!staticStatusCards.size){staticStatusState=null;return;}
+ if(document.hidden||currentView!=='projects'){state.timer=setTimeout(()=>pollStaticStatus(state),5000);return;}
+ state.inFlight=true;state.controller=new AbortController();
+ const current=()=>state===staticStatusState&&!state.stopped&&state.version===generation&&state.workspace===$('workspace').value;
+ try{
+  for(const [id,entry] of [...staticStatusCards]){
+   if(!current())return;
+   const card=projectCard(entry.project);
+   if(!card?.isConnected||card.dataset.deleting==='true'){staticStatusCards.delete(id);continue;}
+   try{
+    const publication=await api('/api/publications?project='+encodeURIComponent(id),undefined,state.controller.signal);
+    if(!current())return;
+    if(staticStatusCards.get(id)!==entry||!card.isConnected||card.dataset.deleting==='true')continue;
+    const snapshot=staticPublicationSnapshot(publication);
+    if(snapshot!==entry.snapshot){
+     await refreshProject(entry.project,entry.role,entry.version);
+     // The refresh registers its own newer snapshot. Never replace it with this response.
+    }
+   }catch(e){
+    if(!current())return;
+    if(e.status===401){signedOut();return;}
+    if(staticStatusCards.get(id)===entry&&(e.status===403||e.status===404))staticStatusCards.delete(id);
+    // Transient failures retain the snapshot so the next tick retries.
+   }
+  }
+ }finally{
+  state.inFlight=false;state.controller=null;
+  if(current()){
+   if(staticStatusCards.size)state.timer=setTimeout(()=>pollStaticStatus(state),5000);
+   else staticStatusState=null;
+  }
+ }
+}
+// End static publication polling.
+
 async function projectUploads(card,project,role,version){
  const result=await api('/api/uploads?project='+encodeURIComponent(project.id));if(version!==generation)return;
  if(project.kind==='node')return nodeProjectUploads(card,project,role,version,result);
  const publication=await api('/api/publications?project='+encodeURIComponent(project.id));if(version!==generation)return;
+ trackStaticStatus(project,role,version,publication);
  const pending=publication.jobs.some(j=>j.state==='queued'||j.state==='running');const active=publication.jobs.find(j=>j.id===publication.active);
  const status=document.createElement('p');status.textContent=pending?(active?'Publication pending · Current revision '+active.revision:'Publication pending'):active?'Published revision '+active.revision:publication.available?'Ready to publish':'Hosting setup pending. You can upload files now; publishing will be available once setup is complete.';card.append(status);
  if(active&&publication.site){const link=document.createElement('a');link.href=publication.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Visit website ↗';card.append(link);}

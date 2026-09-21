@@ -1,6 +1,6 @@
 # Customer platform implementation progress
 
-Updated: 2026-09-19. The four-part goal remains active and incomplete. The private portal now runs customer websites through the self-hosted deployer on the two Pi workers. The Mac is no longer in the hosting/build path. Registration is limited by the operator's allowlist; Stripe remains in test mode, and live merchant sales and domain resale are not enabled. See the current snapshot below and [fleet deployment](../deploy/fleet/README.md). Older chronological entries describe superseded implementation stages.
+Updated: 2026-09-21. The four-part goal remains active and incomplete. The private portal now runs customer websites through the self-hosted deployer on the two Pi workers. The Mac is no longer in the hosting/build path. Registration is limited by the operator's allowlist; Stripe remains in test mode, and live merchant sales and domain resale are not enabled. See the current snapshot below and [fleet deployment](../deploy/fleet/README.md). Older chronological entries describe superseded implementation stages.
 
 ## Current snapshot, September 17
 
@@ -9,7 +9,7 @@ Updated: 2026-09-19. The four-part goal remains active and incomplete. The priva
 - Website management: customer-owned domains support DNS verification, attachment and HTTPS. Actions update in place. Protected uploads explain why they cannot be removed. Owner-confirmed project deletion was deployed from `296e3c6`, using core CLI `d4a14ca`; cleanup retries before releasing the hosting slot. Four existing projects remained present and healthy after that rollout. No user project was deleted during verification.
 - Payments: hosting checkout and management work in Stripe test mode. Live hosting charges and merchant Connect sales still require provider configuration and end-to-end release evidence.
 - Domain resale: purchasing, renewal and transfer-out remain a separate unfinished goal. Connecting an already-owned domain does not complete resale.
-- Next local feature: project display-name editing, described in the latest entry below. No live changes are made by the September 17 scheduled run.
+- Local features awaiting release: project display-name editing, original ZIP download, and automatic static publication/setup status updates. These scheduled-run changes have not been deployed.
 
 Release gates still include provider activation, payment/registrar reconciliation, backup recovery, appropriate isolation and a real invited-customer pilot. Do not infer completion from historical component test results.
 
@@ -2070,3 +2070,12 @@ Added Download ZIP to static and Node upload histories for owners and developers
 Downloads use an attachment with no-store/nosniff headers and require the existing CSRF/origin protections. The UI creates a temporary download link, shows errors beside the upload and stays on the current page. Review corrected the download handler to resolve the current card after incremental refreshes, instead of retaining the detached staging container.
 
 Focused integration checks passed for exact original bytes, editor access, viewer/cross-workspace denial, wrong-project upload IDs, CSRF, response headers, integrity failure and deletion fencing. JavaScript syntax and Linux portal build passed. This feature and the September 17 rename feature remain local, awaiting the next authorized portal release. No live node, customer project, payment or domain registration was changed. Domain resale, live hosting/merchant payments and release/pilot qualification remain incomplete.
+
+
+## Automatic static publication status, September 21
+
+Static project cards now check publication status every five seconds while hosting setup or publication is pending. Changes refresh only the affected card through the existing incremental renderer, retaining the actual upload form/file input and project controls. Unchanged responses do not rebuild the card. Completed projects stop polling; a later publish or manual refresh can reactivate it.
+
+Polling pauses on hidden tabs and outside the Projects view. Sign-out/workspace changes abort and discard pending work. Deleted cards, superseded responses and stale workspace generations cannot update the view. Temporary failures retain the prior snapshot for retry; authorization failures stop the affected polling or sign the user out as appropriate.
+
+Seven focused Node tests passed for unchanged status, completion/reactivation, tab/view visibility, stale generations, deleted cards, superseded responses and refresh-failure retry. JavaScript syntax and Linux portal build passed. Implemented locally only; the scheduled run did not release or modify live services. Rename, original ZIP downloads and these automatic updates await deployment. The four product goals and outstanding payment, registrar and release/pilot gates remain unchanged.
