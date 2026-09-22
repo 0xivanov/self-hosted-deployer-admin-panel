@@ -46,7 +46,7 @@ function error(e){$('error').textContent=e.message;$('error').hidden=false;}
 function stopNodeStatusRefresh(){const state=nodeStatusState;nodeStatusCards.clear();if(!state)return;state.stopped=true;clearTimeout(state.timer);state.timer=null;if(state.controller)state.controller.abort();if(nodeStatusState===state)nodeStatusState=null;nodeStatusCards.clear();}
 function signedOut(){stopStaticStatusRefresh();stopBillingRefresh();currentView='projects';stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
 async function loadProjects(){stopStaticStatusRefresh();stopBillingRefresh();billingPollCount=0;stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();configureWorkspaceNavigation(selected);if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){await appendProject(project,selected.role,version);if(version!==generation)return;}if(!data.projects.length){$('projects').textContent='Your first website starts here. Create a project, then upload your files.';$('new-project-details').open=true;}if(selected.role==='owner'){if(domainQuotes)loadDomainOrders(workspace,version);await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
-async function appendProject(project,role,version){if(version!==generation)return;const card=document.createElement('div');card.className='project';card.dataset.projectId=project.id;const name=document.createElement('strong');name.className='project-name';name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');const heading=document.createElement('div');heading.className='project-heading';const icon=document.createElement('span');icon.className='project-icon';icon.textContent=project.kind==='node'?'JS':'</>';const headingInfo=document.createElement('div');headingInfo.className='project-heading-info';headingInfo.append(name,kind);heading.append(icon,headingInfo);card.append(heading);$('projects').append(card);if(project.deleting){renderDeletingProject(card,project,version);startProjectDeletionPolling(version,$('workspace').value);return;}renderProjectRename(card,project,role,version);await projectUploads(card,project,role,version);if(version!==generation||!card.isConnected)return;organizeProject(card);await renderProjectDomains(card,project,role,version);if(version!==generation||!card.isConnected)return;renderProjectDeletion(card,project,role,version);}
+async function appendProject(project,role,version){if(version!==generation)return;const card=document.createElement('div');card.className='project';card.dataset.projectId=project.id;const name=document.createElement('strong');name.className='project-name';name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');const heading=document.createElement('div');heading.className='project-heading';const icon=document.createElement('span');icon.className='project-icon';icon.textContent=project.kind==='node'?'JS':'</>';const headingInfo=document.createElement('div');headingInfo.className='project-heading-info';headingInfo.append(name,kind);heading.append(icon,headingInfo);card.append(heading);$('projects').append(card);if(project.deleting){renderDeletingProject(card,project,version);startProjectDeletionPolling(version,$('workspace').value);return;}await projectUploads(card,project,role,version);if(version!==generation||!card.isConnected)return;organizeProject(card);await renderProjectDomains(card,project,role,version);if(version!==generation||!card.isConnected)return;renderProjectRename(card,project,role,version);renderProjectDeletion(card,project,role,version);}
 async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();if(pendingInvite)showFlow('invite');}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;}}
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();});});
@@ -156,10 +156,11 @@ function refreshProject(project,role,version){
    if(upload&&freshUpload)freshUpload.replaceWith(upload);
    const focusText=focused?.textContent;const focusTag=focused?.tagName;
    const heading=card.querySelector('.project-heading');const rename=card.querySelector('.project-rename');const domains=card.querySelector('.project-domains');const danger=card.querySelector('.project-danger');
-   const children=[heading,rename,...staging.childNodes,domains,danger].filter(Boolean);
+   const children=[heading,...staging.childNodes,domains,rename,danger].filter(Boolean);
    // Move retained nodes in place rather than detaching their inputs.
    for(const child of [...card.childNodes])if(!children.includes(child))child.remove();
    for(const child of children)card.append(child);
+   const nodeEntry=nodeStatusCards.get(project.id);if(nodeEntry)nodeEntry.card=card;
    if(focused?.isConnected)focused.focus({preventScroll:true});
    else if(focusText){const replacement=[...card.querySelectorAll('button,summary,a')].find(item=>item.tagName===focusTag&&item.textContent===focusText);replacement?.focus({preventScroll:true});}
    startNodeStatusRefresh(version,$('workspace').value);
@@ -175,10 +176,10 @@ function disclosure(title,className){
  const summary=document.createElement('summary');summary.textContent=title;details.append(summary);return details;
 }
 function organizeProject(card){
- const children=[...card.children];const uploads=disclosure('Upload a new version','upload-details');const history=disclosure('Uploads & release history','project-history');
- let pastStatus=false;
+ const children=[...card.children];const uploads=disclosure('Upload a new version','upload-details');const history=disclosure('Files & version history','project-history');
+ let pastStatus=children.some(child=>child.classList.contains('project-workflow')||child.classList.contains('node-live'));
  for(const child of children){
-  if(child.classList.contains('project-heading')||child.classList.contains('node-live')||child.classList.contains('project-rename'))continue;
+  if(child.classList.contains('project-heading')||child.classList.contains('node-live')||child.classList.contains('project-rename')||child.classList.contains('project-workflow'))continue;
   if(child.tagName==='P'&&!pastStatus&&!child.textContent.startsWith('ZIP')){child.classList.add('project-status');pastStatus=true;continue;}
   if(child.tagName==='A'&&child.target==='_blank'){child.className='site-link';continue;}
   if(child.tagName==='BUTTON'&&child.textContent==='Refresh release status'){child.className='refresh-status';child.textContent='Refresh status';continue;}
@@ -343,7 +344,10 @@ async function projectUploads(card,project,role,version){
  const publication=await api('/api/publications?project='+encodeURIComponent(project.id));if(version!==generation)return;
  trackStaticStatus(project,role,version,publication);
  const pending=publication.jobs.some(j=>j.state==='queued'||j.state==='running');const active=publication.jobs.find(j=>j.id===publication.active);
- const status=document.createElement('p');status.textContent=pending?(active?'Publication pending · Current revision '+active.revision:'Publication pending'):active?'Published revision '+active.revision:publication.available?'Ready to publish':'Hosting setup pending. You can upload files now; publishing will be available once setup is complete.';card.append(status);
+ const publishKey=crypto.randomUUID();card.append(renderWorkflow(project,role,result.uploads,publication,async flow=>{
+  if(version!==generation||project.deleting)return;
+  await api('/api/publications',{project:project.id,upload:flow.id,key:publishKey});if(version===generation)await refreshProject(project,role,version);
+ }));
  if(active&&publication.site){const link=document.createElement('a');link.href=publication.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Visit website ↗';card.append(link);}
  const refresh=document.createElement('button');refresh.textContent='Refresh release status';refresh.addEventListener('click',()=>refreshProject(project,role,version).catch(error));card.append(refresh);
  for(const job of publication.jobs){const line=document.createElement('p');line.textContent='Revision '+job.revision+' · '+job.state+(job.id===publication.active?' · Current':'')+(job.state==='running'?' · Applying or awaiting reconciliation':'');card.append(line);
@@ -366,8 +370,49 @@ async function nodeProjectUploads(card,project,role,version,result){
   return nodeUploadRows(card,project,role,version,result, null);
  }
  const node=await api('/api/node?project='+encodeURIComponent(project.id));if(version!==generation)return;
- const entry={card,project,role,version,node,deployKeys:new Map(),uploadButtons:[],live:document.createElement('div')};entry.live.className='node-live';card.append(entry.live);nodeStatusCards.set(project.id,entry);renderNodeLive(entry,node);
+ const entry={card,project,role,version,node,uploads:result.uploads,buildKeys:new Map(),deployKeys:new Map(),uploadButtons:[],live:document.createElement('div')};entry.live.className='node-live';card.append(entry.live);nodeStatusCards.set(project.id,entry);renderNodeLive(entry,node);
  return nodeUploadRows(card,project,role,version,result,{node,builds:Array.isArray(node.builds)?node.builds:[],releases:Array.isArray(node.releases)?node.releases:[]});
+}
+
+// Project workflow state.
+function projectWorkflow(kind,uploads,data){
+ const latest=uploads[0];const jobs=kind==='node'?(data.deployments||[]):(data.jobs||[]);
+ const builds=data.builds||[];const releases=data.releases||[];
+ const active=kind==='node'?data.active:jobs.find(j=>j.id===data.active);
+ const building=builds.find(nodeJobActive);const publishing=jobs.find(nodeJobActive);
+ if(publishing)return {step:kind==='node'?3:2,title:'Publishing your website',text:'This page updates automatically. You can leave it open while we finish.',busy:true};
+ if(building)return {step:2,title:'Building your website',text:building.message||'Preparing your files for hosting. Your current website stays online.',busy:true};
+ if(!latest)return {step:1,title:'Add your website files',text:'Upload a ZIP to get started. We’ll guide you through publishing it.',action:'upload',label:'Upload website'};
+ if(!data.available)return {step:1,title:'Setting up your hosting',text:'Your files are uploaded. Publishing becomes available when hosting setup finishes.',busy:true};
+ if(kind==='node'){
+  const build=builds.find(b=>b.upload_id===latest.id);
+  const release=releases.find(r=>r.build_id===build?.id);
+  if(release&&active?.release_id===release.build_id)return {step:4,title:'Your website is live',text:'Upload a new version when you’re ready to update it.',action:'upload',label:'Upload new version',live:true};
+  if(release)return {step:3,title:active?'Your update is ready':'Ready to publish',text:'The build succeeded. Publish it to make this version available on your website.',action:'publish',id:release.build_id,label:active?'Publish update':'Publish website'};
+  return {step:2,title:build?.state==='failed'?'Your build needs attention':'Files uploaded · Build next',text:build?.state==='failed'?(build.message||'Check your project files, then try building again.'):'Build your Node.js project before publishing it. This does not change your live website.',action:'build',id:latest.id,label:build?.state==='failed'?'Retry build':'Build website'};
+ }
+ if(active?.upload_id===latest.id)return {step:3,title:'Your website is live',text:'Upload a new version when you’re ready to update it.',action:'upload',label:'Upload new version',live:true};
+ const failed=jobs.find(j=>j.upload_id===latest.id)?.state==='failed';
+ return {step:2,title:failed?'Publishing needs attention':active?'Your update is ready':'Ready to publish',text:failed?'The previous attempt failed. Retry publishing your uploaded files.':'Your HTML and CSS files are ready. Publish them to make your website available.',action:'publish',id:latest.id,label:failed?'Retry publishing':active?'Publish update':'Publish website'};
+}
+// End project workflow state.
+function renderWorkflow(project,role,uploads,data,perform){
+ const flow=projectWorkflow(project.kind,uploads,data);const panel=document.createElement('section');panel.className='project-workflow';panel.dataset.tone=flow.live?'live':flow.busy?'busy':'next';
+ const steps=document.createElement('ol');steps.className='workflow-steps';steps.setAttribute('aria-label','Publishing progress');
+ for(const [index,label] of (project.kind==='node'?['Upload','Build','Publish']:['Upload','Publish']).entries()){
+  const step=document.createElement('li');step.textContent=(index+1)+'. '+label;step.className=index+1<flow.step?'complete':index+1===flow.step?'current':'';if(index+1===flow.step)step.setAttribute('aria-current','step');steps.append(step);
+ }
+ const title=document.createElement('h3');title.textContent=flow.title;const text=document.createElement('p');text.textContent=flow.text;panel.append(steps,title,text);
+ if(flow.action&&role!=='viewer'){
+  const button=document.createElement('button');button.type='button';button.className='workflow-primary';button.textContent=flow.label;
+  const note=document.createElement('p');note.className='workflow-error';note.hidden=true;note.setAttribute('role','alert');
+  button.addEventListener('click',async()=>{
+   if(flow.action==='upload'){const section=panel.closest('.project')?.querySelector('.upload-details');if(section){section.open=true;section.scrollIntoView({behavior:'smooth',block:'center'});section.querySelector('input[type=file]')?.focus();}return;}
+   button.disabled=true;note.hidden=true;
+   try{await perform(flow);}catch(e){note.textContent=e.message||'Could not complete this action. Please try again.';note.hidden=false;}finally{button.disabled=false;}
+  });panel.append(button,note);
+ }
+ return panel;
 }
 
 function nodeJobActive(job){return job&&(job.state==='queued'||job.state==='running');}
@@ -382,13 +427,16 @@ function renderNodeLive(entry,node){
  const active=node.active||null;
  const pendingDeployment=deployments.some(nodeJobActive);
  const activeRelease=active&&active.release_id;
- const status=document.createElement('p');
- status.textContent=pendingDeployment?'Deployment pending':builds.some(nodeJobActive)?'Build pending':active?'Live · Revision '+active.revision:node.available?'Ready to deploy':'Hosting setup is pending';
- status.className='project-status';live.append(status);
+ const workflow=renderWorkflow(project,role,entry.uploads||[],node,async flow=>{
+  if(version!==generation||!live.isConnected||project.deleting)return;
+  const keys=flow.action==='build'?entry.buildKeys:entry.deployKeys;
+  const key=keys.get(flow.id)||crypto.randomUUID();keys.set(flow.id,key);entry.mutating=true;
+  try{await api(flow.action==='build'?'/api/node/builds':'/api/node/deployments',flow.action==='build'?{project:project.id,upload:flow.id,key}:{project:project.id,release:flow.id,key});if(version===generation)await refreshProject(project,role,version);}finally{entry.mutating=false;}
+ });live.append(workflow);
  if(active&&node.site){
   const link=document.createElement('a');link.href=node.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Visit website ↗';link.className='site-link';live.append(link);
  }
- const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh status';refresh.className='refresh-status';refresh.addEventListener('click',()=>refreshProject(project,role,version).catch(error));live.append(refresh);const history=disclosure('Builds & releases','project-history');history.open=historyOpen;live.append(history);
+ const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh status';refresh.className='refresh-status';refresh.addEventListener('click',()=>refreshProject(project,role,version).catch(error));live.append(refresh);const history=disclosure('Build & release history','project-history');history.open=historyOpen;live.append(history);
  for(const build of builds){
   const line=document.createElement('p');line.textContent='Build · '+build.state+' · '+new Date(build.created_at*1000).toLocaleString();history.append(line);
   if(role!=='viewer'&&typeof build.message==='string'&&build.message){const progress=document.createElement('p');progress.className='muted';progress.textContent=build.message;history.append(progress);}
@@ -418,7 +466,7 @@ function renderNodeLive(entry,node){
   if(role!=='viewer'&&deployment.state==='queued'){const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel deployment';cancel.addEventListener('click',async()=>{cancel.disabled=true;entry.mutating=true;try{await api('/api/node/deployments/cancel',{project:project.id,id:deployment.id});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation)error(e);cancel.disabled=false;}finally{entry.mutating=false;}});row.append(cancel);}
   history.append(row);
  }
- entry.node=node;entry.active=builds.some(nodeJobActive)||deployments.some(nodeJobActive);
+ entry.node=node;entry.active=!node.available||builds.some(nodeJobActive)||deployments.some(nodeJobActive);
  for(const {button,upload} of entry.uploadButtons||[]){
   const build=builds.find(item=>item.upload_id===upload.id);
   const saved=build&&releases.some(release=>release.build_id===build.id);
@@ -433,7 +481,7 @@ async function pollNodeStatus(state){
  const results=await Promise.allSettled(entries.map(entry=>api('/api/node?project='+encodeURIComponent(entry.project.id),undefined,state.controller.signal)));
  if(nodeStatusState!==state||state.stopped||state.version!==generation||state.workspace!==$('workspace').value){state.inFlight=false;return;}
  let unauthorized=false;
-   results.forEach((result,index)=>{if(!entries[index].card.isConnected||entries[index].card.dataset.deleting==='true'){nodeStatusCards.delete(entries[index].project.id);return;}if(result.status==='fulfilled')renderNodeLive(entries[index],result.value);else if(result.reason?.status===401)unauthorized=true;else{const note=entries[index].live.firstElementChild;if(note)note.textContent='Status refresh unavailable. Retry with Refresh release status.';entries[index].snapshot=null;if(result.reason?.status===403||result.reason?.status===404)entries[index].active=false;}});
+   results.forEach((result,index)=>{if(!entries[index].card.isConnected||entries[index].card.dataset.deleting==='true'){nodeStatusCards.delete(entries[index].project.id);return;}if(result.status==='fulfilled')renderNodeLive(entries[index],result.value);else if(result.reason?.status===401)unauthorized=true;else{let note=entries[index].live.querySelector('.workflow-refresh-error');if(!note){note=document.createElement('p');note.className='workflow-refresh-error';entries[index].live.append(note);}note.textContent='Automatic status updates are temporarily unavailable. Use Refresh status to retry.';entries[index].snapshot=null;if(result.reason?.status===403||result.reason?.status===404)entries[index].active=false;}});
  state.inFlight=false;state.controller=null;
  if(!unauthorized&&[...nodeStatusCards.values()].some(entry=>entry.version===state.version&&entry.active))state.timer=setTimeout(()=>pollNodeStatus(state),nodeStatusInterval);else if(unauthorized)signedOut();
 }

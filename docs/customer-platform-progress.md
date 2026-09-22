@@ -2105,3 +2105,22 @@ The rebuilt portal also includes the previously committed rename, original ZIP
 export, automatic static-status refresh and Node build-progress explanations.
 These are now deployed, superseding their earlier local-only notes. No schema
 migration, website redeployment, domain purchase or payment occurred.
+
+## Guided project publishing redesign
+
+Replaced ambiguous Node readiness and static status banners with a prominent
+next-action panel and Upload / Build / Publish progress (static skips Build).
+The panel selects the latest upload's matching build/release, never an unrelated
+older release, and exposes Build website or Publish website without opening
+history. Empty projects link directly to the upload form; live projects offer
+Upload new version. Pending and failed operations explain what happens next.
+History, DNS, rename and deletion remain secondary. Actions use existing scoped
+APIs and refresh in place, retaining the actual file input.
+
+Fixed Node poll entries retaining detached staging cards after incremental
+refresh, and prevented transient poll errors from replacing the action panel.
+Nineteen focused workflow/poll tests and the Linux portal build passed. Deployed
+the portal with a saved pre-workflow binary. Brave confirmed live project panels
+and that Upload new version opens/focuses the correct form. The user's test
+domains project was already live at verification; no customer build/publication
+was initiated during this UI check.

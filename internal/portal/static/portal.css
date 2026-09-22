@@ -177,3 +177,18 @@ main{padding:20px 24px 60px}
 
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}
 }
+
+/* The next action leads each project; technical history stays secondary. */
+.project-workflow{padding:20px;background:#f4f7f3;border:1px solid #dce8dc;border-radius:10px;margin:0 0 14px}
+.project-workflow h3{font-size:19px;line-height:1.35;letter-spacing:-.35px;margin:16px 0 8px;color:#173b2e}
+.project-workflow p{font-size:13px;line-height:1.65;color:#52695d;margin:0 0 16px;max-width:52ch}
+.workflow-steps{list-style:none;display:flex;gap:8px;padding:0;margin:0;flex-wrap:wrap}
+.workflow-steps li{font-size:11px;padding:5px 9px;border-radius:20px;color:#77847b;background:#e8ede7}
+.workflow-steps .current{background:#246d50;color:white;font-weight:650}
+.workflow-steps .complete{color:#246d50;background:#dfece1}
+.project-workflow .workflow-primary{min-height:42px;padding:10px 18px;font-size:13px;background:#246d50;color:#fff;border-color:#246d50}
+.project-workflow[data-tone=live]{background:#edf7f0;border-color:#c9e0ce}
+.project-workflow[data-tone=busy]{background:#f5f4ee;border-color:#e3dfcc}
+.project-workflow .workflow-error{color:#9c352b;margin-top:12px;margin-bottom:0}
+.project-rename{margin-top:12px;margin-bottom:0}
+@media(max-width:600px){.project-workflow{padding:16px}.workflow-primary{width:100%}}
