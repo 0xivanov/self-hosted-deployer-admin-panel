@@ -12,7 +12,9 @@ FLEET_CONFIG = Path(os.environ.get("FLEET_CONFIG", "/etc/launchstead-fleet/worke
 PUBLICATION_SITES = Path(os.environ.get("PUBLICATION_SITES", "/etc/launchstead-portal/publication-sites.json"))
 LOCK = Path(os.environ.get("PROVISION_LOCK", "/var/lib/launchstead-fleet/provision.lock"))
 HOST_SUFFIX = "159-195-146-26.sslip.io"
-MAX_PROJECTS = 5
+MAX_PROJECTS = int(os.environ.get("FLEET_MAX_PROJECTS", "5"))
+if not 1 <= MAX_PROJECTS <= 50:
+    raise ValueError("FLEET_MAX_PROJECTS must be between 1 and 50")
 ID_RE = re.compile(r"^[a-f0-9]{64}$")
 
 def atomic(path, value, owner=None):

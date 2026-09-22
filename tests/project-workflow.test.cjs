@@ -13,5 +13,7 @@ for(const [name,kind,uploads,data,action,title] of [
  ['static empty','static',[],{available:true},'upload','Add your website files'],
  ['static ready','static',[upload],{available:true},'publish','Ready to publish'],
  ['static live','static',[upload],{available:true,active:'job',jobs:[{id:'job',upload_id:'new',state:'succeeded'}]},'upload','Your website is live'],
- ['setup pending','node',[upload],{available:false},undefined,'Setting up your hosting']
+ ['setup pending','node',[upload],{available:false},undefined,'Waiting for a hosting assignment']
 ])test(name,()=>{const result=c.projectWorkflow(kind,uploads,data);assert.equal(result.action,action);assert.equal(result.title,title);});
+
+test("unassigned hosting never displays active progress",()=>{assert.equal(c.projectWorkflow("node",[upload],{available:false}).busy,undefined);});

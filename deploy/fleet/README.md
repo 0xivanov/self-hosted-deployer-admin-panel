@@ -193,3 +193,12 @@ live portal uses `1.1.1.1:53` after the VPS provider returned a cached NXDOMAIN 
 an already-published ownership TXT record. A, AAAA and ownership TXT checks still
 apply unchanged. Resolver outages fail verification closed; this flag does not
 change host, mail or cluster DNS settings.
+
+### Enrollment capacity
+
+`FLEET_MAX_PROJECTS` configures the provisioner's total assignment cap (default 5,
+accepted range 1–50). This is an operator ceiling, not measured cluster capacity;
+check worker resources and builder-controller limits before raising it. On the
+current private fleet it is set to 6 in the provisioner unit's `capacity.conf`
+drop-in, following a worker resource review. The separate builder limit remains
+five Node project controllers; static assignments do not consume those slots.

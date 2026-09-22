@@ -2151,3 +2151,21 @@ with JavaScript syntax and the Linux portal build. A disposable browser preview
 using the actual render functions verified build/publish bars and a 42% upload.
 Deployed the portal with a rollback binary; service is active. No customer upload,
 build or website publication was initiated for this visual check.
+
+## Sixth-project assignment and honest waiting status
+
+The user's second domain-test project waited indefinitely because all five pilot
+assignment slots were occupied. Provisioning itself was healthy. Checked worker
+usage (home Pi 43% memory, yasen Pi 55%) and reservations; allowed one additional
+project by setting the new `FLEET_MAX_PROJECTS` option to 6. Default remains 5.
+Provisioning then assigned the project, created its build worker, and restarted
+the fleet worker successfully. Verified both assignment maps contain the project
+and portal/fleet/project-build services are active. Existing projects were not
+removed, and no build/publication was initiated on the user's behalf.
+
+Unassigned hosting now says Waiting for a hosting assignment, explains possible
+capacity/operator action, and has no indeterminate activity bar. Automatic
+availability checks remain. Thirteen workflow checks and the Linux portal build
+passed. Deployed both provisioner configuration and portal change. Public
+self-service capacity admission and richer per-project provisioning reasons remain
+future work; this bounded pilot setting is not autoscaling.

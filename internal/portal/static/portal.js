@@ -421,7 +421,7 @@ function projectWorkflow(kind,uploads,data){
  if(publishing)return {step:kind==='node'?3:2,title:'Publishing your website',text:'This page updates automatically. You can leave it open while we finish.',busy:true};
  if(building)return {step:2,title:'Building your website',text:building.message||'Preparing your files for hosting. Your current website stays online.',busy:true};
  if(!latest)return {step:1,title:'Add your website files',text:'Upload a ZIP to get started. We’ll guide you through publishing it.',action:'upload',label:'Upload website'};
- if(!data.available)return {step:1,title:'Setting up your hosting',text:'Your files are uploaded. Publishing becomes available when hosting setup finishes.',busy:true};
+ if(!data.available)return {step:1,title:'Waiting for a hosting assignment',text:'Your files are saved, but no hosting slot is assigned yet. This may need operator attention if capacity is full. Status updates automatically.'};
  if(kind==='node'){
   const build=builds.find(b=>b.upload_id===latest.id);
   const release=releases.find(r=>r.build_id===build?.id);
