@@ -184,3 +184,12 @@ Schema version 40 adds deletion state to projects. Upgrade all portal database
 readers together, plus the fleet provisioner, deletion worker, deployer CLI, and
 Pi builder binary. The fleet worker supports zero assigned projects so deleting
 the last project does not break enrollment of the next one.
+
+### Domain verification DNS
+
+The portal supports `--domain-dns-resolver IP:port` to select a recursive resolver
+only for custom-domain verification. Empty preserves the system resolver. The
+live portal uses `1.1.1.1:53` after the VPS provider returned a cached NXDOMAIN for
+an already-published ownership TXT record. A, AAAA and ownership TXT checks still
+apply unchanged. Resolver outages fail verification closed; this flag does not
+change host, mail or cluster DNS settings.

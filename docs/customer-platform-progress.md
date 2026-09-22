@@ -2088,3 +2088,20 @@ Node build history now distinguishes waiting for a worker, dependency preparatio
 The API derives `phase` and `message` from existing persisted state with fixed, safe messages. Raw worker output, execution identities, provider errors and credentials are not copied into diagnostics. Current owner/developer access checks remain authoritative; viewers do not receive detailed build history. No database migration is required. These are progress explanations, not build or runtime logs; full log access remains outstanding.
 
 Focused checks cover persisted stages, safe handling of unknown/corrupt failure evidence, existing build authorization and persistence. The feature is local only and joins rename, ZIP export and static auto-refresh awaiting release. No live node, project, domain or payment was changed. Domain resale, live hosting and merchant sales, recovery and pilot/release qualification remain open.
+
+## DNS verification cache fix and portal release, September 22
+
+Investigated `testdomain.0xivanov.dev`: the VPS provider resolver returned cached
+NXDOMAIN for the ownership TXT while Cloudflare's recursive resolver returned the
+exact expected value. Its A record already pointed to the VPS and no AAAA record
+was present. Added a validated operator-only `--domain-dns-resolver IP:port` flag
+and deployed the portal with `1.1.1.1:53`. Existing ownership/address checks and
+failure-closed behavior remain; system DNS is untouched. Saved pre-change portal
+binary and service unit for rollback. Focused custom-domain checks and Linux
+build passed; the restarted service is active. Customer must retry Verify DNS;
+activation/HTTPS completion was not yet observed at release time.
+
+The rebuilt portal also includes the previously committed rename, original ZIP
+export, automatic static-status refresh and Node build-progress explanations.
+These are now deployed, superseding their earlier local-only notes. No schema
+migration, website redeployment, domain purchase or payment occurred.

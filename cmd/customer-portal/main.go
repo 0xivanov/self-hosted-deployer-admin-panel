@@ -50,6 +50,7 @@ func run() error {
 	publicationFile := flag.String("publication-sites", "", "private JSON mapping assigned static project IDs to HTTPS content origins")
 	signup := flag.Bool("signup", false, "enable public signup when mail is configured")
 	signupAllowlist := flag.String("signup-allowlist", "", "private JSON email allowlist for invitation-only signup")
+	domainDNS := flag.String("domain-dns-resolver", "", "optional IP:port resolver for public custom-domain verification only")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return errors.New("unexpected arguments")
@@ -252,6 +253,12 @@ func run() error {
 	}
 	if publicationSites != nil {
 		opts.PublicationSitesLookup = publicationSites.Snapshot
+	}
+	if *domainDNS != "" {
+		opts.CustomDomainResolver, err = portal.CustomDomainDNS(*domainDNS)
+		if err != nil {
+			return err
+		}
 	}
 	handler, err := portal.NewHTTP(store, opts)
 	if err != nil {
