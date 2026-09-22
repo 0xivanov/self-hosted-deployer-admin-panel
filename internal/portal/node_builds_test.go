@@ -112,7 +112,7 @@ func TestNodeBuildPersistenceAuthorizationAndCancellation(t *testing.T) {
 	var found bool
 	for _, job := range jobs {
 		if job.ID == next.ID {
-			found = job.State == "queued" && job.Plan.SourceSHA256 == upload.SHA256 && job.ToolchainSHA256 == assignment.ToolchainSHA256
+			found = job.State == "queued" && job.Phase == "queued" && job.Message != "" && job.Plan.SourceSHA256 == upload.SHA256 && job.ToolchainSHA256 == assignment.ToolchainSHA256
 		}
 	}
 	if !found {

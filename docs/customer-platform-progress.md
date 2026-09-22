@@ -1,6 +1,6 @@
 # Customer platform implementation progress
 
-Updated: 2026-09-21. The four-part goal remains active and incomplete. The private portal now runs customer websites through the self-hosted deployer on the two Pi workers. The Mac is no longer in the hosting/build path. Registration is limited by the operator's allowlist; Stripe remains in test mode, and live merchant sales and domain resale are not enabled. See the current snapshot below and [fleet deployment](../deploy/fleet/README.md). Older chronological entries describe superseded implementation stages.
+Updated: 2026-09-22. The four-part goal remains active and incomplete. The private portal now runs customer websites through the self-hosted deployer on the two Pi workers. The Mac is no longer in the hosting/build path. Registration is limited by the operator's allowlist; Stripe remains in test mode, and live merchant sales and domain resale are not enabled. See the current snapshot below and [fleet deployment](../deploy/fleet/README.md). Older chronological entries describe superseded implementation stages.
 
 ## Current snapshot, September 17
 
@@ -2079,3 +2079,12 @@ Static project cards now check publication status every five seconds while hosti
 Polling pauses on hidden tabs and outside the Projects view. Sign-out/workspace changes abort and discard pending work. Deleted cards, superseded responses and stale workspace generations cannot update the view. Temporary failures retain the prior snapshot for retry; authorization failures stop the affected polling or sign the user out as appropriate.
 
 Seven focused Node tests passed for unchanged status, completion/reactivation, tab/view visibility, stale generations, deleted cards, superseded responses and refresh-failure retry. JavaScript syntax and Linux portal build passed. Implemented locally only; the scheduled run did not release or modify live services. Rename, original ZIP downloads and these automatic updates await deployment. The four product goals and outstanding payment, registrar and release/pilot gates remain unchanged.
+
+
+## Node build progress explanations, September 22
+
+Node build history now distinguishes waiting for a worker, dependency preparation, and a prepared build awaiting builder execution/results. It explains successful, cancelled and failed builds. A recorded pre-dispatch preparation timeout gets a specific explanation that the source was not submitted, plus retry/support guidance. A persisted dispatch intent does not prove execution started; the wording deliberately preserves that distinction.
+
+The API derives `phase` and `message` from existing persisted state with fixed, safe messages. Raw worker output, execution identities, provider errors and credentials are not copied into diagnostics. Current owner/developer access checks remain authoritative; viewers do not receive detailed build history. No database migration is required. These are progress explanations, not build or runtime logs; full log access remains outstanding.
+
+Focused checks cover persisted stages, safe handling of unknown/corrupt failure evidence, existing build authorization and persistence. The feature is local only and joins rename, ZIP export and static auto-refresh awaiting release. No live node, project, domain or payment was changed. Domain resale, live hosting and merchant sales, recovery and pilot/release qualification remain open.

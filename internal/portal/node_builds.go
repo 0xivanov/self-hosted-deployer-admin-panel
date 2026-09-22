@@ -21,6 +21,8 @@ type NodeBuildAssignment struct {
 	ToolchainSHA256 string
 }
 type NodeBuild struct {
+	Phase           string         `json:"phase,omitempty"`
+	Message         string         `json:"message,omitempty"`
 	ID              string         `json:"id"`
 	ProjectID       string         `json:"project_id"`
 	UploadID        string         `json:"upload_id"`
@@ -32,10 +34,11 @@ type NodeBuild struct {
 
 const nodeBuildColumns = "id,project_id,upload_id,plan,toolchain_sha256,state,created_at"
 
-func scanNodeBuild(row interface{ Scan(...any) error }) (NodeBuild, error) {
+func scanNodeBuild(row interface{ Scan(...any) error }, extra ...any) (NodeBuild, error) {
 	var j NodeBuild
 	var raw []byte
-	if err := row.Scan(&j.ID, &j.ProjectID, &j.UploadID, &raw, &j.ToolchainSHA256, &j.State, &j.CreatedAt); err != nil {
+	dest := append([]any{&j.ID, &j.ProjectID, &j.UploadID, &raw, &j.ToolchainSHA256, &j.State, &j.CreatedAt}, extra...)
+	if err := row.Scan(dest...); err != nil {
 		return j, err
 	}
 	err := json.Unmarshal(raw, &j.Plan)
@@ -125,17 +128,20 @@ func (s *Store) NodeBuilds(ctx context.Context, token, project string) ([]NodeBu
 	if _, _, err = s.uploadProject(ctx, tx, token, project, true); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT "+nodeBuildColumns+" FROM node_builds WHERE project_id=? ORDER BY created_at DESC,id", project)
+	rows, err := tx.QueryContext(ctx, "SELECT "+nodeBuildColumns+",CASE WHEN length(dispatch_intent)>0 THEN 1 ELSE 0 END,result FROM node_builds WHERE project_id=? ORDER BY created_at DESC,id", project)
 	if err != nil {
 		return nil, err
 	}
 	out := []NodeBuild{}
 	for rows.Next() {
-		j, e := scanNodeBuild(rows)
+		var dispatched bool
+		var result []byte
+		j, e := scanNodeBuild(rows, &dispatched, &result)
 		if e != nil {
 			rows.Close()
 			return nil, e
 		}
+		j.Phase, j.Message = nodeBuildProgress(j.State, dispatched, result)
 		out = append(out, j)
 	}
 	err = rows.Err()
@@ -179,4 +185,32 @@ func (s *Store) CancelNodeBuild(ctx context.Context, token, project, id string) 
 		return err
 	}
 	return tx.Commit()
+}
+
+// Progress uses persisted controller state, never raw customer output or provider
+// errors. A dispatch intent alone does not prove that execution has started.
+func nodeBuildProgress(state string, dispatched bool, result []byte) (string, string) {
+	switch state {
+	case "queued":
+		return "queued", "Waiting for a build worker. Your live website is unchanged."
+	case "running":
+		if dispatched {
+			return "submitted", "Build prepared. Waiting for builder execution or its result. Your live website is unchanged."
+		}
+		return "preparing", "Preparing and checking project dependencies before the build. Your live website is unchanged."
+	case "succeeded":
+		return "succeeded", "Build completed successfully. Deploy a saved release to update your website."
+	case "cancelled":
+		return "cancelled", "Build cancelled. Your live website is unchanged."
+	case "failed":
+		var evidence struct {
+			Reason string `json:"reason"`
+		}
+		if len(result) <= 4096 && json.Unmarshal(result, &evidence) == nil && evidence.Reason == "preparation_expired_before_dispatch" {
+			return "failed", "Dependency preparation did not finish before the worker timeout. The project was not submitted to the builder. Try Build again or contact support."
+		}
+		return "failed", "The build did not produce a saved release. Check your project and dependencies, then try Build again or contact support."
+	default:
+		return "", ""
+	}
 }

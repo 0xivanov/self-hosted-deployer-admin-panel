@@ -391,7 +391,8 @@ function renderNodeLive(entry,node){
  const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh status';refresh.className='refresh-status';refresh.addEventListener('click',()=>refreshProject(project,role,version).catch(error));live.append(refresh);const history=disclosure('Builds & releases','project-history');history.open=historyOpen;live.append(history);
  for(const build of builds){
   const line=document.createElement('p');line.textContent='Build · '+build.state+' · '+new Date(build.created_at*1000).toLocaleString();history.append(line);
-  if(build.state==='failed'){const hint=document.createElement('p');hint.textContent=role==='viewer'?'Build failed.':'Build failed. Review your project or contact the operator, then choose Build again.';history.append(hint);}
+  if(role!=='viewer'&&typeof build.message==='string'&&build.message){const progress=document.createElement('p');progress.className='muted';progress.textContent=build.message;history.append(progress);}
+  else if(build.state==='failed'){const hint=document.createElement('p');hint.textContent=role==='viewer'?'Build failed.':'Build failed. Review your project or contact the operator, then choose Build again.';history.append(hint);}
   if(role!=='viewer'&&build.state==='queued'){
    const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel build';cancel.addEventListener('click',async()=>{cancel.disabled=true;entry.mutating=true;try{await api('/api/node/builds/cancel',{project:project.id,id:build.id});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation)error(e);cancel.disabled=false;}finally{entry.mutating=false;}});history.append(cancel);
   }
