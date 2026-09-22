@@ -192,3 +192,20 @@ main{padding:20px 24px 60px}
 .project-workflow .workflow-error{color:#9c352b;margin-top:12px;margin-bottom:0}
 .project-rename{margin-top:12px;margin-bottom:0}
 @media(max-width:600px){.project-workflow{padding:16px}.workflow-primary{width:100%}}
+
+.operation-progress{margin:14px 0;min-width:0}
+.progress-caption{display:block;font-size:12px;line-height:1.5;color:#52695d;margin-bottom:8px}
+.operation-progress progress{display:block;width:100%;height:8px;border:0;border-radius:8px;overflow:hidden;appearance:none;background:#dce7de;accent-color:#246d50}
+.operation-progress progress::-webkit-progress-bar{background:#dce7de;border-radius:8px}
+.operation-progress progress::-webkit-progress-value{background:#246d50;border-radius:8px;transition:width .2s}
+.operation-progress progress::-moz-progress-bar{background:#246d50;border-radius:8px}
+.operation-progress progress:indeterminate{background:linear-gradient(90deg,#dce7de 0%,#246d50 45%,#dce7de 70%);background-size:200% 100%;animation:progress-sweep 1.8s linear infinite}
+.operation-progress progress:indeterminate::-webkit-progress-bar{background:transparent}
+.operation-progress[data-failed=true] .progress-caption{color:#9c352b}
+.workflow-steps li{position:relative;padding-bottom:9px}
+.workflow-steps li::after{content:'';position:absolute;bottom:3px;left:9px;right:9px;height:2px;border-radius:2px;background:currentColor;opacity:.2}
+.workflow-steps li.complete::after{opacity:1}
+.project-workflow[data-tone=busy] .workflow-steps li.current::after{opacity:1;animation:step-pulse 1.6s ease-in-out infinite}
+@keyframes progress-sweep{from{background-position:100% 0}to{background-position:-100% 0}}
+@keyframes step-pulse{50%{opacity:.35}}
+@media(prefers-reduced-motion:reduce){.operation-progress progress:indeterminate,.project-workflow[data-tone=busy] .workflow-steps li.current::after{animation:none}.operation-progress progress::-webkit-progress-value{transition:none}}

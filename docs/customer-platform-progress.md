@@ -2136,3 +2136,18 @@ assignment. Added focused state-selection and cross-workspace denial checks.
 Deployed and verified in Brave: the project link now reads
 Visit testdomain.0xivanov.dev and points to that HTTPS hostname. No website
 content or routing change was needed.
+
+## Upload, build and publication progress bars
+
+Added accessible progress bars to active workflow stages and immediate feedback
+while build/publication requests are being submitted. Upload uses browser byte
+progress, then switches to an indeterminate Checking your files stage until the
+server accepts the archive. Build, hosting setup and publication are indeterminate;
+no invented completion percentage is shown. Errors stop the upload indicator and
+appear beside the form. Reduced-motion preferences disable the animation.
+
+Twenty-one focused workflow, polling and upload-transport checks passed, along
+with JavaScript syntax and the Linux portal build. A disposable browser preview
+using the actual render functions verified build/publish bars and a 42% upload.
+Deployed the portal with a rollback binary; service is active. No customer upload,
+build or website publication was initiated for this visual check.

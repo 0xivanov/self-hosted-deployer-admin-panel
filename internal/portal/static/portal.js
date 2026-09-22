@@ -338,6 +338,44 @@ async function pollStaticStatus(state){
 }
 // End static publication polling.
 
+// Upload transport reports bytes sent separately from server validation.
+function sendProjectUpload(project,file,token,onProgress){
+ return new Promise((resolve,reject)=>{
+  const xhr=new XMLHttpRequest();xhr.open('POST','/api/uploads?project='+encodeURIComponent(project));xhr.timeout=120000;
+  xhr.setRequestHeader('Content-Type','application/zip');xhr.setRequestHeader('X-CSRF-Token',token);
+  xhr.upload.onprogress=event=>{if(event.lengthComputable)onProgress(Math.min(100,Math.round(event.loaded/event.total*100)));};
+  xhr.upload.onload=()=>onProgress(100);
+  xhr.onload=()=>{let data;try{data=JSON.parse(xhr.responseText);}catch{reject(new Error('Upload response was invalid. Refresh the file history before retrying.'));return;}
+   if(xhr.status<200||xhr.status>=300){const error=new Error(data.error||'Upload failed');error.status=xhr.status;reject(error);return;}resolve(data);
+  };
+  xhr.onerror=()=>reject(new Error('Upload connection lost. Check file history before retrying.'));
+  xhr.ontimeout=()=>reject(new Error('Upload timed out. Check file history before retrying.'));
+  xhr.onabort=()=>reject(new Error('Upload cancelled.'));
+  xhr.send(file);
+ });
+}
+// End upload transport.
+function createProgress(label){
+ const box=document.createElement('div');box.className='operation-progress';
+ const caption=document.createElement('span');caption.className='progress-caption';caption.textContent=label;caption.setAttribute('role','status');
+ const bar=document.createElement('progress');bar.max=100;bar.setAttribute('aria-label',label);box.append(caption,bar);
+ return {box,caption,bar};
+}
+async function uploadWithProgress(project,file,form,version){
+ form.querySelector('.operation-progress')?.remove();
+ const progress=createProgress('Uploading files · 0%');progress.bar.value=0;form.append(progress.box);
+ const current=()=>version===generation&&form.isConnected;
+ try{
+  const data=await sendProjectUpload(project.id,file,csrf,percent=>{
+   if(!current())return;
+   if(percent>=100){progress.caption.textContent='Upload sent · Checking your files…';progress.bar.removeAttribute('value');progress.bar.setAttribute('aria-label','Checking uploaded files');}
+   else{progress.bar.value=percent;progress.caption.textContent='Uploading files · '+percent+'%';progress.bar.setAttribute('aria-label','Uploading files');}
+  });
+  if(current()){progress.bar.value=100;progress.bar.setAttribute('aria-label','Upload complete');progress.caption.textContent='Upload complete · Files checked';}
+  return data;
+ }catch(e){if(current()){progress.box.dataset.failed='true';progress.bar.hidden=true;progress.caption.textContent=e.message;}throw e;}
+}
+
 async function projectUploads(card,project,role,version){
  const result=await api('/api/uploads?project='+encodeURIComponent(project.id));if(version!==generation)return;
  if(project.kind==='node')return nodeProjectUploads(card,project,role,version,result);
@@ -356,7 +394,7 @@ async function projectUploads(card,project,role,version){
  const copy=document.createElement('p');copy.textContent=project.kind==='node'?'ZIP up to 10 MiB. Include package.json with a start script and package-lock.json at the root. Omit node_modules and secrets.':'ZIP up to 10 MiB. Include index.html at the root. Omit secrets.';card.append(copy);
  if(role!=='viewer'){
   const form=document.createElement('form');const label=document.createElement('label');label.textContent='Project ZIP';const input=document.createElement('input');input.type='file';input.accept='.zip,application/zip';input.required=true;label.append(input);const button=document.createElement('button');button.textContent='Upload ZIP';form.append(label,button);card.append(form);
-  form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{const file=input.files[0];if(!file||file.size>10*1024*1024)throw new Error('Select a ZIP no larger than 10 MiB.');const response=await fetch('/api/uploads?project='+encodeURIComponent(project.id),{method:'POST',headers:{'Content-Type':'application/zip','X-CSRF-Token':csrf},body:file});const data=await response.json();if(!response.ok)throw new Error(data.error||'Upload failed');input.value='';if(version===generation)await refreshProject(project,role,version);});});
+  form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{const file=input.files[0];if(!file||file.size>10*1024*1024)throw new Error('Select a ZIP no larger than 10 MiB.');await uploadWithProgress(project,file,form,version);input.value='';if(version===generation)await refreshProject(project,role,version);});});
  }
  for(const upload of result.uploads){const row=document.createElement('div');const text=document.createElement('p');text.textContent='Validated · '+upload.files+(upload.files===1?' file · ':' files · ')+(upload.compressed_bytes/1024).toFixed(1)+' KiB · '+new Date(upload.created_at*1000).toLocaleString();row.append(text);
  if(publication.available&&role!=='viewer'){const publish=document.createElement('button');const previous=publication.jobs.some(j=>j.upload_id===upload.id&&j.state==='succeeded');const isCurrent=active&&active.upload_id===upload.id;publish.textContent=isCurrent?'Current upload':previous?'Restore this upload':'Publish this upload';publish.disabled=pending||isCurrent;const requestKey=crypto.randomUUID();publish.addEventListener('click',async()=>{publish.disabled=true;try{await api('/api/publications',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await refreshProject(project,role,version);}catch(e){error(e);publish.disabled=false;}});row.append(publish);}
@@ -403,13 +441,14 @@ function renderWorkflow(project,role,uploads,data,perform){
   const step=document.createElement('li');step.textContent=(index+1)+'. '+label;step.className=index+1<flow.step?'complete':index+1===flow.step?'current':'';if(index+1===flow.step)step.setAttribute('aria-current','step');steps.append(step);
  }
  const title=document.createElement('h3');title.textContent=flow.title;const text=document.createElement('p');text.textContent=flow.text;panel.append(steps,title,text);
+ if(flow.busy){const progress=createProgress(flow.title+'…');panel.append(progress.box);}
  if(flow.action&&role!=='viewer'){
   const button=document.createElement('button');button.type='button';button.className='workflow-primary';button.textContent=flow.label;
   const note=document.createElement('p');note.className='workflow-error';note.hidden=true;note.setAttribute('role','alert');
   button.addEventListener('click',async()=>{
    if(flow.action==='upload'){const section=panel.closest('.project')?.querySelector('.upload-details');if(section){section.open=true;section.scrollIntoView({behavior:'smooth',block:'center'});section.querySelector('input[type=file]')?.focus();}return;}
-   button.disabled=true;note.hidden=true;
-   try{await perform(flow);}catch(e){note.textContent=e.message||'Could not complete this action. Please try again.';note.hidden=false;}finally{button.disabled=false;}
+   button.disabled=true;note.hidden=true;const pending=createProgress(flow.action==='build'?'Requesting build…':'Requesting publication…');panel.append(pending.box);
+   try{await perform(flow);}catch(e){note.textContent=e.message||'Could not complete this action. Please try again.';note.hidden=false;}finally{pending.box.remove();button.disabled=false;}
   });panel.append(button,note);
  }
  return panel;
@@ -495,7 +534,7 @@ function nodeUploadRows(card,project,role,version,result,state){
  if(role!=='viewer'){
   const starter=document.createElement('a');starter.href='/examples/node-website.zip';starter.download='node-website.zip';starter.textContent='Download a starter website';card.append(starter);
   const form=document.createElement('form');const label=document.createElement('label');label.textContent='Project ZIP';const input=document.createElement('input');input.type='file';input.accept='.zip,application/zip';input.required=true;label.append(input);const button=document.createElement('button');button.textContent='Upload ZIP';form.append(label,button);card.append(form);
-  form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{const file=input.files[0];if(!file||file.size>10*1024*1024)throw new Error('Select a ZIP no larger than 10 MiB.');const response=await fetch('/api/uploads?project='+encodeURIComponent(project.id),{method:'POST',headers:{'Content-Type':'application/zip','X-CSRF-Token':csrf},body:file});const data=await response.json();if(!response.ok)throw new Error(data.error||'Upload failed');input.value='';if(version===generation)await refreshProject(project,role,version);});});
+  form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{const file=input.files[0];if(!file||file.size>10*1024*1024)throw new Error('Select a ZIP no larger than 10 MiB.');await uploadWithProgress(project,file,form,version);input.value='';if(version===generation)await refreshProject(project,role,version);});});
  }
  for(const upload of result.uploads){const row=document.createElement('div');const text=document.createElement('p');text.textContent='Validated · '+upload.files+(upload.files===1?' file · ':' files · ')+(upload.compressed_bytes/1024).toFixed(1)+' KiB · '+new Date(upload.created_at*1000).toLocaleString();row.append(text);
   if(state&&role!=='viewer'){
