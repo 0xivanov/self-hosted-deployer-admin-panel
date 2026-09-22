@@ -348,7 +348,7 @@ async function projectUploads(card,project,role,version){
   if(version!==generation||project.deleting)return;
   await api('/api/publications',{project:project.id,upload:flow.id,key:publishKey});if(version===generation)await refreshProject(project,role,version);
  }));
- if(active&&publication.site){const link=document.createElement('a');link.href=publication.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Visit website ↗';card.append(link);}
+ if(active&&publication.site){const link=document.createElement('a');link.href=publication.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent=(new URL(publication.site).hostname.endsWith('.sslip.io')?'Visit website':'Visit '+new URL(publication.site).hostname)+' ↗';card.append(link);}
  const refresh=document.createElement('button');refresh.textContent='Refresh release status';refresh.addEventListener('click',()=>refreshProject(project,role,version).catch(error));card.append(refresh);
  for(const job of publication.jobs){const line=document.createElement('p');line.textContent='Revision '+job.revision+' · '+job.state+(job.id===publication.active?' · Current':'')+(job.state==='running'?' · Applying or awaiting reconciliation':'');card.append(line);
   if(publication.available&&role==='owner'&&job.state==='running'){const resume=document.createElement('button');resume.textContent='Resume revision '+job.revision;resume.addEventListener('click',async()=>{if(!confirm('Resume revision '+job.revision+'? Its saved website files will be published using your permission. A worker that is still active cannot be interrupted.'))return;resume.disabled=true;try{await api('/api/publications/resume',{project:project.id,job:job.id,upload:job.upload_id});if(version===generation)await refreshProject(project,role,version);}catch(e){error(e);resume.disabled=false;}});card.append(resume);}
@@ -434,7 +434,7 @@ function renderNodeLive(entry,node){
   try{await api(flow.action==='build'?'/api/node/builds':'/api/node/deployments',flow.action==='build'?{project:project.id,upload:flow.id,key}:{project:project.id,release:flow.id,key});if(version===generation)await refreshProject(project,role,version);}finally{entry.mutating=false;}
  });live.append(workflow);
  if(active&&node.site){
-  const link=document.createElement('a');link.href=node.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Visit website ↗';link.className='site-link';live.append(link);
+  const link=document.createElement('a');link.href=node.site;link.target='_blank';link.rel='noopener noreferrer';link.textContent=(new URL(node.site).hostname.endsWith('.sslip.io')?'Visit website':'Visit '+new URL(node.site).hostname)+' ↗';link.className='site-link';live.append(link);
  }
  const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh status';refresh.className='refresh-status';refresh.addEventListener('click',()=>refreshProject(project,role,version).catch(error));live.append(refresh);const history=disclosure('Build & release history','project-history');history.open=historyOpen;live.append(history);
  for(const build of builds){

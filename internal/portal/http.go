@@ -545,8 +545,13 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.storeError(w, err)
 			return
 		}
-		site := h.publicationSiteSnapshot()[project]
-		httpJSON(w, map[string]any{"jobs": jobs, "active": active, "site": site, "available": site != "" && p.Kind == "static"})
+		assignedSite := h.publicationSiteSnapshot()[project]
+		site, err := h.projectSite(r.Context(), cookie.Value, project, assignedSite)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, map[string]any{"jobs": jobs, "active": active, "site": site, "available": assignedSite != "" && p.Kind == "static"})
 	case r.URL.Path == "/api/publications" && r.Method == "POST":
 		var input struct {
 			Project string `json:"project"`

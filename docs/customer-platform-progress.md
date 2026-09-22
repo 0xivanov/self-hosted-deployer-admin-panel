@@ -2124,3 +2124,15 @@ the portal with a saved pre-workflow binary. Brave confirmed live project panels
 and that Upload new version opens/focuses the correct form. The user's test
 domains project was already live at verification; no customer build/publication
 was initiated during this UI check.
+
+## Active custom domain navigation
+
+Verified testdomain.0xivanov.dev already serves the user's Node website with
+HTTP 200 and a ready HTTPS certificate. The portal's main website link had still
+used the temporary fleet address. Static and Node status now select an active,
+authorized custom domain for navigation, falling back to the assigned address
+for pending/removing domains. Hosting eligibility remains based on the original
+assignment. Added focused state-selection and cross-workspace denial checks.
+Deployed and verified in Brave: the project link now reads
+Visit testdomain.0xivanov.dev and points to that HTTPS hostname. No website
+content or routing change was needed.
