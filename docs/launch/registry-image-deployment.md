@@ -42,6 +42,10 @@ Container project creation is disabled by default and has no public configuratio
 
 Release preparation authorizes owners/developers before registry resolution and again before saving. Retries retain the original digest even if a tag moves; reusing a request key with different settings is rejected. Records include the source, immutable ARM64 pin, port, health path, actor and revision. Each project may retain up to 50 releases. Ports must be 1024 through 65535 for the non-root profile. Health paths must be local paths without query strings or fragments. No registry credentials or environment secrets are saved in release records.
 
+Schema 44 adds durable deployment requests, cancellation before dispatch, monotonic revisions for restoring retained releases, and a single pending deployment per project. Queued work blocks project deletion. Worker dispatch rechecks the initiating user's current membership, account and hosting entitlement, then persists the complete request and previous successful release before calling the runtime. An uncertain submission remains running for reconciliation and is never automatically resubmitted. A successful submit is only acceptance, not publication.
+
+The fleet now has a structurally serialized container configuration with the selected port and health path, preserving the stateless two-replica ARM64 hosting profile and resource limits. The live worker still does not consume container jobs.
+
 These records do not publish an image. Fleet dispatch, private credential lifecycle, environment settings, customer controls and runtime qualification remain outstanding.
 
 ## Required integration before exposing Deploy

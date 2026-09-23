@@ -44,7 +44,8 @@ func (s *Store) DeleteProject(ctx context.Context, token, project, name string) 
 	err = tx.QueryRowContext(ctx, `SELECT
 	 (SELECT count(*) FROM publication_jobs WHERE project_id=? AND state IN ('queued','running'))+
 	 (SELECT count(*) FROM node_builds WHERE project_id=? AND state IN ('queued','running'))+
-	 (SELECT count(*) FROM node_deployments WHERE project_id=? AND state IN ('queued','running'))`, project, project, project).Scan(&busy)
+	 (SELECT count(*) FROM node_deployments WHERE project_id=? AND state IN ('queued','running'))+
+	 (SELECT count(*) FROM container_deployments WHERE project_id=? AND state IN ('queued','running'))`, project, project, project, project).Scan(&busy)
 	if err != nil {
 		return Project{}, err
 	}
