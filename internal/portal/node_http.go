@@ -67,11 +67,13 @@ func (h *HTTP) nodeHTTP(w http.ResponseWriter, r *http.Request, token string) {
 			ID        string `json:"id"`
 			UploadID  string `json:"upload_id"`
 			State     string `json:"state"`
+			Phase     string `json:"phase,omitempty"`
+			Message   string `json:"message,omitempty"`
 			CreatedAt int64  `json:"created_at"`
 		}
 		views := make([]buildView, 0, len(builds))
 		for _, b := range builds {
-			views = append(views, buildView{b.ID, b.UploadID, b.State, b.CreatedAt})
+			views = append(views, buildView{ID: b.ID, UploadID: b.UploadID, State: b.State, Phase: b.Phase, Message: b.Message, CreatedAt: b.CreatedAt})
 		}
 		site, err := h.projectSite(r.Context(), token, project, h.publicationSiteSnapshot()[project])
 		if err != nil {

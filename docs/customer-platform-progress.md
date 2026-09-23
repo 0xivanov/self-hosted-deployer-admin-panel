@@ -2178,3 +2178,9 @@ Chose freelancers and small agencies hosting client websites as the primary laun
 Shipped website search and type filters, light/dark/system preference, revised workspace navigation and an onboarding checklist. Team copy explicitly states the current workspace-wide access boundary. No database migration or application deployment was required. The portal service was updated with the prior binary retained as `customer-portal.pre-freelancer-20260923`; its public HTML/JS and the existing custom-domain website returned HTTP 200.
 
 Validation: 22 existing frontend checks pass, JavaScript syntax and Linux build pass, disposable local browser verified creating a website, search/no-results, and both theme layouts. No customer website was created or modified by the check. The landing-page repository contains updated audience messaging and a marketing kit with unsent outreach drafts and interview/onboarding checklists.
+
+## September 23 scheduled follow-up: expose Node build explanations
+
+Fixed a gap between the store and customer API: the store produced safe build-phase messages, and the UI already consumed them, but GET /api/node dropped phase/message when assembling its response. The endpoint now forwards only those customer-safe fields alongside the existing build summary. This enables preparation, submitted/waiting, and specific preparation-timeout explanations in the existing progress panel and history. It does not expose raw logs, commands, toolchain pins or dispatch evidence.
+
+Focused integration checks exercise persisted stages through the actual HTTP endpoint, check the messages match the sanitized store output, reject another tenant, and ensure internal evidence remains absent. Node HTTP controls also pass. Committed for the next portal release; this scheduled follow-up did not deploy a binary or modify live services. All four product requirements and remaining release gates remain incomplete.

@@ -1,4 +1,4 @@
-> September 17 status: this is the original plan and retains historical estimates and rollout assumptions. Use [current progress](customer-platform-progress.md#current-snapshot-september-17) and [fleet deployment](../deploy/fleet/README.md) for the implemented private launch. The user subsequently authorized connecting customer websites to the existing VPS/Pi fleet. All four product goals remain in scope; project-name editing and original ZIP downloads are implemented locally and are not deployed yet.
+> September 23 status: this historical plan preserves the four-part goal. Use [current progress](customer-platform-progress.md#current-snapshot-september-23), the [freelancer-first launch plan](launch/freelancer-launch-plan.md), and [fleet deployment](../deploy/fleet/README.md) for current priorities and release evidence. Customer sites run on the existing VPS/Pi fleet; name editing and original ZIP downloads are deployed.
 
 # Customer accounts, project hosting, payments, and domain resale
 
