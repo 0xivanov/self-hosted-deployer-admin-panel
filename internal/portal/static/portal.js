@@ -11,6 +11,7 @@ const nodeStatusInterval=5000;
 const workspacePanels={projects:'projects-panel',billing:'billing-panel',team:'member-panel',domains:'domain-panel',store:'merchant-panel'};
 let currentView=location.pathname.startsWith('/billing/')?'billing':'projects';
 let billingTimer=null,billingPollCount=0;
+let selectedWebsite='';
 function stopBillingRefresh(){clearTimeout(billingTimer);billingTimer=null;}
 function selectWorkspaceView(view){
  if(!workspacePanels[view]||$('nav-'+view).hidden)view='projects';
@@ -32,7 +33,7 @@ function refreshCurrentBilling(){
  if(document.hidden||$('workspace-view').hidden||currentView!=='billing'||!testBilling||workspaces.find(w=>w.id===workspace)?.role!=='owner')return;
  loadBilling(workspace,generation).catch(e=>{if(e.status===401)signedOut();else error(e);});
 }
-for(const view of Object.keys(workspacePanels))$('nav-'+view).addEventListener('click',()=>{selectWorkspaceView(view);if(view==='billing'){billingPollCount=0;refreshCurrentBilling();}});
+for(const view of Object.keys(workspacePanels))$('nav-'+view).addEventListener('click',()=>{selectWorkspaceView(view);if(view==='projects')showWebsite('');if(view==='billing'){billingPollCount=0;refreshCurrentBilling();}});
 window.addEventListener('focus',()=>{billingPollCount=0;refreshCurrentBilling();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stopBillingRefresh();else{billingPollCount=0;refreshCurrentBilling();}});
 
@@ -44,14 +45,14 @@ if(location.hash)history.replaceState(null,'',location.pathname+location.search)
 async function api(path,body,signal){const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined,signal});const data=await response.json();if(!response.ok){const error=new Error(data.error||'Request failed');error.status=response.status;throw error;}return data;}
 function error(e){$('error').textContent=e.message;$('error').hidden=false;}
 function stopNodeStatusRefresh(){const state=nodeStatusState;nodeStatusCards.clear();if(!state)return;state.stopped=true;clearTimeout(state.timer);state.timer=null;if(state.controller)state.controller.abort();if(nodeStatusState===state)nodeStatusState=null;nodeStatusCards.clear();}
-function signedOut(){stopStaticStatusRefresh();stopBillingRefresh();currentView='projects';stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
-async function loadProjects(){stopStaticStatusRefresh();stopBillingRefresh();billingPollCount=0;stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();configureWorkspaceNavigation(selected);if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;for(const project of data.projects){await appendProject(project,selected.role,version);if(version!==generation)return;}if(!data.projects.length){$('projects').textContent='Your first website starts here. Create a project, then upload your files.';$('new-project-details').open=true;}if(selected.role==='owner'){if(domainQuotes)loadDomainOrders(workspace,version);await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
+function signedOut(){selectedWebsite='';stopStaticStatusRefresh();stopBillingRefresh();currentView='projects';stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
+async function loadProjects(){stopStaticStatusRefresh();stopBillingRefresh();billingPollCount=0;stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();configureWorkspaceNavigation(selected);if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;if(selectedWebsite&&!data.projects.some(project=>project.id===selectedWebsite))selectedWebsite='';for(const project of data.projects){await appendProject(project,selected.role,version);if(version!==generation)return;}if(!data.projects.length){$('projects').textContent='Your first website starts here. Create a project, then upload your files.';$('new-project-details').open=true;}if(selected.role==='owner'){if(domainQuotes)loadDomainOrders(workspace,version);await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
 async function appendProject(project,role,version){if(version!==generation)return;const card=document.createElement('div');card.className='project';card.dataset.projectId=project.id;card.dataset.projectKind=project.kind;const name=document.createElement('strong');name.className='project-name';name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');const heading=document.createElement('div');heading.className='project-heading';const icon=document.createElement('span');icon.className='project-icon';icon.textContent=project.kind==='node'?'JS':'</>';const headingInfo=document.createElement('div');headingInfo.className='project-heading-info';headingInfo.append(name,kind);heading.append(icon,headingInfo);card.append(heading);$('projects').append(card);if(project.deleting){renderDeletingProject(card,project,version);startProjectDeletionPolling(version,$('workspace').value);return;}await projectUploads(card,project,role,version);if(version!==generation||!card.isConnected)return;organizeProject(card);await renderProjectDomains(card,project,role,version);if(version!==generation||!card.isConnected)return;renderProjectRename(card,project,role,version);renderProjectDeletion(card,project,role,version);}
 async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();if(pendingInvite)showFlow('invite');}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;}}
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();});});
 $('project-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{const version=generation;const workspace=$('workspace').value;await api('/api/projects',{workspace,name:$('project-name').value,kind:$('project-kind').value});if(version!==generation)return;$('project-name').value='';$('new-project-details').open=false;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;const role=workspaces.find(w=>w.id===workspace)?.role;for(const project of data.projects){if(!projectCard(project)){if(!$('projects').querySelector('.project'))$('projects').replaceChildren();await appendProject(project,role,version);}}startNodeStatusRefresh(version,workspace);});});
-$('workspace').addEventListener('change',()=>loadProjects().catch(error));
+$('workspace').addEventListener('change',()=>{selectedWebsite='';loadProjects().catch(error);});
 $('logout').addEventListener('click',async()=>{try{await api('/api/logout',{});signedOut();}catch(e){error(e);}});
 function showFlow(kind){
  flow=kind;$('error').hidden=true;$('login').hidden=true;$('workspace-view').hidden=true;$('account-flow').hidden=false;$('account-form').hidden=false;
@@ -156,7 +157,7 @@ function refreshProject(project,role,version){
    if(upload&&freshUpload)freshUpload.replaceWith(upload);
    const focusText=focused?.textContent;const focusTag=focused?.tagName;
    const heading=card.querySelector('.project-heading');const rename=card.querySelector('.project-rename');const domains=card.querySelector('.project-domains');const danger=card.querySelector('.project-danger');
-   const children=[heading,...staging.childNodes,domains,rename,danger].filter(Boolean);
+   const children=[heading,card.querySelector('.website-summary'),card.querySelector('.website-detail-links'),...staging.childNodes,domains,rename,danger].filter(Boolean);
    // Move retained nodes in place rather than detaching their inputs.
    for(const child of [...card.childNodes])if(!children.includes(child))child.remove();
    for(const child of children)card.append(child);
@@ -179,7 +180,7 @@ function organizeProject(card){
  const children=[...card.children];const uploads=disclosure('Upload a new version','upload-details');const history=disclosure('Files & version history','project-history');
  let pastStatus=children.some(child=>child.classList.contains('project-workflow')||child.classList.contains('node-live'));
  for(const child of children){
-  if(child.classList.contains('project-heading')||child.classList.contains('node-live')||child.classList.contains('project-rename')||child.classList.contains('project-workflow'))continue;
+  if(child.classList.contains('website-summary')||child.classList.contains('website-detail-links')||child.classList.contains('project-heading')||child.classList.contains('node-live')||child.classList.contains('project-rename')||child.classList.contains('project-workflow'))continue;
   if(child.tagName==='P'&&!pastStatus&&!child.textContent.startsWith('ZIP')){child.classList.add('project-status');pastStatus=true;continue;}
   if(child.tagName==='A'&&child.target==='_blank'){child.className='site-link';continue;}
   if(child.tagName==='BUTTON'&&child.textContent==='Refresh release status'){child.className='refresh-status';child.textContent='Refresh status';continue;}
@@ -912,15 +913,60 @@ async function loadDomainOrders(workspace,version){
 $('domain-orders-refresh').addEventListener('click',()=>{const workspace=$('workspace').value;if(domainQuotes&&workspaces.find(w=>w.id===workspace)?.role==='owner')loadDomainOrders(workspace,generation);});
 
 // Portfolio controls only change visibility; deployment state remains server-owned.
+function setWebsiteText(element,text){if(element.textContent!==text)element.textContent=text;}
+function showWebsite(id){
+ selectedWebsite=id;filterWebsiteCards();
+ const target=id?projectCard({id}):$('website-search');
+ if(target){if(id)target.setAttribute('tabindex','-1');target.focus({preventScroll:true});target.scrollIntoView({block:'start',behavior:'auto'});}
+}
+function updateWebsiteSummary(card){
+ let summary=card.querySelector(':scope > .website-summary');
+ if(!summary){
+  summary=document.createElement('div');summary.className='website-summary';
+  const status=document.createElement('p');status.className='website-summary-status';
+  const address=document.createElement('p');address.className='website-summary-address';
+  const manage=document.createElement('button');manage.type='button';manage.className='button button-dark';manage.textContent='Manage website';manage.addEventListener('click',()=>showWebsite(card.dataset.projectId));
+  summary.append(status,address,manage);card.querySelector('.project-heading')?.after(summary);
+ }
+ const workflow=card.querySelector('.project-workflow');
+ setWebsiteText(summary.querySelector('.website-summary-status'),workflow?.querySelector('h3')?.textContent||card.querySelector('.project-status')?.textContent||'Loading website status…');
+ const link=card.querySelector('.site-link');
+ let address='No published address yet';
+ if(link){try{address=new URL(link.href).hostname;}catch{}}
+ setWebsiteText(summary.querySelector('.website-summary-address'),address);
+ const tone=workflow?.dataset.tone||'idle';if(summary.dataset.tone!==tone)summary.dataset.tone=tone;
+ const name=card.querySelector('.project-name')?.textContent||'website';
+ summary.querySelector('button').setAttribute('aria-label','Manage '+name);
+ let links=card.querySelector(':scope > .website-detail-links');
+ if(!links){
+  links=document.createElement('nav');links.className='website-detail-links';links.setAttribute('aria-label','Website sections');
+  for(const [label,selector] of [['Publishing','.project-workflow'],['Domains','.project-domains'],['Settings','.project-rename']]){
+   const button=document.createElement('button');button.type='button';button.textContent=label;button.dataset.target=selector;
+   button.addEventListener('click',()=>{const section=card.querySelector(selector);if(!section)return;if(section.tagName==='DETAILS')section.open=true;section.setAttribute('tabindex','-1');section.focus({preventScroll:true});section.scrollIntoView({block:'start',behavior:'auto'});});links.append(button);
+  }
+  summary.after(links);
+ }
+ for(const button of links.children)button.hidden=!card.querySelector(button.dataset.target);
+}
 function filterWebsiteCards(){
  const query=$('website-search').value.trim().toLocaleLowerCase();
  const kind=$('website-type-filter').value;
- const cards=Array.from($('projects').querySelectorAll('.project[data-project-id]'));
+ const cards=Array.from($('projects').querySelectorAll(':scope > .project[data-project-id]'));
  let shown=0;
- for(const card of cards){const matches=(!query||(card.querySelector('.project-name')?.textContent||'').toLocaleLowerCase().includes(query))&&(kind==='all'||card.dataset.projectKind===kind);card.hidden=!matches;if(matches)shown++;}
- $('website-count').textContent=cards.length?shown+' of '+cards.length+' websites':'';
- $('website-no-results').hidden=!cards.length||shown!==0;
+ for(const card of cards){
+  updateWebsiteSummary(card);
+  const matches=(!query||(card.querySelector('.project-name')?.textContent||'').toLocaleLowerCase().includes(query))&&(kind==='all'||card.dataset.projectKind===kind);
+  card.hidden=selectedWebsite?card.dataset.projectId!==selectedWebsite:!matches;
+  card.classList.toggle('website-detail-active',card.dataset.projectId===selectedWebsite);
+  if(matches)shown++;
+ }
+ const detail=!!selectedWebsite;
+ $('projects-panel').classList.toggle('showing-website',detail);
+ $('website-detail-toolbar').hidden=!detail;
+ setWebsiteText($('website-count'),cards.length?shown+' of '+cards.length+' websites':'');
+ $('website-no-results').hidden=detail||!cards.length||shown!==0;
 }
+$('back-to-websites').addEventListener('click',()=>showWebsite(''));
 $('website-search').addEventListener('input',filterWebsiteCards);
 $('website-type-filter').addEventListener('change',filterWebsiteCards);
 new MutationObserver(filterWebsiteCards).observe($('projects'),{childList:true,subtree:true,characterData:true});

@@ -16,7 +16,8 @@ Promise to validate: bring an existing website, publish it on a client domain, a
 - Onboarding tied to actual ZIP, build, publish and domain steps.
 - Explicit workspace-wide team access warning; do not imply project-level client isolation.
 - Landing page and outreach drafts aligned to this audience, with private access and test billing stated honestly.
-- Next: compact website overview leading to a dedicated detail view, visible domain/status/last deployment, accessible mobile navigation and clear retry actions. Preserve file inputs and ongoing operations during status refresh.
+- Shipped: compact website portfolio with current workflow status and published hostname; dedicated in-place website management with publishing/domain/settings shortcuts, back navigation and support contact. Existing forms and polling remain attached during navigation.
+- Next: last-deployment summary, richer status diagnostics and capacity admission before creation. Preserve file inputs and ongoing operations during status refresh.
 
 Acceptance: an invited developer finds a site, uploads a revision, publishes and connects a domain without operator explanation. Test empty, failed, waiting and live states in both themes.
 

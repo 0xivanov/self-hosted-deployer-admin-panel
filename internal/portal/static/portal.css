@@ -256,3 +256,34 @@ input::file-selector-button{background:var(--surface);color:var(--ink);border-co
 @media(min-width:1450px){#projects{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:800px){.workspace-heading h1{font-size:30px}.theme-picker{font-size:0}.theme-picker select{font-size:12px}.header-context{display:none}.wordmark{flex:1}.portfolio-tools{flex-wrap:wrap}.portfolio-tools p{width:100%;margin:0}.workspace-nav{gap:3px}.workspace-nav button{padding:9px 13px}}
 @media(max-width:480px){.portfolio-tools{gap:12px}.portfolio-tools label,.portfolio-tools label:first-child{flex:1 1 100%}.theme-picker select{max-width:85px}.project{padding:18px}}
+
+/* Portfolio cards stay compact; the selected website retains its live controls. */
+#projects>.project:not(.website-detail-active)>:not(.project-heading):not(.website-summary){display:none}
+.website-summary-status{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:8px}
+.website-summary-address{font-size:12px;color:var(--muted);overflow-wrap:anywhere;margin-bottom:20px}
+.website-summary[data-tone=live] .website-summary-status{color:var(--accent)}
+.website-summary button{width:100%}
+.website-detail-active>.website-summary{display:none}
+.website-detail-links{display:flex;flex-wrap:wrap;gap:8px;border-top:1px solid var(--line);padding-top:16px;margin-bottom:20px}
+.website-detail-links button{font-size:12px;background:var(--surface-soft)}
+.showing-website>.section-heading,.showing-website>.new-project-details,.showing-website>.portfolio-tools,.showing-website>.getting-started{display:none}
+.showing-website #projects{grid-template-columns:minmax(0,1fr)}
+.showing-website .project{max-width:880px;width:100%;margin:auto;padding:30px}
+.showing-website .project-heading strong{font-size:26px}
+.showing-website .project-workflow{padding:24px}
+#website-detail-toolbar{grid-column:1/-1;display:flex;align-items:center;gap:18px;font-size:12px;color:var(--muted)}
+#website-detail-toolbar a{margin-left:auto;color:var(--accent);text-decoration:underline}
+.website-detail-active{scroll-margin-top:20px}
+.website-detail-active details,.website-detail-active .project-workflow{scroll-margin-top:20px}
+@media(max-width:600px){.showing-website .project{padding:18px}.showing-website .project-heading strong{font-size:22px}#website-detail-toolbar>span{display:none}.showing-website .project-workflow{padding:16px}}
+/* Keep the portfolio itself visible above the fold on laptop screens. */
+.workspace-heading{padding:10px 0 20px;align-items:center}
+.workspace-heading h1{font-size:30px}
+.workspace-heading .eyebrow{margin-bottom:8px}
+.workspace-intro{margin-top:8px}
+.account-block{padding:10px 14px}
+.workspace-nav{margin-bottom:20px}
+.preview-notice{margin-bottom:16px}
+#projects-panel{gap:16px}
+.portfolio-tools{padding:12px 16px}
+@media(max-width:800px){.account-block{margin-top:16px}.workspace-heading h1{font-size:27px}}
