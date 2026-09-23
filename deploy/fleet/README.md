@@ -202,3 +202,24 @@ check worker resources and builder-controller limits before raising it. On the
 current private fleet it is set to 6 in the provisioner unit's `capacity.conf`
 drop-in, following a worker resource review. The separate builder limit remains
 five Node project controllers; static assignments do not consume those slots.
+
+### Customer project admission
+
+Set the customer portal's `--hosting-project-capacity` to the fleet provisioner's
+`FLEET_MAX_PROJECTS`, and set `--hosting-node-capacity` to the builder's supported
+Node project count (never greater than the total). The current private fleet uses
+6 total / 5 Node. Configure every process that accepts project creation with the
+same values. A value of zero for total disables the cap for compatibility/local
+use; with a positive total, zero Node means static-only admission.
+
+All project rows count as reservations, including unassigned and deleting rows.
+Never manually remove rows to free capacity before external resource cleanup.
+Audit orphan fleet assignments before enabling or changing limits; those
+assignments must be reconciled, since the database cannot count an orphan map
+entry. Limits prevent excess accepted projects but do not assert healthy workers
+or sufficient CPU/memory for every workload. Increase them only after reviewing
+actual fleet resources and updating the provisioner/builder configuration.
+
+The deployed portal systemd override is `customer-portal.service.d/capacity.conf`.
+When rolling back to a binary without these flags, remove that override and reload
+systemd before restarting the restored binary.

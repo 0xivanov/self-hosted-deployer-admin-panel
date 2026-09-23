@@ -735,7 +735,12 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.storeError(w, err)
 			return
 		}
-		httpJSON(w, map[string]any{"projects": projects})
+		availability, err := h.store.ProjectAvailability(r.Context(), cookie.Value, r.URL.Query().Get("workspace"))
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, map[string]any{"projects": projects, "availability": availability})
 	case r.URL.Path == "/api/projects" && r.Method == "POST":
 		var input struct {
 			Workspace string `json:"workspace"`
@@ -787,6 +792,8 @@ func (h *HTTP) storeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrHostingPlanLimit):
 		httpError(w, 409, "Hosting plan limit reached or Node.js is not included. Check plan usage in billing.")
+	case errors.Is(err, ErrHostingCapacity):
+		httpError(w, 409, "Hosting capacity is full. No website was created. Contact support or retry after an unused website has finished being removed.")
 	case errors.Is(err, ErrHostingPayment):
 		httpError(w, 402, "Hosting changes require a current paid test subscription. Ask the workspace owner to check billing.")
 	case errors.Is(err, ErrPublishing):

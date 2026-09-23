@@ -51,6 +51,8 @@ func run() error {
 	signup := flag.Bool("signup", false, "enable public signup when mail is configured")
 	signupAllowlist := flag.String("signup-allowlist", "", "private JSON email allowlist for invitation-only signup")
 	domainDNS := flag.String("domain-dns-resolver", "", "optional IP:port resolver for public custom-domain verification only")
+	projectCapacity := flag.Int("hosting-project-capacity", 0, "total fleet project slots, including queued and deleting projects; 0 disables admission cap")
+	nodeCapacity := flag.Int("hosting-node-capacity", 0, "Node project slots within total fleet capacity")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return errors.New("unexpected arguments")
@@ -107,6 +109,9 @@ func run() error {
 		return err
 	}
 	defer store.Close()
+	if err := store.ConfigureProjectCapacity(*projectCapacity, *nodeCapacity); err != nil {
+		return err
+	}
 	if *demo {
 		_, token, err := store.Register(context.Background(), "demo@example.test", "demo-only-password", "Demo workspace")
 		if err != nil {

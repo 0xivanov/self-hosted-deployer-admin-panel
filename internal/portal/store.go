@@ -30,9 +30,11 @@ var (
 )
 
 type Store struct {
-	db     *sql.DB
-	now    func() time.Time
-	hashes chan struct{}
+	projectCapacity int
+	nodeCapacity    int
+	db              *sql.DB
+	now             func() time.Time
+	hashes          chan struct{}
 }
 type Account struct {
 	ID          string `json:"id"`
@@ -672,6 +674,13 @@ func (s *Store) CreateProject(ctx context.Context, token, workspace, name, kind 
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return Project{}, err
+	}
+	staticRoom, nodeRoom, err := s.capacityAvailable(ctx, tx)
+	if err != nil {
+		return Project{}, err
+	}
+	if (kind == "static" && !staticRoom) || (kind == "node" && !nodeRoom) {
+		return Project{}, ErrHostingCapacity
 	}
 	p := Project{ID: randomToken(), WorkspaceID: workspace, Name: name, Kind: kind}
 	if _, err = tx.ExecContext(ctx, "INSERT INTO projects(id,workspace_id,name,kind) VALUES(?,?,?,?)", p.ID, workspace, name, kind); err != nil {

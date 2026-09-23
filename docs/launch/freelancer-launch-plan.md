@@ -22,7 +22,7 @@ Promise to validate: bring an existing website, publish it on a client domain, a
 Acceptance: an invited developer finds a site, uploads a revision, publishes and connects a domain without operator explanation. Test empty, failed, waiting and live states in both themes.
 
 ### 2. Remove the launch blockers
-- Atomic capacity admission/reservation before accepting a project. Show account allowance and actual hosting availability; reconcile reservations after deletion and failures.
+- Shipped: transactional configured fleet-capacity admission using project rows as reservations, including deleting projects; workspace allowance and static/Node availability displayed before creation. Remaining: operational health-aware provisioning diagnostics and reconciliation for orphan assignments created outside this flow.
 - Actionable build/runtime logs, safe secrets handling, failed deployment recovery and reliable rollback. Surface why an operation waits, without invented progress percentages.
 - Usage summary and straightforward support contact.
 - Verify and document restoration and failure handling appropriate to a limited paid pilot. Existing private-launch shared-kernel infrastructure is not an unrestricted public execution service.
