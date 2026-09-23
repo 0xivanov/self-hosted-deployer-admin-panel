@@ -72,9 +72,20 @@ func (m *AccountMail) enqueue(ctx context.Context, tx *sql.Tx, user, email, toke
 		subject = "Join a Deployer workspace"
 		action = "invite"
 	}
+	if purpose == "client-invite" {
+		subject = "Review your website on Launchstead"
+		action = "client-invite"
+	}
 	// Fragment tokens do not enter HTTP request URLs, proxy logs or referrers.
 	link := m.origin + "/#" + action + "=" + url.QueryEscape(token)
 	message := Mail{ID: id, To: email, Subject: subject, Text: subject + "\n\nOpen this link to continue:\n" + link + "\n\nIf you did not request this, ignore this email.\n"}
+	if purpose == "client-invite" {
+		var name string
+		if err := tx.QueryRowContext(ctx, "SELECT p.name FROM client_invitations i JOIN projects p ON p.id=i.project_id WHERE i.token_hash=?", digest(token)).Scan(&name); err != nil {
+			return err
+		}
+		message.Text = "You are invited to review " + name + " on Launchstead.\n\nThis gives read-only access to this website’s publication status and connected address. It does not grant access to other websites, files, logs, billing, or editing.\n\nSign in with " + email + " and accept using this link:\n" + link + "\n\nNew users: register with this email and verify it first, then reopen this original invitation. Registration requires operator approval during the private launch. This link expires in 7 days and can be accepted once.\n\nIf you were not expecting this invitation, ignore this email.\n"
+	}
 	data, err := json.Marshal(message)
 	if err != nil {
 		return err
@@ -129,6 +140,8 @@ func (m *AccountMail) DeliverOne(ctx context.Context, sender MailSender) (bool, 
 	var valid int
 	if purpose == "invite" {
 		err = m.store.db.QueryRowContext(ctx, `SELECT count(*) FROM invitations i JOIN users u ON u.id=i.inviter_id JOIN memberships m ON m.user_id=u.id AND m.workspace_id=i.workspace_id WHERE i.token_hash=? AND i.inviter_id=? AND i.state='pending' AND i.expires_at>? AND u.disabled=0 AND u.verified=1 AND m.role='owner'`, tokenHash, user, now).Scan(&valid)
+	} else if purpose == "client-invite" {
+		err = m.store.db.QueryRowContext(ctx, "SELECT count(*)"+liveClientInvitation+" AND i.inviter_id=?", tokenHash, now, user).Scan(&valid)
 	} else {
 		err = m.store.db.QueryRowContext(ctx, `SELECT count(*) FROM account_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.user_id=? AND t.purpose=? AND t.expires_at>? AND u.disabled=0`, tokenHash, user, purpose, now).Scan(&valid)
 	}

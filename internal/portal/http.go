@@ -331,7 +331,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/config" && r.Method == "GET" {
-		httpJSON(w, map[string]any{"merchant": h.merchant != nil, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
+		httpJSON(w, map[string]any{"client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
 		return
 	}
 	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/verification/resend" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {
@@ -387,6 +387,10 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "POST" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(csrfFor(cookie.Value))) != 1 {
 		httpError(w, 403, "Reload the page and retry")
+		return
+	}
+	if r.URL.Path == "/api/client-invitations" || r.URL.Path == "/api/client-invitations/revoke" || r.URL.Path == "/api/client-invitations/accept" {
+		h.clientInvitationsHTTP(w, r, cookie.Value)
 		return
 	}
 	if r.URL.Path == "/api/project-clients" || r.URL.Path == "/api/shared-websites" {

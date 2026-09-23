@@ -87,6 +87,10 @@ func (s *Store) ChangeProjectClient(ctx context.Context, token, project, email s
 	if err != nil {
 		return err
 	}
+	// Explicit grant or removal invalidates outstanding links for this client.
+	if _, err = tx.ExecContext(ctx, "UPDATE client_invitations SET state='revoked' WHERE project_id=? AND email=? AND state='pending'", project, email); err != nil {
+		return err
+	}
 	action := "project.client-revoked:"
 	if grant {
 		var memberships, count, existing int

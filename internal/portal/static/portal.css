@@ -294,6 +294,8 @@ input::file-selector-button{background:var(--surface);color:var(--ink);border-co
 
 /* Read-only client review stays visually distinct from management controls. */
 .client-access-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.client-invite-form{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--line)}
+.client-invitations{margin:0 0 1rem}
 .shared-website{padding:1.5rem;margin:1rem 0;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
 .shared-website h3{margin-top:0}.shared-website a{overflow-wrap:anywhere}
 @media(max-width:600px){.client-access-row{align-items:flex-start;flex-direction:column}}
