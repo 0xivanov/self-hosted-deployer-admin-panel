@@ -39,7 +39,7 @@ Acceptance: over-capacity requests fail clearly before a project is accepted; a 
 Acceptance: a client sees only the intended website; cross-project APIs deny access, including logs, uploads, domains and releases.
 
 ### 4. Developer deployment paths
-- Registry image reference first: Docker Hub/GHCR, port, health check, environment variables, private credential handling, digest pinning and ARM64 compatibility validation before acceptance.
+- Registry image reference first: Docker Hub/GHCR, port, health check, environment variables, private credential handling, digest pinning and ARM64 compatibility validation before acceptance. Implemented the metadata resolver/check command with bounded requests, digest verification and ARM64 selection; real public metadata probes succeeded for both registries. This is not yet a customer deployment feature. Remaining work and evidence are in [registry image deployment](registry-image-deployment.md).
 - GitHub connection and deploy-on-push second, with narrow installation access and webhook validation.
 - Dockerfile builds later, with resource limits and isolation. Define storage/database support explicitly; do not market all MVP workloads as supported.
 
