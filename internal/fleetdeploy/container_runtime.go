@@ -24,6 +24,8 @@ type containerRuntime struct {
 }
 
 type containerOperation struct {
+	RequestID              string                         `json:"request_id,omitempty"`
+	PreflightState         string                         `json:"preflight_state,omitempty"`
 	WithdrawalDeploymentID string                         `json:"withdrawal_deployment_id,omitempty"`
 	WithdrawalAppID        string                         `json:"withdrawal_app_id,omitempty"`
 	Request                portal.ContainerRuntimeRequest `json:"request"`
@@ -73,6 +75,13 @@ func readContainerOperation(path string) (containerOperation, error) {
 	}
 	if (op.Stage == "withdrawn") != (op.WithdrawalDeploymentID != "" && op.WithdrawalAppID != "") {
 		return containerOperation{}, errors.New("invalid container withdrawal state")
+	}
+	if op.RequestID != "" {
+		if op.RequestID != op.Request.Deployment.ID || !hexID(op.RequestID) || !json.Valid([]byte(op.PreflightState)) {
+			return containerOperation{}, errors.New("invalid tracked container request")
+		}
+	} else if op.PreflightState != "" {
+		return containerOperation{}, errors.New("unexpected tracked preflight state")
 	}
 	return op, nil
 }
@@ -221,6 +230,15 @@ func (r *containerRuntime) SubmitContainerRuntime(ctx context.Context, q portal.
 	if ctx.Err() != nil || q.ActivateBefore <= time.Now().Unix() {
 		return r.rejectBeforeSubmission(op, errors.New("activation deadline expired before dispatch"))
 	}
+	tracked, hasTracked := c.(trackedContainerDeployer)
+	if hasTracked {
+		var desired map[string]any
+		if json.Unmarshal([]byte(preflight.DesiredState), &desired) != nil || !containerDesiredMatches(desired, r.a, q.Release) {
+			return r.rejectBeforeSubmission(op, errors.New("invalid tracked container preflight"))
+		}
+		op.RequestID = q.Deployment.ID
+		op.PreflightState = preflight.DesiredState
+	}
 	op.Stage = "dispatched"
 	if err = r.save(op); err != nil {
 		return err
@@ -230,6 +248,22 @@ func (r *containerRuntime) SubmitContainerRuntime(ctx context.Context, q portal.
 	}
 	if q.ActivateBefore <= time.Now().Unix() {
 		return r.rejectBeforeSubmission(op, errors.New("activation deadline expired after dispatch intent"))
+	}
+	if hasTracked {
+		result, callErr := tracked.DeployAppTracked(ctx, spec, q.Deployment.ID)
+		if callErr != nil {
+			return callErr
+		}
+		if result.WithdrawalConfirmed {
+			if !confirmedContainerWithdrawal(result, r.a, q.Release) || !matchingContainerStates(result.RequestedState, op.PreflightState) {
+				return errors.New("invalid tracked withdrawal response")
+			}
+			op.Stage = "withdrawn"
+			op.WithdrawalDeploymentID = result.Deployment.ID
+			op.WithdrawalAppID = result.App.ID
+			return r.save(op)
+		}
+		return nil
 	}
 	if reporter, ok := c.(interface {
 		DeployAppReportingWithdrawal(context.Context, string) (client.DeployResult, error)
@@ -288,13 +322,7 @@ func (r *containerRuntime) InspectContainerRuntime(ctx context.Context, q portal
 		return portal.ContainerRuntimeObservation{}, errors.New("container deployment request conflict")
 	}
 	if op.Stage == "withdrawn" {
-		if q.Previous != nil {
-			s, statusErr := r.w.status(ctx, r.a)
-			if statusErr != nil || s.App.ID != op.WithdrawalAppID || s.LatestDeployment.ID != op.WithdrawalDeploymentID || s.LatestDeployment.Status != "failed" || !healthyContainerRuntime(s, r.a, *q.Previous) {
-				return containerObservation(q, "pending"), nil
-			}
-		}
-		return containerObservation(q, "failed"), nil
+		return r.inspectWithdrawn(ctx, q, op)
 	}
 	if op.Stage == "preparing" || op.Stage == "not_submitted" {
 		if op.Stage == "preparing" && q.ActivateBefore > time.Now().Unix() {
@@ -310,6 +338,9 @@ func (r *containerRuntime) InspectContainerRuntime(ctx context.Context, q portal
 	}
 	if revision != q.Deployment.Revision || deployment != q.Deployment.ID {
 		return portal.ContainerRuntimeObservation{}, errors.New("missing dispatched container revision fence")
+	}
+	if op.RequestID != "" {
+		return r.inspectTracked(ctx, q, op)
 	}
 	s, err := r.w.status(ctx, r.a)
 	if err != nil {
@@ -340,4 +371,66 @@ func matchingContainerStates(receipt json.RawMessage, preflight string) bool {
 		return false
 	}
 	return reflect.DeepEqual(actual, expected)
+}
+
+type trackedContainerDeployer interface {
+	DeployAppTracked(context.Context, string, string) (client.DeployResult, error)
+	GetDeployRequest(context.Context, string, string) (client.DeployRequestResult, error)
+}
+
+func (r *containerRuntime) inspectWithdrawn(ctx context.Context, q portal.ContainerRuntimeRequest, op containerOperation) (portal.ContainerRuntimeObservation, error) {
+	if q.Previous != nil {
+		s, err := r.w.status(ctx, r.a)
+		if err != nil || s.App.ID != op.WithdrawalAppID || s.LatestDeployment.ID != op.WithdrawalDeploymentID || s.LatestDeployment.Status != "failed" || !healthyContainerRuntime(s, r.a, *q.Previous) {
+			return containerObservation(q, "pending"), nil
+		}
+	}
+	return containerObservation(q, "failed"), nil
+}
+
+func (r *containerRuntime) inspectTracked(ctx context.Context, q portal.ContainerRuntimeRequest, op containerOperation) (portal.ContainerRuntimeObservation, error) {
+	pending := containerObservation(q, "pending")
+	c, err := r.w.factory(r.a.id)
+	if err != nil {
+		return pending, nil
+	}
+	defer c.Close()
+	tracker, ok := c.(trackedContainerDeployer)
+	if !ok {
+		return pending, nil
+	}
+	record, err := tracker.GetDeployRequest(ctx, appName(r.a.id), op.RequestID)
+	if err != nil {
+		return pending, nil
+	}
+	if record.AppName != appName(r.a.id) || record.RequestID != op.RequestID || !matchingContainerStates(record.RequestedState, op.PreflightState) {
+		return pending, errors.New("tracked deployment receipt identity mismatch")
+	}
+	if record.State == "pending" {
+		return pending, nil
+	}
+	if record.Result == nil {
+		return pending, errors.New("tracked deployment result missing")
+	}
+	result := *record.Result
+	if record.State == "withdrawn" {
+		if !confirmedContainerWithdrawal(result, r.a, q.Release) || !matchingContainerStates(result.RequestedState, op.PreflightState) {
+			return pending, errors.New("invalid recorded withdrawal")
+		}
+		op.Stage = "withdrawn"
+		op.WithdrawalDeploymentID = result.Deployment.ID
+		op.WithdrawalAppID = result.App.ID
+		if err := r.save(op); err != nil {
+			return pending, err
+		}
+		return r.inspectWithdrawn(ctx, q, op)
+	}
+	if record.State != "applied" || result.WithdrawalConfirmed || result.App.Name != appName(r.a.id) || result.App.ID == "" || result.Deployment.ID == "" || result.Deployment.AppID != result.App.ID || result.Deployment.Status != "healthy" || !matchingContainerStates(result.RequestedState, op.PreflightState) {
+		return pending, errors.New("invalid recorded deployment outcome")
+	}
+	s, err := c.GetAppStatus(ctx, appName(r.a.id))
+	if err != nil || s.App.ID != result.App.ID || s.LatestDeployment.ID != result.Deployment.ID || !healthyContainer(s, r.a, q.Release) {
+		return pending, nil
+	}
+	return containerObservation(q, "succeeded"), nil
 }

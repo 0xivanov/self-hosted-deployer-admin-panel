@@ -144,3 +144,10 @@ For an update, settlement still waits for fresh confirmation that the previous c
 Core compensation is opt-in. It reports proof only for definitive apply rejections or failures after acknowledged apply, and only after rollback/cleanup and failed-status persistence succeed. A runtime timeout or uncertain server error cannot produce proof. Legacy callers retain their current behavior. This is implemented and verified locally, not deployed.
 
 Lost replies and accepted-but-stuck rollouts remain unresolved. They continue pending rather than risking duplicate deployment. Durable operation identities, withdrawal tombstones and runtime fencing remain the next recovery work before fleet qualification and enabling Docker hosting. See core `docs/deployment-withdrawal.md`.
+
+
+### Durable response recovery, September 23
+
+Implemented locally: the worker saves a stable deployment request ID and complete preflight configuration before submitting through the tracked CLI. After a lost response it reads the core journal by app and request ID, without replaying the deployment. Applied results require matching app/deployment IDs and fresh runtime, replica and HTTPS readiness. Withdrawn results must match the complete candidate configuration and require previous-release health where applicable. Pending, unknown or mismatched results cannot mark a release live or retryable.
+
+Focused client/worker checks cover lost responses, restart replay prevention, pending/not-found records, changed identity/configuration, fresh readiness and durable withdrawal receipts. Core server/repository checks cover result persistence across database reopen, immutable request identity, predecessor retention and pending mutation blocking. This remains local, not enabled on the live fleet. Stuck-rollout fencing and coordinated schema upgrades remain outstanding.

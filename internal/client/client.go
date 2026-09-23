@@ -257,3 +257,18 @@ func (c *CLI) ChangeNode(ctx context.Context, id, action string) error {
 		return errors.New("unsupported node action")
 	}
 }
+
+func (c *CLI) DeployAppTracked(ctx context.Context, data, requestID string) (v DeployResult, e error) {
+	if !registryRevisionPattern.MatchString(requestID) {
+		return v, errors.New("invalid deployment request identity")
+	}
+	e = c.withYAML(ctx, data, "deploy", &v, "--request-id", requestID, "--report-withdrawal")
+	return
+}
+func (c *CLI) GetDeployRequest(ctx context.Context, app, requestID string) (v DeployRequestResult, e error) {
+	if len(app) > 63 || !registryAppNamePattern.MatchString(app) || !registryRevisionPattern.MatchString(requestID) {
+		return v, errors.New("invalid deployment request identity")
+	}
+	e = c.read(ctx, &v, "apps", "request", app, requestID)
+	return
+}

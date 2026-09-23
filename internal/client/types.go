@@ -100,3 +100,12 @@ type DatabaseStatusInfo struct {
 	Primary          string   `json:"primary"`
 	RunningNodes     []string `json:"running_nodes"`
 }
+
+// DeployRequestResult is a recorded server outcome, not a readiness claim.
+type DeployRequestResult struct {
+	AppName        string          `json:"app_name"`
+	RequestID      string          `json:"request_id"`
+	State          string          `json:"state"`
+	RequestedState json.RawMessage `json:"requested_state"`
+	Result         *DeployResult   `json:"result,omitempty"`
+}

@@ -30,3 +30,31 @@ func TestDeployWithdrawalCLIOptsInAndPreservesReceipt(t *testing.T) {
 		t.Fatal("temporary config retained")
 	}
 }
+
+func TestTrackedDeploymentCLIUsesStableIDAndReadOnlyLookup(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "deployer")
+	capture := filepath.Join(dir, "args")
+	id := strings.Repeat("a", 64)
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$TRACKED_ARGS\"\nprintf '%s' '{\"app_name\":\"my-api\",\"request_id\":\"" + id + "\",\"state\":\"pending\",\"requested_state\":{\"name\":\"my-api\"}}'\n"
+	if err := os.WriteFile(exe, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TRACKED_ARGS", capture)
+	c := &CLI{executable: exe, directory: dir, config: filepath.Join(dir, "config.json")}
+	if _, err := c.DeployAppTracked(t.Context(), "name: my-api\n", id); err != nil {
+		t.Fatal(err)
+	}
+	record, err := c.GetDeployRequest(t.Context(), "my-api", id)
+	if err != nil || record.RequestID != id || record.State != "pending" {
+		t.Fatal("request metadata lost")
+	}
+	raw, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := string(raw)
+	if !strings.Contains(args, "deploy --request-id "+id+" --report-withdrawal --file ") || !strings.Contains(args, "apps request my-api "+id) {
+		t.Fatal("wrong tracked CLI commands")
+	}
+}
