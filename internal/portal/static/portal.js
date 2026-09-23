@@ -8,7 +8,7 @@ const projectDomainStates=new Map();
 const projectRefreshes=new Map();
 const domainRefreshes=new WeakMap();
 const nodeStatusInterval=5000;
-const workspacePanels={projects:'projects-panel',billing:'billing-panel',team:'member-panel',domains:'domain-panel',store:'merchant-panel'};
+const workspacePanels={projects:'projects-panel',billing:'billing-panel',team:'member-panel',domains:'domain-panel',store:'merchant-panel',shared:'shared-panel'};
 let currentView=location.pathname.startsWith('/billing/')?'billing':'projects';
 let billingTimer=null,billingPollCount=0;
 let selectedWebsite='';
@@ -17,6 +17,8 @@ function stopBillingRefresh(){clearTimeout(billingTimer);billingTimer=null;}
 function selectWorkspaceView(view){
  if(!workspacePanels[view]||$('nav-'+view).hidden)view='projects';
  currentView=view;
+ $('workspace-title').textContent=view==='shared'?'Websites shared with you.':'Your clients. Your websites.';
+ $('workspace-intro').textContent=view==='shared'?'Review your website and open its published address. Your developer manages updates.':'Publish client websites, connect their domains, and manage updates from one workspace.';
  for(const [name,id] of Object.entries(workspacePanels)){
   $(id).dataset.inactive=String(name!==view);
   $('nav-'+name).setAttribute('aria-current',name===view?'page':'false');
@@ -25,7 +27,7 @@ function selectWorkspaceView(view){
 }
 function configureWorkspaceNavigation(selected){
  const owner=selected?.role==='owner';
- for(const [view,available] of Object.entries({projects:true,billing:owner&&testBilling,team:owner,domains:owner&&domainQuotes,store:owner&&merchantEnabled}))$('nav-'+view).hidden=!available;
+ for(const [view,available] of Object.entries({projects:true,shared:true,billing:owner&&testBilling,team:owner,domains:owner&&domainQuotes,store:owner&&merchantEnabled}))$('nav-'+view).hidden=!available;
  $('new-project-details').hidden=!selected||selected.role==='viewer';
  selectWorkspaceView(currentView);
 }
@@ -34,7 +36,7 @@ function refreshCurrentBilling(){
  if(document.hidden||$('workspace-view').hidden||currentView!=='billing'||!testBilling||workspaces.find(w=>w.id===workspace)?.role!=='owner')return;
  loadBilling(workspace,generation).catch(e=>{if(e.status===401)signedOut();else error(e);});
 }
-for(const view of Object.keys(workspacePanels))$('nav-'+view).addEventListener('click',()=>{selectWorkspaceView(view);if(view==='projects')showWebsite('');if(view==='billing'){billingPollCount=0;refreshCurrentBilling();}});
+for(const view of Object.keys(workspacePanels))$('nav-'+view).addEventListener('click',()=>{selectWorkspaceView(view);if(view==='projects')showWebsite('');if(view==='shared')loadSharedWebsites();if(view==='billing'){billingPollCount=0;refreshCurrentBilling();}});
 window.addEventListener('focus',()=>{billingPollCount=0;refreshCurrentBilling();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stopBillingRefresh();else{billingPollCount=0;refreshCurrentBilling();}});
 
@@ -46,10 +48,10 @@ if(location.hash)history.replaceState(null,'',location.pathname+location.search)
 async function api(path,body,signal){const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined,signal});const data=await response.json();if(!response.ok){const error=new Error(data.error||'Request failed');error.status=response.status;throw error;}return data;}
 function error(e){$('error').textContent=e.message;$('error').hidden=false;}
 function stopNodeStatusRefresh(){const state=nodeStatusState;nodeStatusCards.clear();if(!state)return;state.stopped=true;clearTimeout(state.timer);state.timer=null;if(state.controller)state.controller.abort();if(nodeStatusState===state)nodeStatusState=null;nodeStatusCards.clear();}
-function signedOut(){selectedWebsite='';stopStaticStatusRefresh();stopBillingRefresh();currentView='projects';stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
+function signedOut(){sharedRequest++;$('shared-websites').replaceChildren();$('shared-status').textContent='';selectedWebsite='';stopStaticStatusRefresh();stopBillingRefresh();currentView='projects';stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
 async function loadProjects(){projectAvailability=null;$('project-form').querySelector('button[type=submit],button').disabled=true;stopStaticStatusRefresh();stopBillingRefresh();billingPollCount=0;stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();configureWorkspaceNavigation(selected);if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;renderProjectAvailability(data.availability);if(selectedWebsite&&!data.projects.some(project=>project.id===selectedWebsite))selectedWebsite='';for(const project of data.projects){await appendProject(project,selected.role,version);if(version!==generation)return;}if(!data.projects.length){$('projects').textContent='Your first website starts here. Create a project, then upload your files.';$('new-project-details').open=true;}if(selected.role==='owner'){if(domainQuotes)loadDomainOrders(workspace,version);await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
-async function appendProject(project,role,version){if(version!==generation)return;const card=document.createElement('div');card.className='project';card.dataset.projectId=project.id;card.dataset.projectKind=project.kind;const name=document.createElement('strong');name.className='project-name';name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');const heading=document.createElement('div');heading.className='project-heading';const icon=document.createElement('span');icon.className='project-icon';icon.textContent=project.kind==='node'?'JS':'</>';const headingInfo=document.createElement('div');headingInfo.className='project-heading-info';headingInfo.append(name,kind);heading.append(icon,headingInfo);card.append(heading);$('projects').append(card);if(project.deleting){renderDeletingProject(card,project,version);startProjectDeletionPolling(version,$('workspace').value);return;}await projectUploads(card,project,role,version);if(version!==generation||!card.isConnected)return;organizeProject(card);await renderProjectDomains(card,project,role,version);if(version!==generation||!card.isConnected)return;renderProjectRename(card,project,role,version);renderProjectDeletion(card,project,role,version);renderRuntimeLogs(card,project,role,version);}
-async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();if(pendingInvite)showFlow('invite');}
+async function appendProject(project,role,version){if(version!==generation)return;const card=document.createElement('div');card.className='project';card.dataset.projectId=project.id;card.dataset.projectKind=project.kind;const name=document.createElement('strong');name.className='project-name';name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');const heading=document.createElement('div');heading.className='project-heading';const icon=document.createElement('span');icon.className='project-icon';icon.textContent=project.kind==='node'?'JS':'</>';const headingInfo=document.createElement('div');headingInfo.className='project-heading-info';headingInfo.append(name,kind);heading.append(icon,headingInfo);card.append(heading);$('projects').append(card);if(project.deleting){renderDeletingProject(card,project,version);startProjectDeletionPolling(version,$('workspace').value);return;}await projectUploads(card,project,role,version);if(version!==generation||!card.isConnected)return;organizeProject(card);await renderProjectDomains(card,project,role,version);if(version!==generation||!card.isConnected)return;renderProjectRename(card,project,role,version);renderProjectDeletion(card,project,role,version);renderRuntimeLogs(card,project,role,version);renderProjectClients(card,project,role,version);}
+async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();const session=csrf;const shared=await loadSharedWebsites();if(session===csrf&&currentView==='projects'&&!$('projects').querySelector('.project')&&shared>0)selectWorkspaceView('shared');if(pendingInvite)showFlow('invite');}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;if(form.id==='project-form'&&projectAvailability)renderProjectAvailability(projectAvailability);}}
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();});});
 $('project-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{const version=generation;const workspace=$('workspace').value;await api('/api/projects',{workspace,name:$('project-name').value,kind:$('project-kind').value});if(version!==generation)return;$('project-name').value='';$('new-project-details').open=false;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;renderProjectAvailability(data.availability);const role=workspaces.find(w=>w.id===workspace)?.role;for(const project of data.projects){if(!projectCard(project)){if(!$('projects').querySelector('.project'))$('projects').replaceChildren();await appendProject(project,role,version);}}startNodeStatusRefresh(version,workspace);});});
@@ -158,7 +160,7 @@ function refreshProject(project,role,version){
    if(upload&&freshUpload)freshUpload.replaceWith(upload);
    const focusText=focused?.textContent;const focusTag=focused?.tagName;
    const heading=card.querySelector('.project-heading');const rename=card.querySelector('.project-rename');const domains=card.querySelector('.project-domains');const danger=card.querySelector('.project-danger');
-   const children=[heading,card.querySelector('.website-summary'),card.querySelector('.website-detail-links'),...staging.childNodes,card.querySelector('.project-runtime-logs'),domains,rename,danger].filter(Boolean);
+   const children=[heading,card.querySelector('.website-summary'),card.querySelector('.website-detail-links'),...staging.childNodes,card.querySelector('.project-runtime-logs'),card.querySelector('.project-clients'),domains,rename,danger].filter(Boolean);
    // Move retained nodes in place rather than detaching their inputs.
    for(const child of [...card.childNodes])if(!children.includes(child))child.remove();
    for(const child of children)card.append(child);
@@ -954,7 +956,7 @@ function updateWebsiteSummary(card){
  let links=card.querySelector(':scope > .website-detail-links');
  if(!links){
   links=document.createElement('nav');links.className='website-detail-links';links.setAttribute('aria-label','Website sections');
-  for(const [label,selector] of [['Publishing','.project-workflow'],['Logs','.project-runtime-logs'],['Domains','.project-domains'],['Settings','.project-rename']]){
+  for(const [label,selector] of [['Publishing','.project-workflow'],['Logs','.project-runtime-logs'],['Domains','.project-domains'],['Clients','.project-clients'],['Settings','.project-rename']]){
    const button=document.createElement('button');button.type='button';button.textContent=label;button.dataset.target=selector;
    button.addEventListener('click',()=>{const section=card.querySelector(selector);if(!section)return;if(section.tagName==='DETAILS')section.open=true;section.setAttribute('tabindex','-1');section.focus({preventScroll:true});section.scrollIntoView({block:'start',behavior:'auto'});});links.append(button);
   }
@@ -1024,3 +1026,53 @@ function renderRuntimeLogs(card,project,role,version){
  refresh.addEventListener('click',async()=>{refresh.disabled=true;status.textContent='Reading runtime output…';try{const data=await api('/api/runtime-logs?project='+encodeURIComponent(project.id));if(version!==generation||!details.isConnected)return;output.textContent=data.log||'No recent output was returned.';status.textContent='Fetched '+new Date(data.fetched_at*1000).toLocaleString();refresh.textContent='Refresh output';}catch(e){if(version===generation&&details.isConnected){output.textContent='';status.textContent=e.message;}}finally{refresh.disabled=false;}});
  details.append(copy,refresh,status,output);card.append(details);
 }
+
+// Client review is separate from workspace membership and project management.
+function renderProjectClients(card,project,role,version){
+ if(role!=='owner'||project.deleting||version!==generation)return;
+ const details=disclosure('Client access','project-clients');
+ const copy=document.createElement('p');copy.textContent='Share this website’s name, publication status, and connected address. Clients cannot edit it or see files, logs, billing, or other websites. Team membership gives broader access and is managed separately.';
+ const note=document.createElement('p');note.className='muted';note.textContent='The client must already have a verified Launchstead account. Registration is currently limited to approved people. This does not send an invitation email. Maximum 20 clients per website.';
+ const list=document.createElement('div');const status=document.createElement('p');status.setAttribute('role','status');
+ const form=document.createElement('form');const label=document.createElement('label');label.textContent='Client email';const input=document.createElement('input');input.type='email';input.required=true;input.maxLength=254;input.autocomplete='email';label.append(input);
+ const grant=document.createElement('button');grant.type='submit';grant.textContent='Give read-only access';form.append(label,grant);
+ const refresh=document.createElement('button');refresh.type='button';refresh.className='button-quiet';refresh.textContent='Refresh client list';
+ let listRequest=0;
+ const current=()=>version===generation&&details.isConnected&&card.dataset.deleting!=='true';
+ async function load(){
+  const request=++listRequest;
+  status.textContent='Loading client access…';
+  const data=await api('/api/project-clients?project='+encodeURIComponent(project.id));if(!current()||request!==listRequest)return;
+  list.replaceChildren();status.textContent=data.clients.length?'':'No clients have access to this website.';
+  for(const client of data.clients){
+   const row=document.createElement('div');row.className='client-access-row';const email=document.createElement('span');email.textContent=client.email;
+   const remove=document.createElement('button');remove.type='button';remove.className='button-quiet';remove.textContent='Remove access';remove.setAttribute('aria-label','Remove access for '+client.email);
+   remove.addEventListener('click',async()=>{remove.disabled=true;try{await api('/api/project-clients',{project:project.id,email:client.email,grant:false});if(current())await load();}catch(e){if(current())status.textContent=e.message;}finally{remove.disabled=false;}});
+   row.append(email,remove);list.append(row);
+  }
+ }
+ form.addEventListener('submit',event=>{event.preventDefault();submit(form,async()=>{await api('/api/project-clients',{project:project.id,email:input.value.trim(),grant:true});if(current()){input.value='';await load();}});});
+ refresh.addEventListener('click',()=>load().catch(e=>{if(current())status.textContent=e.message;}));
+ details.addEventListener('toggle',()=>{if(details.open)load().catch(e=>{if(current())status.textContent=e.message;});});
+ details.append(copy,note,form,status,list,refresh);card.append(details);
+}
+let sharedRequest=0;
+async function loadSharedWebsites(){
+ const request=++sharedRequest;const session=csrf;const content=$('shared-websites');const status=$('shared-status');
+ content.replaceChildren();status.textContent='Loading shared websites…';
+ try{
+  const data=await api('/api/shared-websites');if(request!==sharedRequest||session!==csrf)return;
+  status.textContent=data.websites.length?'Read-only access. Contact the website owner to request changes.':'No websites have been shared with this account.';
+  for(const site of data.websites){
+   const card=document.createElement('article');card.className='shared-website';const title=document.createElement('h3');title.textContent=site.name;
+   const state=document.createElement('p');state.textContent=(site.kind==='node'?'Node.js application':'Static website')+' · '+(site.published?'A version has been published':'Not published yet');card.append(title,state);
+   // Hostname only, never render arbitrary URLs or markup from a response.
+   if(typeof site.domain==='string'&&/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(site.domain)){
+    const link=document.createElement('a');link.href='https://'+site.domain;link.textContent='Open '+site.domain;link.target='_blank';link.rel='noopener noreferrer';card.append(link);
+   }else{const note=document.createElement('p');note.className='muted';note.textContent='No connected website address is ready yet.';card.append(note);}
+   content.append(card);
+  }
+  return data.websites.length;
+ }catch(e){if(request===sharedRequest&&session===csrf){if(e.status===401)signedOut();else status.textContent=e.message;}}
+}
+$('shared-refresh').addEventListener('click',loadSharedWebsites);

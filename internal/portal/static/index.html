@@ -45,11 +45,12 @@
 
       <section id="workspace-view" hidden>
         <div class="workspace-heading">
-          <div><p class="eyebrow"><span class="eyebrow-dot"></span>Launchstead workspace</p><h1>Your clients. Your websites.</h1><p class="workspace-intro">Publish client websites, connect their domains, and manage updates from one workspace.</p></div>
+          <div><p class="eyebrow"><span class="eyebrow-dot"></span>Launchstead workspace</p><h1 id="workspace-title">Your clients. Your websites.</h1><p id="workspace-intro" class="workspace-intro">Publish client websites, connect their domains, and manage updates from one workspace.</p></div>
           <div class="account-block"><span class="account-label">Signed in as</span><strong id="account"></strong><div class="workspace-selector"><label for="workspace">Workspace</label><select id="workspace" aria-label="Workspace"></select></div></div>
         </div>
         <nav class="workspace-nav" aria-label="Workspace sections">
           <button id="nav-projects" type="button" data-view="projects" aria-current="page">Websites</button>
+          <button id="nav-shared" type="button" data-view="shared">Shared with me</button>
           <button id="nav-billing" type="button" data-view="billing">Billing</button>
           <button id="nav-team" type="button" data-view="team">Team</button>
           <button id="nav-domains" type="button" data-view="domains">Domains</button>
@@ -64,9 +65,11 @@
           </details>
           <div class="portfolio-tools"><label for="website-search">Find a website<input id="website-search" type="search" placeholder="Search by website name" autocomplete="off"></label><label for="website-type-filter">Website type<select id="website-type-filter"><option value="all">All types</option><option value="static">Static websites</option><option value="node">Node.js apps</option></select></label><p id="website-count" role="status"></p></div>
           <p id="website-no-results" class="notice" hidden>No websites match. Try another name or choose all types.</p>
-          <details class="getting-started"><summary>Hosting a client website? Start here</summary><ol><li><strong>Add the website.</strong> Choose static files or a Node.js app, then upload your ZIP.</li><li><strong>Publish a version.</strong> Follow the next action on the website card. Node.js apps need a build first.</li><li><strong>Connect the client’s domain.</strong> Open Domains on the website card, add the DNS records, and verify ownership.</li><li><strong>Invite collaborators carefully.</strong> Team access applies to every website in this workspace. Separate client-only access is not available yet.</li></ol></details>
+          <details class="getting-started"><summary>Hosting a client website? Start here</summary><ol><li><strong>Add the website.</strong> Choose static files or a Node.js app, then upload your ZIP.</li><li><strong>Publish a version.</strong> Follow the next action on the website card. Node.js apps need a build first.</li><li><strong>Connect the client’s domain.</strong> Open Domains on the website card, add the DNS records, and verify ownership.</li><li><strong>Invite collaborators carefully.</strong> Team access applies to every website in this workspace. For a client who only needs to review one website, use Client access inside that website.</li></ol></details>
           <div id="projects" aria-live="polite"></div>
         </div>
+
+        <section id="shared-panel" data-view-panel="shared"><p class="eyebrow">Client review</p><h2>Shared with me</h2><p>Websites that other owners have shared with your account.</p><button id="shared-refresh" type="button" class="button-quiet">Refresh shared websites</button><p id="shared-status" role="status"></p><div id="shared-websites" aria-live="polite"></div></section>
 
         <section id="domain-panel" data-view-panel="domains" hidden><p class="eyebrow">Domains</p><h2>Find a domain</h2><p>Search for a .com, .net or .org domain for your website.</p><form id="domain-form"><label>Domain name<input id="domain-name" placeholder="yourwebsite.com" required maxlength="67" autocomplete="off" spellcheck="false"></label><button class="button button-dark">Check availability and price</button></form><div id="domain-result" aria-live="polite"></div><h3>Domain orders</h3><button id="domain-orders-refresh" class="button button-light" type="button">Refresh domain orders</button><div id="domain-orders" aria-live="polite"></div><p class="muted">A quote or prepared order does not reserve a domain. Payment and registration are not connected yet.</p></section>
         <section id="billing-panel" data-view-panel="billing" hidden><p class="eyebrow">Billing</p><h2>Hosting billing</h2><p class="notice">Test payments only. No real payment is collected.</p><p id="billing-return-message" role="status" hidden></p><button id="billing-refresh" class="button button-light" type="button">Refresh billing status</button><div id="billing-content" aria-live="polite"></div></section>

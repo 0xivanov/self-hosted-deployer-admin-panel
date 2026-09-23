@@ -291,3 +291,9 @@ input::file-selector-button{background:var(--surface);color:var(--ink);border-co
 .operation-delay{border-left:3px solid var(--accent);padding:8px 12px;background:var(--surface);border-radius:0 6px 6px 0}
 .operation-requested{font-size:12px!important}
 .build-output pre,.project-runtime-logs pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto;background:var(--surface-soft);border:1px solid var(--line);padding:14px;border-radius:8px;font:12px/1.6 ui-monospace,monospace;color:var(--ink)}
+
+/* Read-only client review stays visually distinct from management controls. */
+.client-access-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.shared-website{padding:1.5rem;margin:1rem 0;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.shared-website h3{margin-top:0}.shared-website a{overflow-wrap:anywhere}
+@media(max-width:600px){.client-access-row{align-items:flex-start;flex-direction:column}}

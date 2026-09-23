@@ -17,7 +17,7 @@ Promise to validate: bring an existing website, publish it on a client domain, a
 - Explicit workspace-wide team access warning; do not imply project-level client isolation.
 - Landing page and outreach drafts aligned to this audience, with private access and test billing stated honestly.
 - Shipped: compact website portfolio with current workflow status and published hostname; dedicated in-place website management with publishing/domain/settings shortcuts, back navigation and support contact. Existing forms and polling remain attached during navigation.
-- Next: last-deployment summary, richer status diagnostics and capacity admission before creation. Preserve file inputs and ongoing operations during status refresh.
+- Next: richer last-deployment summaries and operational diagnostics. Capacity admission is shipped below. Preserve file inputs and ongoing operations during status refresh.
 
 Acceptance: an invited developer finds a site, uploads a revision, publishes and connects a domain without operator explanation. Test empty, failed, waiting and live states in both themes.
 
@@ -30,7 +30,8 @@ Acceptance: an invited developer finds a site, uploads a revision, publishes and
 Acceptance: over-capacity requests fail clearly before a project is accepted; a bad update does not unnecessarily replace a healthy site; the customer can recover and the operator can diagnose issues.
 
 ### 3. Freelancer collaboration
-- Project-scoped client access with server-enforced permissions across every related resource, plus invitations and audit history. Existing roles are workspace-wide.
+- Shipped first slice: owner-managed, project-scoped read-only client review for existing verified accounts. A separate Shared with me view exposes only the granted website name/type, publication summary and active custom-domain address. It grants no workspace membership, source/upload access, DNS proof, logs, billing, publishing or editing. Add/remove actions are audited; revocation takes effect on the next request. Maximum 20 clients per website.
+- Remaining: scoped invitations for new clients, visible access audit history and handover. Existing Team roles are still workspace-wide. Registration remains restricted to the operator-approved allowlist; this feature does not broaden signup or send email.
 - Client labels and portfolio organization, then ownership handover after membership/billing implications are designed.
 - Shareable deployment summaries with no secrets and no implied access grant.
 
@@ -60,3 +61,13 @@ After the first five customers, prioritize observed blockers and retention over 
 Use the existing deployer and fleet. Keep the current website/data model while improving its interface. Do not migrate databases or modify routes for presentation work. Roll out with a previous binary available and smoke-check public endpoints. Do not delete temporary or custom domain connections until the pending ambiguity in the user's domain-removal request is resolved.
 
 Public registration, actual charges, domain purchases, outreach sending and broader service promises require their respective readiness decisions. A plan or marketing draft is not authorization for those actions.
+
+## Client review release, September 23
+
+Schema 41 adds only `project_clients` and its user lookup index. The portal and all installed portal database consumer binaries must be upgraded together; schema-40 binaries refuse the new database. The fleet Python controllers use compatible queries and deletion already enables foreign keys, allowing grant cleanup to cascade.
+
+Focused verification: owner-only grants, recipient workspace/project API denial, sibling isolation, disabled-account denial, revocation, idempotency at the limit, migration with preserved sessions/projects and foreign-key cleanup. Browser inspection covered owner controls and a separate synthetic client account in the local preview. Existing workflow/polling/upload checks passed. No real customer access was granted as part of verification.
+
+Rollout procedure: pause portal writers and fleet reconciliation timers, confirm no unfinished jobs, retain all previous binaries and a consistent SQLite backup, migrate offline, verify record counts/integrity/foreign keys, and restart the previously active services and timers. Customer application workloads are not restarted. A rollback to schema-40 binaries requires restoring the matching database backup with all writers stopped, which loses any changes made after that backup; prefer a forward fix once writes resume.
+
+Live rollout completed with backup `/var/backups/launchstead-client-access-20260923T100142Z` on the VPS. All prior users, sessions, six projects, uploads, publications, active Node releases and domain rows were preserved. Portal and workers restarted successfully. Public portal and the existing custom-domain website returned HTTP 200; anonymous shared-site access returned 401. The live JavaScript matches this release. Existing clients can use Website → Clients; new-client registration still needs operator approval.

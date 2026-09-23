@@ -116,7 +116,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 40 {
+	if version > 41 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -358,6 +358,12 @@ PRAGMA user_version=1;`)
 	}
 	if version < 40 {
 		if _, err = tx.Exec(`ALTER TABLE projects ADD COLUMN deletion_requested_at INTEGER NOT NULL DEFAULT 0; ALTER TABLE projects ADD COLUMN deletion_error TEXT NOT NULL DEFAULT ''; PRAGMA user_version=40`); err != nil {
+			return err
+		}
+	}
+
+	if version < 41 {
+		if _, err = tx.Exec(`CREATE TABLE IF NOT EXISTS project_clients(project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at INTEGER NOT NULL,PRIMARY KEY(project_id,user_id)); CREATE INDEX IF NOT EXISTS project_clients_user ON project_clients(user_id); PRAGMA user_version=41`); err != nil {
 			return err
 		}
 	}

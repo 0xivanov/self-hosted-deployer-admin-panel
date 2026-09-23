@@ -389,6 +389,10 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 403, "Reload the page and retry")
 		return
 	}
+	if r.URL.Path == "/api/project-clients" || r.URL.Path == "/api/shared-websites" {
+		h.projectClientsHTTP(w, r, cookie.Value)
+		return
+	}
 	if r.URL.Path == "/api/runtime-logs" {
 		h.runtimeLogsHTTP(w, r, cookie.Value)
 		return
