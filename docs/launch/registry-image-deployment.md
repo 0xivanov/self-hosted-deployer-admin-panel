@@ -44,9 +44,13 @@ Release preparation authorizes owners/developers before registry resolution and 
 
 Schema 44 adds durable deployment requests, cancellation before dispatch, monotonic revisions for restoring retained releases, and a single pending deployment per project. Queued work blocks project deletion. Worker dispatch rechecks the initiating user's current membership, account and hosting entitlement, then persists the complete request and previous successful release before calling the runtime. An uncertain submission remains running for reconciliation and is never automatically resubmitted. A successful submit is only acceptance, not publication.
 
-The fleet now has a structurally serialized container configuration with the selected port and health path, preserving the stateless two-replica ARM64 hosting profile and resource limits. The live worker still does not consume container jobs.
+The fleet now has a structurally serialized container configuration with the selected port and health path, preserving the stateless two-replica ARM64 hosting profile and resource limits. Local fleet workers can consume container jobs only with the explicit `enable_container_deployments` switch and an ARM64 runtime assignment. This is not enabled on the live fleet.
 
-These records do not publish an image. Fleet dispatch, private credential lifecycle, environment settings, customer controls and runtime qualification remain outstanding.
+Runtime submissions retain the full request, assigned domain and revision fence on disk before contacting the deployer. Replays must match the saved request and never issue another deployment. Reconciliation checks the actual desired image, port, health path, stateless hosting limits, replica readiness and HTTPS route, then applies fresh evidence for the exact job. An expired request that provably never reached dispatch can fail once the previous release is confirmed healthy. A dispatched request with an uncertain or unhealthy outcome stays pending; it is not automatically failed or resubmitted. Automated diagnosis of terminal core rollout failures remains unfinished.
+
+Selecting a retained earlier release uses a new deployment revision and retains the last successful release as its predecessor. This uses the same dispatch and reconciliation path, not an untracked direct image replacement.
+
+This implementation is verified with local fake deployer responses, not a fleet rollout. Private credential lifecycle, environment settings, provisioning/deletion integration, customer controls and public/private runtime qualification remain outstanding. Do not enable the operator switch until those integration requirements are complete.
 
 ## Required integration before exposing Deploy
 

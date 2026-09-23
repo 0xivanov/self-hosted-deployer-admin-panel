@@ -30,13 +30,14 @@ type Project struct {
 	Architecture    string `json:"architecture"`
 }
 type Config struct {
-	Database       string             `json:"database"`
-	DeployerBinary string             `json:"deployer_binary"`
-	DeployerConfig string             `json:"deployer_config"`
-	StateDirectory string             `json:"state_directory"`
-	ImageBuilder   string             `json:"image_builder"`
-	Context        string             `json:"context,omitempty"`
-	Projects       map[string]Project `json:"projects"`
+	EnableContainerDeployments bool               `json:"enable_container_deployments,omitempty"`
+	Database                   string             `json:"database"`
+	DeployerBinary             string             `json:"deployer_binary"`
+	DeployerConfig             string             `json:"deployer_config"`
+	StateDirectory             string             `json:"state_directory"`
+	ImageBuilder               string             `json:"image_builder"`
+	Context                    string             `json:"context,omitempty"`
+	Projects                   map[string]Project `json:"projects"`
 }
 type Deployer interface {
 	PreflightApp(context.Context, string) (client.PreflightResult, error)
@@ -84,8 +85,11 @@ func LoadConfig(path string) (Config, error) {
 		return c, errors.New("required fleet config field missing")
 	}
 	for id, p := range c.Projects {
-		if !hexID(id) || (p.Kind != "static" && p.Kind != "node") || !validDomain(p.Domain) {
+		if !hexID(id) || (p.Kind != "static" && p.Kind != "node" && p.Kind != "container") || !validDomain(p.Domain) {
 			return c, fmt.Errorf("invalid project %q", id)
+		}
+		if p.Kind == "container" && (!c.EnableContainerDeployments || !hexID(p.RuntimeID) || p.Architecture != "arm64") {
+			return c, fmt.Errorf("invalid or disabled container assignment %q", id)
 		}
 		if p.Kind == "node" && (!hexID(p.RuntimeID) || !hexID(p.ToolchainSHA256) || p.Architecture != "arm64") {
 			return c, fmt.Errorf("invalid node assignment %q", id)
@@ -124,8 +128,10 @@ func (w *Worker) Close() error {
 	if w.lock == nil {
 		return nil
 	}
-	syscall.Flock(int(w.lock.Fd()), syscall.LOCK_UN)
-	return w.lock.Close()
+	lock := w.lock
+	w.lock = nil
+	syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	return lock.Close()
 }
 func appName(id string) string {
 	if len(id) > 24 {
@@ -138,10 +144,18 @@ func (w *Worker) Once(ctx context.Context) (bool, error) {
 		a := assignment{id, p}
 		var n bool
 		var e error
-		if p.Kind == "static" {
+		switch p.Kind {
+		case "static":
 			n, e = w.staticOnce(ctx, a)
-		} else {
+		case "node":
 			n, e = w.nodeOnce(ctx, a)
+		case "container":
+			if !w.cfg.EnableContainerDeployments {
+				return false, errors.New("container deployment is disabled")
+			}
+			n, e = w.store.WorkContainerDeployment(ctx, a.id, a.p.RuntimeID, &containerRuntime{w: w, a: a})
+		default:
+			return false, errors.New("unsupported fleet project kind")
 		}
 		if e != nil {
 			return n, e
