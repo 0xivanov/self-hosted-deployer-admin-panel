@@ -26,6 +26,10 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
+	ContainerHosting          bool
+	ContainerProjects         map[string]ContainerProjectConfig
+	ContainerProjectLookup    func() map[string]ContainerProjectConfig
+	ContainerResolver         ContainerImageResolver
 	RuntimeLogs               func(context.Context, string) (string, error)
 	CustomDomainResolver      DNSResolver
 	TestMerchantWebhookSecret string
@@ -51,30 +55,34 @@ type attemptWindow struct {
 	count int
 }
 type HTTP struct {
-	runtimeLogs          func(context.Context, string) (string, error)
-	customDomainResolver DNSResolver
-	merchantWebhook      http.Handler
-	merchant             MerchantProvider
-	merchantCountries    []string
-	shopAttempts         map[string]attemptWindow
-	nodeProjects         map[string]NodeProjectConfig
-	nodeProjectLookup    func() map[string]NodeProjectConfig
-	domainQuotes         DomainQuoteReader
-	domainMarkupMinor    int64
-	domainAttempts       map[string]attemptWindow
-	billingManagement    BillingManagement
-	billingWebhook       http.Handler
-	testBilling          bool
-	mail                 *AccountMail
-	publicationSites     func() map[string]string
-	signup               bool
-	signupAllowed        func(string) bool
-	store                *Store
-	origin, host, cookie string
-	development          bool
-	slots                chan struct{}
-	mu                   sync.Mutex
-	attempts             map[string]attemptWindow
+	containerHosting       bool
+	containerProjects      map[string]ContainerProjectConfig
+	containerProjectLookup func() map[string]ContainerProjectConfig
+	containerResolver      ContainerImageResolver
+	runtimeLogs            func(context.Context, string) (string, error)
+	customDomainResolver   DNSResolver
+	merchantWebhook        http.Handler
+	merchant               MerchantProvider
+	merchantCountries      []string
+	shopAttempts           map[string]attemptWindow
+	nodeProjects           map[string]NodeProjectConfig
+	nodeProjectLookup      func() map[string]NodeProjectConfig
+	domainQuotes           DomainQuoteReader
+	domainMarkupMinor      int64
+	domainAttempts         map[string]attemptWindow
+	billingManagement      BillingManagement
+	billingWebhook         http.Handler
+	testBilling            bool
+	mail                   *AccountMail
+	publicationSites       func() map[string]string
+	signup                 bool
+	signupAllowed          func(string) bool
+	store                  *Store
+	origin, host, cookie   string
+	development            bool
+	slots                  chan struct{}
+	mu                     sync.Mutex
+	attempts               map[string]attemptWindow
 }
 
 func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
@@ -109,6 +117,10 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	}
 	if opts.Mail != nil && (opts.Mail.store != store || opts.Mail.origin != opts.Origin) {
 		return nil, errors.New("mail and portal must use the same store and origin")
+	}
+	containerProjects, err := copyContainerProjects(opts.ContainerProjects)
+	if err != nil {
+		return nil, err
 	}
 	nodeProjects, err := copyNodeProjects(opts.NodeProjects)
 	if err != nil {
@@ -153,7 +165,12 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if resolver == nil {
 		resolver = NetDNSResolver{Resolver: net.DefaultResolver}
 	}
-	return &HTTP{runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	store.ConfigureContainerProjects(opts.ContainerHosting)
+	resolverImage := opts.ContainerResolver
+	if resolverImage == nil {
+		resolverImage = publicContainerResolver
+	}
+	return &HTTP{containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 
 func (h *HTTP) nodeProjectSnapshot() map[string]NodeProjectConfig {
@@ -331,7 +348,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/config" && r.Method == "GET" {
-		httpJSON(w, map[string]any{"client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
+		httpJSON(w, map[string]any{"container_hosting": h.containerHosting, "client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
 		return
 	}
 	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/verification/resend" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {
@@ -399,6 +416,10 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/api/runtime-logs" {
 		h.runtimeLogsHTTP(w, r, cookie.Value)
+		return
+	}
+	if r.URL.Path == "/api/container" || strings.HasPrefix(r.URL.Path, "/api/container/") {
+		h.containerHTTP(w, r, cookie.Value)
 		return
 	}
 	if r.URL.Path == "/api/node" || strings.HasPrefix(r.URL.Path, "/api/node/") {

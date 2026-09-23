@@ -132,3 +132,24 @@ func TestContainerReconciliationRejectsConcurrentIntentChange(t *testing.T) {
 		t.Fatalf("changed intent accepted: %v", err)
 	}
 }
+
+func TestContainerClientSummaryExposesPublicationWithoutReleaseAccess(t *testing.T) {
+	s, session, p, d, q := containerRunning(t)
+	client, clientSession := verifiedAccount(t, s, "container-client@example.test")
+	if err := s.ChangeProjectClient(t.Context(), session.Token, p.ID, client.Email, true); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.ReconcileContainerDeployment(t.Context(), p.ID, d.RuntimeID, containerObserveFunc(func(context.Context, ContainerRuntimeRequest) (ContainerRuntimeObservation, error) {
+		return observationFor(s, q, "succeeded"), nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sites, err := s.SharedWebsites(t.Context(), clientSession.Token)
+	if err != nil || len(sites) != 1 || !sites[0].Published || sites[0].Kind != "container" {
+		t.Fatalf("client publication: %+v %v", sites, err)
+	}
+	if _, err = s.ContainerReleases(t.Context(), clientSession.Token, p.ID); !errors.Is(err, ErrDenied) {
+		t.Fatalf("client release access: %v", err)
+	}
+}

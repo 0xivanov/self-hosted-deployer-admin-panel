@@ -191,3 +191,26 @@ func (s *Store) CancelContainerDeployment(ctx context.Context, token, project, i
 	}
 	return tx.Commit()
 }
+
+func (s *Store) ActiveContainerDeployment(ctx context.Context, token, project string) (*ContainerDeployment, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	p, _, err := s.uploadProject(ctx, tx, token, project, true)
+	if err != nil {
+		return nil, err
+	}
+	if p.Kind != "container" {
+		return nil, ErrInvalid
+	}
+	d, err := scanContainerDeployment(tx.QueryRowContext(ctx, "SELECT "+containerDeploymentColumns+" FROM container_deployments WHERE project_id=? AND state='succeeded' ORDER BY revision DESC LIMIT 1", project))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &d, tx.Commit()
+}

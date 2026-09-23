@@ -47,6 +47,8 @@ func run() error {
 	merchantWebhookFile := flag.String("test-merchant-webhook-secret-file", "", "Private Stripe Connect test webhook signing secret")
 	webhookFile := flag.String("test-webhook-secret-file", "", "private Stripe test webhook signing secret file")
 	testBilling := flag.Bool("test-billing", false, "enable owner billing request API for a separately configured Stripe test worker")
+	containerHosting := flag.Bool("container-hosting", false, "enable experimental public registry image hosting after fleet qualification")
+	containerProjectsFile := flag.String("container-projects", "", "private JSON mapping container project IDs to operator-assigned runtimes")
 	nodeProjectsFile := flag.String("node-projects", "", "private JSON mapping Node project IDs to assigned build settings and runtimes")
 	publicationFile := flag.String("publication-sites", "", "private JSON mapping assigned static project IDs to HTTPS content origins")
 	signup := flag.Bool("signup", false, "enable public signup when mail is configured")
@@ -182,6 +184,18 @@ func run() error {
 		}
 		nodeProjects = nodeProjectProvider.Snapshot()
 	}
+	var containerProjectProvider *portal.ContainerProjectProvider
+	if *containerHosting {
+		if *containerProjectsFile == "" {
+			return errors.New("container hosting requires an operator project mapping")
+		}
+		containerProjectProvider, err = portal.NewContainerProjectProvider(*containerProjectsFile)
+		if err != nil {
+			return err
+		}
+	} else if *containerProjectsFile != "" {
+		return errors.New("container project mapping requires container hosting to be enabled")
+	}
 	var management *hostingbilling.Management
 	if *managementFile != "" {
 		if !*testBilling || *demo {
@@ -255,6 +269,10 @@ func run() error {
 		signupAllowed = portal.SignupAllowlist(*signupAllowlist)
 	}
 	opts := portal.HTTPOptions{TestMerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
+	opts.ContainerHosting = *containerHosting
+	if containerProjectProvider != nil {
+		opts.ContainerProjectLookup = containerProjectProvider.Snapshot
+	}
 	if *runtimeLogs != "" {
 		if !filepath.IsAbs(*runtimeLogs) {
 			return errors.New("runtime log socket must be absolute")

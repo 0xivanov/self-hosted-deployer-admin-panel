@@ -2,6 +2,7 @@
 const $=id=>document.getElementById(id);
 let csrf='',workspaces=[],generation=0,flow='',testBilling=false,billingManagement=false,inviteOnly=false,clientInvitations=false,billingGeneration=0,merchantEnabled=false,merchantCountries=[],merchantGeneration=0,productGeneration=0,merchantOrdersGeneration=0,domainQuotes=false,domainOrderGeneration=0,domainExpiryTimer;
 let nodeStatusCards=new Map(),nodeStatusState=null;
+let containerStatusCards=new Map(),containerStatusState=null;
 let staticStatusCards=new Map(),staticStatusState=null;
 let projectDeletionTimer=null,projectDeletionPollVersion=0,projectDeletionPollWorkspace='';
 const projectDomainStates=new Map();
@@ -12,7 +13,7 @@ const workspacePanels={projects:'projects-panel',billing:'billing-panel',team:'m
 let currentView=location.pathname.startsWith('/billing/')?'billing':'projects';
 let billingTimer=null,billingPollCount=0;
 let selectedWebsite='';
-let projectAvailability=null;
+let projectAvailability=null,containerHosting=false;
 function stopBillingRefresh(){clearTimeout(billingTimer);billingTimer=null;}
 function selectWorkspaceView(view){
  if(!workspacePanels[view]||$('nav-'+view).hidden)view='projects';
@@ -49,9 +50,10 @@ if(location.hash)history.replaceState(null,'',location.pathname+location.search)
 async function api(path,body,signal){const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined,signal});const data=await response.json();if(!response.ok){const error=new Error(data.error||'Request failed');error.status=response.status;throw error;}return data;}
 function error(e){$('error').textContent=e.message;$('error').hidden=false;}
 function stopNodeStatusRefresh(){const state=nodeStatusState;nodeStatusCards.clear();if(!state)return;state.stopped=true;clearTimeout(state.timer);state.timer=null;if(state.controller)state.controller.abort();if(nodeStatusState===state)nodeStatusState=null;nodeStatusCards.clear();}
-function signedOut(){sharedRequest++;$('shared-websites').replaceChildren();$('shared-status').textContent='';selectedWebsite='';stopStaticStatusRefresh();stopBillingRefresh();currentView='projects';stopNodeStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
-async function loadProjects(){projectAvailability=null;$('project-form').querySelector('button[type=submit],button').disabled=true;stopStaticStatusRefresh();stopBillingRefresh();billingPollCount=0;stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();configureWorkspaceNavigation(selected);if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;renderProjectAvailability(data.availability);if(selectedWebsite&&!data.projects.some(project=>project.id===selectedWebsite))selectedWebsite='';for(const project of data.projects){await appendProject(project,selected.role,version);if(version!==generation)return;}if(!data.projects.length){$('projects').textContent='Your first website starts here. Create a project, then upload your files.';$('new-project-details').open=true;}if(selected.role==='owner'){if(domainQuotes)loadDomainOrders(workspace,version);await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
-async function appendProject(project,role,version){if(version!==generation)return;const card=document.createElement('div');card.className='project';card.dataset.projectId=project.id;card.dataset.projectKind=project.kind;const name=document.createElement('strong');name.className='project-name';name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':'Static website');const heading=document.createElement('div');heading.className='project-heading';const icon=document.createElement('span');icon.className='project-icon';icon.textContent=project.kind==='node'?'JS':'</>';const headingInfo=document.createElement('div');headingInfo.className='project-heading-info';headingInfo.append(name,kind);heading.append(icon,headingInfo);card.append(heading);$('projects').append(card);if(project.deleting){renderDeletingProject(card,project,version);startProjectDeletionPolling(version,$('workspace').value);return;}await projectUploads(card,project,role,version);if(version!==generation||!card.isConnected)return;organizeProject(card);await renderProjectDomains(card,project,role,version);if(version!==generation||!card.isConnected)return;renderProjectRename(card,project,role,version);renderProjectDeletion(card,project,role,version);renderRuntimeLogs(card,project,role,version);renderProjectClients(card,project,role,version);}
+function stopContainerStatusRefresh(){const state=containerStatusState;containerStatusCards.clear();containerStatusState=null;if(state){state.stopped=true;clearTimeout(state.timer);state.controller?.abort();}}
+function signedOut(){sharedRequest++;$('shared-websites').replaceChildren();$('shared-status').textContent='';selectedWebsite='';stopStaticStatusRefresh();stopBillingRefresh();currentView='projects';stopNodeStatusRefresh();stopContainerStatusRefresh();generation++;$('error').hidden=true;resetDomainPanel();$('domain-panel').hidden=true;billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-content').replaceChildren();$('billing-panel').hidden=true;$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('merchant-panel').hidden=true;csrf='';workspaces=[];$('workspace-view').hidden=true;$('logout').hidden=true;$('login').hidden=false;$('account-flow').hidden=true;$('projects').replaceChildren();}
+async function loadProjects(){projectAvailability=null;$('project-form').querySelector('button[type=submit],button').disabled=true;stopStaticStatusRefresh();stopBillingRefresh();billingPollCount=0;stopNodeStatusRefresh();const version=++generation;const workspace=$('workspace').value;const selected=workspaces.find(w=>w.id===workspace);resetDomainPanel();$('domain-panel').hidden=!domainQuotes||!selected||selected.role!=='owner';billingGeneration++;merchantGeneration++;productGeneration++;merchantOrdersGeneration++;$('billing-panel').hidden=!testBilling||!selected||selected.role!=='owner';$('billing-content').replaceChildren();$('merchant-panel').hidden=!merchantEnabled||!selected||selected.role!=='owner';$('merchant-content').replaceChildren();$('product-content').replaceChildren();$('merchant-orders-content').replaceChildren();$('project-form').hidden=!selected||selected.role==='viewer'; $('member-panel').hidden=!selected||selected.role!=='owner';$('members').replaceChildren();$('projects').replaceChildren();configureWorkspaceNavigation(selected);if(!workspace)return;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;renderProjectAvailability(data.availability);if(selectedWebsite&&!data.projects.some(project=>project.id===selectedWebsite))selectedWebsite='';for(const project of data.projects){await appendProject(project,selected.role,version);if(version!==generation)return;}if(!data.projects.length){$('projects').textContent='Your first website starts here. Create a project to get started.';$('new-project-details').open=true;}if(selected.role==='owner'){if(domainQuotes)loadDomainOrders(workspace,version);await loadMembers(workspace,version);if(version===generation&&testBilling)await loadBilling(workspace,version);if(version===generation&&merchantEnabled){await loadMerchant(workspace,version);loadMerchantProducts(workspace,version);loadMerchantOrders(workspace,version);}}if(version===generation)startNodeStatusRefresh(version,workspace);}
+async function appendProject(project,role,version){if(version!==generation)return;const card=document.createElement('div');card.className='project';card.dataset.projectId=project.id;card.dataset.projectKind=project.kind;const name=document.createElement('strong');name.className='project-name';name.textContent=project.name;const kind=document.createElement('span');kind.textContent=(project.kind==='node'?'Node.js':project.kind==='container'?'Docker container':'Static website');const heading=document.createElement('div');heading.className='project-heading';const icon=document.createElement('span');icon.className='project-icon';icon.textContent=project.kind==='node'?'JS':project.kind==='container'?'IMG':'</>';const headingInfo=document.createElement('div');headingInfo.className='project-heading-info';headingInfo.append(name,kind);heading.append(icon,headingInfo);card.append(heading);$('projects').append(card);if(project.deleting){renderDeletingProject(card,project,version);startProjectDeletionPolling(version,$('workspace').value);return;}await projectUploads(card,project,role,version);if(version!==generation||!card.isConnected)return;organizeProject(card);await renderProjectDomains(card,project,role,version);if(version!==generation||!card.isConnected)return;renderProjectRename(card,project,role,version);renderProjectDeletion(card,project,role,version);renderRuntimeLogs(card,project,role,version);renderProjectClients(card,project,role,version);}
 async function loadSession(){const data=await api('/api/session');csrf=data.csrf;workspaces=data.workspaces;$('account').textContent=data.account.email;$('workspace').replaceChildren();for(const workspace of workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.name+' · '+workspace.role;$('workspace').append(option);}$('login').hidden=true;$('workspace-view').hidden=false;$('logout').hidden=false;await loadProjects();const session=csrf;const shared=await loadSharedWebsites();if(session===csrf&&currentView==='projects'&&!$('projects').querySelector('.project')&&shared>0)selectWorkspaceView('shared');if(pendingInvite)showFlow('invite');if(pendingClientInvite)showFlow('client-invite');}
 async function submit(form,fn){$('error').hidden=true;const button=form.querySelector('button');button.disabled=true;try{await fn();}catch(e){error(e);}finally{button.disabled=false;if(form.id==='project-form'&&projectAvailability)renderProjectAvailability(projectAvailability);}}
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();});});
@@ -81,6 +83,7 @@ $('account-form').addEventListener('submit',event=>{event.preventDefault();submi
  const data=await api(path,body);$('flow-password').value='';$('account-form').hidden=true;$('flow-copy').textContent=data.message||'Access accepted.';if(flow==='reset'||flow==='verify')actionToken='';if(flow==='invite'){pendingInvite='';actionToken='';flow='';$('account-flow').hidden=true;await loadSession();}if(flow==='client-invite'){pendingClientInvite='';actionToken='';flow='';$('account-flow').hidden=true;$('workspace-view').hidden=false;$('login').hidden=true;$('logout').hidden=false;selectWorkspaceView('shared');await loadSharedWebsites();}
  });});
 async function initialize(){
+ containerHosting=(await api('/api/config')).container_hosting===true;$('container-kind').hidden=!containerHosting;$('container-filter').hidden=!containerHosting;
  const config=await api('/api/config');domainQuotes=config.domain_quotes===true;testBilling=config.test_billing===true;billingManagement=config.billing_management===true;inviteOnly=config.invite_only===true;clientInvitations=config.client_invitations===true;merchantEnabled=config.merchant===true;merchantCountries=Array.isArray(config.merchant_countries)?config.merchant_countries.filter(country=>typeof country==='string'):[];$('open-signup').hidden=!config.signup;$('open-forgot').hidden=!config.account_mail;$('open-resend').hidden=!config.account_mail;$('registration-note').textContent=config.signup?(inviteOnly?'Registration is by invitation.':'Verify your email before signing in.'):'Registration is closed.';
  if(initialFlow==='invite'||initialFlow==='client-invite'){try{await loadSession();}catch(e){signedOut();if(e.status===401){$('login-copy').textContent=initialFlow==='client-invite'?'Sign in with the invited email to accept read-only client access. New users must register and verify their email first.':'Sign in with the invited email to accept. New users must register and verify their email first.';if(initialFlow==='client-invite'&&config.signup)$('open-signup').hidden=false;}else throw e;}return;}
  if(initialFlow){if(!config.account_mail)throw new Error('Account recovery is unavailable. Contact the operator.');showFlow(initialFlow);return;}
@@ -131,7 +134,7 @@ function renderProjectDeletion(card,project,role,version){
  const form=document.createElement('form');const label=document.createElement('label');label.textContent='Type '+project.name+' to confirm';const input=document.createElement('input');input.type='text';input.required=true;input.autocomplete='off';input.spellcheck=false;input.setAttribute('aria-label','Type '+project.name+' to confirm');const button=document.createElement('button');button.type='submit';button.className='button-danger';button.textContent='Delete project';button.disabled=true;input.addEventListener('input',()=>{button.disabled=input.value!==project.name;});form.append(label,button);label.append(input);details.append(form);form.addEventListener('submit',event=>{event.preventDefault();if(input.value!==project.name)return;submit(form,async()=>{const accepted=await api('/api/projects/delete',{project:project.id,name:input.value});if(version!==generation)return;project.deleting=true;project.deletion_error=accepted.deletion_error||'';renderDeletingProject(card,project,version);startProjectDeletionPolling(version,$('workspace').value);});});card.append(details);
 }
 function removeProjectCard(card){const id=card.dataset.projectId;nodeStatusCards.delete(id);projectRefreshes.delete(id);projectDomainStates.delete(id);card.remove();}
-function updateProjectsEmptyState(){if($('projects').querySelector('.project'))return;$('projects').textContent='Your first website starts here. Create a project, then upload your files.';$('new-project-details').open=true;}
+function updateProjectsEmptyState(){if($('projects').querySelector('.project'))return;$('projects').textContent='Your first website starts here. Create a project to get started.';$('new-project-details').open=true;}
 async function pollProjectDeletion(version,workspace){
  if(version!==generation||workspace!==$('workspace').value){projectDeletionTimer=null;return;}
  try{const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation||workspace!==$('workspace').value)return;const projects=Array.isArray(data.projects)?data.projects:[];const byID=new Map(projects.map(project=>[project.id,project]));
@@ -160,6 +163,8 @@ function refreshProject(project,role,version){
    const active=document.activeElement;const focused=card.contains(active)?active:null;
    const upload=card.querySelector('.upload-details form');const freshUpload=staging.querySelector('.upload-details form');
    if(upload&&freshUpload)freshUpload.replaceWith(upload);
+   const containerForm=card.querySelector('.container-release-form');const freshContainerForm=staging.querySelector('.container-release-form');
+   if(containerForm&&freshContainerForm)freshContainerForm.replaceWith(containerForm);
    const focusText=focused?.textContent;const focusTag=focused?.tagName;
    const heading=card.querySelector('.project-heading');const rename=card.querySelector('.project-rename');const domains=card.querySelector('.project-domains');const danger=card.querySelector('.project-danger');
    const children=[heading,card.querySelector('.website-summary'),card.querySelector('.website-detail-links'),...staging.childNodes,card.querySelector('.project-runtime-logs'),card.querySelector('.project-clients'),domains,rename,danger].filter(Boolean);
@@ -383,6 +388,7 @@ async function uploadWithProgress(project,file,form,version){
 }
 
 async function projectUploads(card,project,role,version){
+ if(project.kind==='container')return containerProjectUploads(card,project,role,version);
  const result=await api('/api/uploads?project='+encodeURIComponent(project.id));if(version!==generation)return;
  if(project.kind==='node')return nodeProjectUploads(card,project,role,version,result);
  const publication=await api('/api/publications?project='+encodeURIComponent(project.id));if(version!==generation)return;
@@ -406,6 +412,101 @@ async function projectUploads(card,project,role,version){
  if(publication.available&&role!=='viewer'){const publish=document.createElement('button');const previous=publication.jobs.some(j=>j.upload_id===upload.id&&j.state==='succeeded');const isCurrent=active&&active.upload_id===upload.id;publish.textContent=isCurrent?'Current upload':previous?'Restore this upload':'Publish this upload';publish.disabled=pending||isCurrent;const requestKey=crypto.randomUUID();publish.addEventListener('click',async()=>{publish.disabled=true;try{await api('/api/publications',{project:project.id,upload:upload.id,key:requestKey});if(version===generation)await refreshProject(project,role,version);}catch(e){error(e);publish.disabled=false;}});row.append(publish);}
   uploadDownloadControl(row,upload,project,role,version);uploadDeleteControl(row,upload,project,role,version);card.append(row);
  }
+}
+
+function containerJobActive(job){return job&&(job.state==='queued'||job.state==='running');}
+function containerSnapshot(data){return JSON.stringify([data.available,data.active,data.site,data.releases,data.deployments]);}
+function trackContainerStatus(project,role,version,data){
+ if(version!==generation||project.deleting)return;
+ const pending=!data.available||(data.deployments||[]).some(containerJobActive);
+ if(!pending){containerStatusCards.delete(project.id);return;}
+ containerStatusCards.set(project.id,{project,role,version,snapshot:containerSnapshot(data)});
+ if(!containerStatusState||containerStatusState.stopped)containerStatusState={version,workspace:$('workspace').value,inFlight:false,stopped:false,timer:null,controller:null};
+ if(!containerStatusState.inFlight&&containerStatusState.timer===null)containerStatusState.timer=setTimeout(()=>pollContainerStatus(containerStatusState),5000);
+}
+async function pollContainerStatus(state){
+ if(!state||state.stopped||state!==containerStatusState||state.version!==generation||state.workspace!==$('workspace').value||state.inFlight)return;
+ clearTimeout(state.timer);state.timer=null;if(!containerStatusCards.size){containerStatusState=null;return;}
+ if(document.hidden||currentView!=='projects'){state.timer=setTimeout(()=>pollContainerStatus(state),5000);return;}
+ state.inFlight=true;state.controller=new AbortController();
+ try{for(const [id,entry] of [...containerStatusCards]){if(state.stopped||state!==containerStatusState)break;const card=projectCard(entry.project);if(!card?.isConnected||card.dataset.deleting==='true'){containerStatusCards.delete(id);continue;}try{const data=await api('/api/container?project='+encodeURIComponent(id),undefined,state.controller.signal);if(state.stopped||state!==containerStatusState)break;if(containerStatusCards.get(id)!==entry)continue;if(containerSnapshot(data)!==entry.snapshot)await refreshProject(entry.project,entry.role,entry.version);}catch(e){if(e.status===401){signedOut();return;}if(e.status===403||e.status===404)containerStatusCards.delete(id);}}}finally{state.inFlight=false;state.controller=null;if(state===containerStatusState&&!state.stopped){if(containerStatusCards.size)state.timer=setTimeout(()=>pollContainerStatus(state),5000);else containerStatusState=null;}}
+}
+function renderContainerLive(entry,data){
+ const {live,project,role,version}=entry;
+ const oldForm=live.querySelector('.container-release-form');
+ const releases=Array.isArray(data.releases)?data.releases:[], deployments=Array.isArray(data.deployments)?data.deployments:[];
+ const active=data.active||null, pending=deployments.find(containerJobActive), latest=deployments[0];
+ live.replaceChildren();
+ const workflow=document.createElement('section');workflow.className='project-workflow';
+ const title=document.createElement('h3'),text=document.createElement('p');
+ if(pending){
+  workflow.dataset.tone='busy';title.textContent=pending.state==='queued'?'Your deployment is queued':'Publishing your container';
+  text.textContent=pending.state==='queued'?'The deployment worker will start this release shortly. You can cancel it before work begins.':active?'Your previous release remains selected until the new release passes its checks.':'We are checking the running application and its HTTPS route before marking it live.';
+ }else if(latest?.state==='failed'){
+  workflow.dataset.tone='attention';title.textContent='Deployment needs attention';text.textContent='This deployment did not complete. Review your image settings, then publish a saved release again. Your previous successful release is retained.';
+ }else if(!data.available){
+  workflow.dataset.tone='busy';title.textContent='Container hosting setup is pending';text.textContent='You can check an image and save a release now. Publishing becomes available when hosting setup finishes.';
+ }else if(active){
+  workflow.dataset.tone='live';title.textContent='Your container is live';text.textContent='Check a new image for your next update, or restore a previously published release below.';
+ }else{
+  workflow.dataset.tone='next';title.textContent=releases.length?'Ready to publish':'Check your container image';text.textContent=releases.length?'Choose Deploy beside a saved release below.':'Enter a public image reference, its listening port and a health-check path.';
+ }
+ workflow.append(title,text);
+ if(pending||!data.available){const progress=createProgress(pending?(pending.state==='queued'?'Waiting for the deployment worker…':'Checking application and HTTPS readiness…'):'Waiting for hosting setup…');progress.bar.removeAttribute('value');workflow.append(progress.box);}
+ if(pending&&Date.now()/1000-pending.created_at>180){const note=document.createElement('p');note.textContent='This is taking longer than usual. Keep this page open for updates, or contact support with deployment '+pending.id.slice(0,12)+'. Do not create another deployment while this one is unresolved.';workflow.append(note);}
+ live.append(workflow);
+ if(active&&data.site){const link=document.createElement('a');link.href=data.site;link.target='_blank';link.rel='noopener noreferrer';link.className='site-link';link.textContent='Visit website ↗';live.append(link);}
+ const refresh=document.createElement('button');refresh.type='button';refresh.className='refresh-status';refresh.textContent='Refresh status';refresh.addEventListener('click',()=>refreshProject(project,role,version).catch(error));live.append(refresh);
+ const limits=document.createElement('p');limits.className='muted';limits.textContent='Public Docker Hub or GHCR images only. Linux ARM64, non-root and stateless. Up to 512 MiB of compressed image layers. Private images and environment settings are not available yet.';live.append(limits);
+ if(role!=='viewer'){
+  const form=oldForm||document.createElement('form');form.className='container-release-form';
+  if(!oldForm){
+   const image=document.createElement('input');image.name='reference';image.required=true;image.maxLength=512;image.placeholder='ghcr.io/example/app:stable';
+   const port=document.createElement('input');port.name='port';port.type='number';port.min='1024';port.max='65535';port.value='8080';port.required=true;
+   const health=document.createElement('input');health.name='health_path';health.value='/';health.required=true;health.maxLength=512;
+   for(const [name,input] of [['Image reference',image],['Port (1024 to 65535)',port],['Health path',health]]){const label=document.createElement('label');label.textContent=name;label.append(input);form.append(label);}
+   const button=document.createElement('button');button.type='submit';button.className='button button-dark';button.textContent='Check image and save release';form.append(button);
+   let lastInput='',requestKey='';
+   form.addEventListener('submit',async event=>{
+    event.preventDefault();if(form.dataset.busy||version!==generation)return;
+    const input={reference:image.value.trim(),port:Number(port.value),health_path:health.value.trim()},signature=JSON.stringify(input);
+    if(signature!==lastInput||!requestKey){requestKey=crypto.randomUUID();lastInput=signature;}
+    form.dataset.busy='true';button.disabled=true;form.querySelector('.container-release-error')?.remove();
+    const progress=createProgress('Checking image metadata…');progress.bar.removeAttribute('value');form.append(progress.box);
+    try{
+     await api('/api/container/releases',{project:project.id,key:requestKey,...input});
+     if(version!==generation)return;
+     await refreshProject(project,role,version);requestKey='';
+     const history=projectCard(project)?.querySelector('.container-history');if(history)history.open=true;
+    }catch(e){if(version===generation){const note=document.createElement('p');note.className='container-release-error workflow-error';note.setAttribute('role','alert');note.textContent=e.message;form.append(note);}}
+    finally{progress.box.remove();form.dataset.busy='';button.disabled=false;}
+   });
+  }
+  live.append(form);
+ }
+ const history=disclosure('Saved releases and deployment history','project-history container-history');history.open=releases.length>0;live.append(history);
+ if(!releases.length){const empty=document.createElement('p');empty.textContent='Your checked images will appear here. Checking an image does not publish it.';history.append(empty);}
+ for(const release of releases){
+  const row=document.createElement('div'),label=document.createElement('p');
+  label.textContent=(release.input?.reference||'Container image')+' · Release '+release.revision+' · Port '+release.input?.port+' · '+release.input?.health_path;
+  row.append(label);
+  const wasPublished=deployments.some(item=>item.release_id===release.id&&item.state==='succeeded');
+  const deploy=document.createElement('button');deploy.type='button';deploy.textContent=active?.release_id===release.id?'Current release':wasPublished?'Restore release':'Deploy release';deploy.disabled=!data.available||!!pending||active?.release_id===release.id;
+  const key=crypto.randomUUID();deploy.addEventListener('click',async()=>{if(version!==generation)return;deploy.disabled=true;try{await api('/api/container/deployments',{project:project.id,release:release.id,key});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation){error(e);deploy.disabled=!data.available||!!pending;}}});row.append(deploy);history.append(row);
+ }
+ if(deployments.length){const heading=document.createElement('h4');heading.textContent='Deployment history';history.append(heading);}
+ for(const deployment of deployments){
+  const row=document.createElement('div'),label=document.createElement('p');label.textContent='Deployment '+deployment.revision+' · '+deployment.state+(deployment.id===active?.id?' · Current':'')+' · '+new Date(deployment.created_at*1000).toLocaleString();row.append(label);
+  if(deployment.state==='queued'){const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel deployment';cancel.addEventListener('click',async()=>{if(version!==generation)return;cancel.disabled=true;try{await api('/api/container/deployments/cancel',{project:project.id,id:deployment.id});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation){error(e);cancel.disabled=false;}}});row.append(cancel);}
+  history.append(row);
+ }
+ trackContainerStatus(project,role,version,data);
+}
+async function containerProjectUploads(card,project,role,version){
+ if(role==='viewer'){const note=document.createElement('p');note.className='project-status';note.textContent='Container releases and deployment controls are available to workspace owners and developers.';card.append(note);return;}
+ const data=await api('/api/container?project='+encodeURIComponent(project.id));if(version!==generation)return;
+ const live=document.createElement('div');live.className='node-live container-live';card.append(live);
+ renderContainerLive({live,project,role,version},data);
 }
 
 async function nodeProjectUploads(card,project,role,version,result){
@@ -1003,9 +1104,9 @@ function renderProjectAvailability(value){
  if(!value){notice.textContent='Website allowance could not be loaded. Creation will check availability.';return;}
  const usage=typeof value.limit==='number'?value.used+' of '+value.limit+' workspace websites used. ':value.used+' workspace websites. ';
  notice.textContent=usage+value.message;
- for(const option of $('project-kind').options)option.disabled=value[option.value]===false;
+ for(const option of $('project-kind').options){option.disabled=value[option.value]===false;option.hidden=option.value==='container'&&!containerHosting;}
  if($('project-kind').selectedOptions[0]?.disabled){const next=[...$('project-kind').options].find(option=>!option.disabled);if(next)$('project-kind').value=next.value;}
- $('project-form').querySelector('button[type=submit],button').disabled=!value.static&&!value.node;
+ $('project-form').querySelector('button[type=submit],button').disabled=!value.static&&!value.node&&!value.container;
 }
 
 $('new-project-details').addEventListener('toggle',async()=>{

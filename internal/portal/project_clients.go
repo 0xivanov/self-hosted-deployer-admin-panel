@@ -143,7 +143,7 @@ func (s *Store) SharedWebsites(ctx context.Context, token string) ([]SharedWebsi
 		return nil, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT p.id,p.name,p.kind,
- EXISTS(SELECT 1 FROM publications WHERE project_id=p.id) OR EXISTS(SELECT 1 FROM node_active_deployments WHERE project_id=p.id),
+ EXISTS(SELECT 1 FROM publications WHERE project_id=p.id) OR EXISTS(SELECT 1 FROM node_active_deployments WHERE project_id=p.id) OR EXISTS(SELECT 1 FROM container_deployments WHERE project_id=p.id AND state='succeeded'),
  COALESCE((SELECT hostname FROM project_domains WHERE project_id=p.id AND state='active' ORDER BY hostname LIMIT 1),'')
  FROM project_clients c JOIN projects p ON p.id=c.project_id WHERE c.user_id=? AND p.deletion_requested_at=0 ORDER BY p.name,p.id`, user)
 	if err != nil {

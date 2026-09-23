@@ -50,7 +50,17 @@ Runtime submissions retain the full request, assigned domain and revision fence 
 
 Selecting a retained earlier release uses a new deployment revision and retains the last successful release as its predecessor. This uses the same dispatch and reconciliation path, not an untracked direct image replacement.
 
-This implementation is verified with local fake deployer responses, not a fleet rollout. Private credential lifecycle, environment settings, provisioning/deletion integration, customer controls and public/private runtime qualification remain outstanding. Do not enable the operator switch until those integration requirements are complete.
+This implementation is verified with local fake deployer responses, not a fleet rollout. Private credential lifecycle, environment settings, provisioning/deletion integration and public/private runtime qualification remain outstanding. Do not enable the operator switch until those integration requirements are complete.
+
+## Local customer workflow (not deployed)
+
+The portal now has a gated Docker project workflow and authenticated API for checking an image, listing retained releases, publishing or restoring a release, and cancelling queued deployment work. It uses the existing session and CSRF protection. Owner/developer authorization is checked before registry access; runtime destinations come only from validated operator assignments. Image checks can be completed while hosting setup is pending, but publishing requires an assignment. Checks save metadata only and do not run the image.
+
+The server flag `--container-hosting` defaults off. Enabling it requires `--container-projects /absolute/private/container-projects.json`, a private JSON map of project IDs to `{ "runtime_id": "64-character-lowercase-hex-id" }`. Assignments are reloaded per request; missing or invalid files remove availability rather than retaining stale permissions. The runtime ID must match the fleet assignment. This is operator wiring for local integration, not an instruction to enable the unfinished feature on the live service.
+
+Browser verification on a disposable local database covered a real public GHCR metadata check, preserved form values through assignment refresh, queued publication and cancellation. No application image was executed or deployed during this check.
+
+Only public Docker Hub/GHCR metadata access is wired by the default server resolver. Credentials are not accepted from browser fields. The portal and fleet flags are separate and both remain off in production.
 
 ## Required integration before exposing Deploy
 
