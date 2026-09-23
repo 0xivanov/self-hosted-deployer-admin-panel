@@ -420,7 +420,7 @@ function projectWorkflow(kind,uploads,data){
  const builds=data.builds||[];const releases=data.releases||[];
  const active=kind==='node'?data.active:jobs.find(j=>j.id===data.active);
  const building=builds.find(nodeJobActive);const publishing=jobs.find(nodeJobActive);
- if(publishing)return {step:kind==='node'?3:2,title:'Publishing your website',text:'This page updates automatically. You can leave it open while we finish.',busy:true};
+ if(publishing)return {step:kind==='node'?3:2,title:'Publishing your website',text:publishing.message||'This page updates automatically. You can leave it open while we finish.',busy:true};
  if(building)return {step:2,title:'Building your website',text:building.message||'Preparing your files for hosting. Your current website stays online.',busy:true};
  if(!latest)return {step:1,title:'Add your website files',text:'Upload a ZIP to get started. We’ll guide you through publishing it.',action:'upload',label:'Upload website'};
  if(!data.available)return {step:1,title:'Waiting for a hosting assignment',text:'Your files are saved, but no hosting slot is assigned yet. This may need operator attention if capacity is full. Status updates automatically.'};
@@ -428,6 +428,8 @@ function projectWorkflow(kind,uploads,data){
   const build=builds.find(b=>b.upload_id===latest.id);
   const release=releases.find(r=>r.build_id===build?.id);
   if(release&&active?.release_id===release.build_id)return {step:4,title:'Your website is live',text:'Upload a new version when you’re ready to update it.',action:'upload',label:'Upload new version',live:true};
+  const attempt=release&&jobs.find(job=>job.release_id===release.build_id);
+  if(release&&attempt?.state==='failed')return {step:3,title:'Publishing needs attention',text:attempt.message||'This deployment failed. Retry the saved release or restore a previously published release from history.',action:'publish',id:release.build_id,label:'Retry publishing'};
   if(release)return {step:3,title:active?'Your update is ready':'Ready to publish',text:'The build succeeded. Publish it to make this version available on your website.',action:'publish',id:release.build_id,label:active?'Publish update':'Publish website'};
   return {step:2,title:build?.state==='failed'?'Your build needs attention':'Files uploaded · Build next',text:build?.state==='failed'?(build.message||'Check your project files, then try building again.'):'Build your Node.js project before publishing it. This does not change your live website.',action:'build',id:latest.id,label:build?.state==='failed'?'Retry build':'Build website'};
  }
@@ -443,7 +445,13 @@ function renderWorkflow(project,role,uploads,data,perform){
   const step=document.createElement('li');step.textContent=(index+1)+'. '+label;step.className=index+1<flow.step?'complete':index+1===flow.step?'current':'';if(index+1===flow.step)step.setAttribute('aria-current','step');steps.append(step);
  }
  const title=document.createElement('h3');title.textContent=flow.title;const text=document.createElement('p');text.textContent=flow.text;panel.append(steps,title,text);
- if(flow.busy){const progress=createProgress(flow.title+'…');panel.append(progress.box);}
+ if(flow.busy){const progress=createProgress(flow.title+'…');panel.append(progress.box);
+  const pending=(project.kind==='node'?[...(data.deployments||[]),...(data.builds||[])]:data.jobs||[]).find(nodeJobActive);
+  if(pending?.created_at){const started=document.createElement('p');started.className='operation-requested';started.textContent='Requested '+new Date(pending.created_at*1000).toLocaleString();panel.append(started);
+   const delay=document.createElement('p');delay.className='operation-delay';delay.dataset.requestedAt=String(pending.created_at);delay.hidden=Date.now()/1000-pending.created_at<300;delay.textContent='This request has been pending for more than five minutes. It may still be running. Check its history below or contact support; avoid submitting a duplicate request.';panel.append(delay);
+  }
+  if(pending?.id){const reference=document.createElement('p');reference.className='operation-reference';reference.textContent='Support reference: '+pending.id;panel.append(reference);}
+ }
  if(flow.action&&role!=='viewer'){
   const button=document.createElement('button');button.type='button';button.className='workflow-primary';button.textContent=flow.label;
   const note=document.createElement('p');note.className='workflow-error';note.hidden=true;note.setAttribute('role','alert');
@@ -503,7 +511,7 @@ function renderNodeLive(entry,node){
  }
  const historyHeading=document.createElement('p');historyHeading.textContent='Deployment history';history.append(historyHeading);
  for(const deployment of deployments){
-  const row=document.createElement('div');const label=document.createElement('p');label.textContent='Revision '+deployment.revision+' · '+deployment.state+(deployment.id===active?.id?' · Current':'');row.append(label);
+  const row=document.createElement('div');const label=document.createElement('p');label.textContent='Revision '+deployment.revision+' · '+deployment.state+(deployment.id===active?.id?' · Current':'')+' · Requested '+new Date(deployment.created_at*1000).toLocaleString();row.append(label);if(deployment.message){const explanation=document.createElement('p');explanation.className='muted';explanation.textContent=deployment.message;row.append(explanation);}
   if(role!=='viewer'&&deployment.state==='queued'){const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel deployment';cancel.addEventListener('click',async()=>{cancel.disabled=true;entry.mutating=true;try{await api('/api/node/deployments/cancel',{project:project.id,id:deployment.id});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation)error(e);cancel.disabled=false;}finally{entry.mutating=false;}});row.append(cancel);}
   history.append(row);
  }
@@ -996,3 +1004,7 @@ $('new-project-details').addEventListener('toggle',async()=>{
  const version=generation,workspace=$('workspace').value;if(!workspace)return;
  try{const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version===generation)renderProjectAvailability(data.availability);}catch(e){if(version===generation)error(e);}
 });
+
+// Elapsed time is not a failure signal. Update the waiting notice independently
+// of status snapshots, which may remain unchanged while a worker is busy.
+setInterval(()=>{if(document.hidden||$('workspace-view').hidden)return;for(const note of document.querySelectorAll('.operation-delay'))note.hidden=Date.now()/1000-Number(note.dataset.requestedAt)<300;},30000);

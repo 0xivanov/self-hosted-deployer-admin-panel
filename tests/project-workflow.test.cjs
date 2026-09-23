@@ -17,3 +17,11 @@ for(const [name,kind,uploads,data,action,title] of [
 ])test(name,()=>{const result=c.projectWorkflow(kind,uploads,data);assert.equal(result.action,action);assert.equal(result.title,title);});
 
 test("unassigned hosting never displays active progress",()=>{assert.equal(c.projectWorkflow("node",[upload],{available:false}).busy,undefined);});
+
+test('failed deployment offers retry of the saved release, not a rebuild',()=>{
+ const result=c.projectWorkflow('node',[upload],{available:true,builds:[build],releases:[release],deployments:[{release_id:'build',state:'failed',message:'Runtime did not confirm publication.'}]});
+ assert.equal(result.title,'Publishing needs attention');assert.equal(result.action,'publish');assert.equal(result.id,'build');assert.equal(result.label,'Retry publishing');assert.equal(result.text,'Runtime did not confirm publication.');
+});
+test('publishing shows persisted deployment stage',()=>{
+ const result=c.projectWorkflow('node',[upload],{available:true,deployments:[{state:'running',message:'Waiting for health confirmation.'}]});assert.equal(result.text,'Waiting for health confirmation.');assert.equal(result.busy,true);
+});

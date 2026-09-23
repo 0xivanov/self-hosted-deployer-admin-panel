@@ -11,6 +11,8 @@ import (
 )
 
 type NodeDeployment struct {
+	Phase          string `json:"phase,omitempty"`
+	Message        string `json:"message,omitempty"`
 	ID             string `json:"id"`
 	ProjectID      string `json:"project_id"`
 	ReleaseID      string `json:"release_id"`
@@ -23,9 +25,10 @@ type NodeDeployment struct {
 
 const nodeDeploymentColumns = "id,project_id,release_id,artifact_sha256,runtime_id,revision,state,created_at"
 
-func scanNodeDeployment(row interface{ Scan(...any) error }) (NodeDeployment, error) {
+func scanNodeDeployment(row interface{ Scan(...any) error }, extra ...any) (NodeDeployment, error) {
 	var j NodeDeployment
-	err := row.Scan(&j.ID, &j.ProjectID, &j.ReleaseID, &j.ArtifactSHA256, &j.RuntimeID, &j.Revision, &j.State, &j.CreatedAt)
+	dest := []any{&j.ID, &j.ProjectID, &j.ReleaseID, &j.ArtifactSHA256, &j.RuntimeID, &j.Revision, &j.State, &j.CreatedAt}
+	err := row.Scan(append(dest, extra...)...)
 	return j, err
 }
 
@@ -109,17 +112,19 @@ func (s *Store) NodeDeployments(ctx context.Context, token, project string) ([]N
 	if _, _, err = s.uploadProject(ctx, tx, token, project, true); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT "+nodeDeploymentColumns+" FROM node_deployments WHERE project_id=? ORDER BY revision DESC LIMIT 100", project)
+	rows, err := tx.QueryContext(ctx, "SELECT "+nodeDeploymentColumns+",CASE WHEN length(dispatch_intent)>0 THEN 1 ELSE 0 END FROM node_deployments WHERE project_id=? ORDER BY revision DESC LIMIT 100", project)
 	if err != nil {
 		return nil, err
 	}
 	result := []NodeDeployment{}
 	for rows.Next() {
-		j, e := scanNodeDeployment(rows)
+		var dispatched bool
+		j, e := scanNodeDeployment(rows, &dispatched)
 		if e != nil {
 			rows.Close()
 			return nil, e
 		}
+		j.Phase, j.Message = deploymentProgress(j.State, dispatched)
 		result = append(result, j)
 	}
 	err = rows.Err()
