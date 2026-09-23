@@ -424,6 +424,23 @@ async function projectUploads(card,project,role,version){
  }
 }
 
+// Pending container guidance updates without replacing upload or settings forms.
+function containerWaitLabel(createdAt,now=Date.now()){
+ const seconds=Math.max(0,Math.floor(now/1000-Number(createdAt)));
+ if(!Number.isFinite(seconds))return 'Waiting for an update';
+ return seconds<60?'Requested less than a minute ago':'Waiting '+Math.floor(seconds/60)+' min';
+}
+function updateContainerWaitLabels(){
+ for(const label of document.querySelectorAll('.container-wait-age'))label.textContent=containerWaitLabel(label.dataset.requestedAt);
+}
+function appendContainerWaitDetails(panel,job){
+ const age=document.createElement('p');age.className='container-wait-age';age.dataset.requestedAt=String(job.created_at);age.textContent=containerWaitLabel(job.created_at);panel.append(age);
+ const note=document.createElement('p');note.className='operation-delay';note.dataset.requestedAt=String(job.created_at);note.hidden=Date.now()/1000-job.created_at<300;
+ note.textContent=job.state==='queued'?'The worker has not started this deployment yet. You can cancel the queued request below, or contact support with the reference below.':'Publishing is taking longer than usual. We have not confirmed the outcome yet. You can leave this page; checks continue in the background. Contact support with the reference below if this continues. A second deployment is paused until this one is resolved.';
+ const reference=document.createElement('p');reference.className='operation-reference';reference.textContent='Support reference: '+job.id;
+ panel.append(note,reference);
+}
+// End pending container guidance.
 function containerJobActive(job){return job&&(job.state==='queued'||job.state==='running');}
 function containerSnapshot(data){return JSON.stringify([data.available,data.active,data.site,data.releases,data.deployments,data.private_images,data.credentials,data.environment_settings,data.environments]);}
 function trackContainerStatus(project,role,version,data){
@@ -465,7 +482,7 @@ function renderContainerLive(entry,data){
  }
  workflow.append(title,text);
  if(pending||!data.available){const progress=createProgress(pending?(pending.state==='queued'?'Waiting for the deployment worker…':'Checking application and HTTPS readiness…'):'Waiting for hosting setup…');progress.bar.removeAttribute('value');workflow.append(progress.box);}
- if(pending&&Date.now()/1000-pending.created_at>180){const note=document.createElement('p');note.textContent='This is taking longer than usual. Keep this page open for updates, or contact support with deployment '+pending.id.slice(0,12)+'. Do not create another deployment while this one is unresolved.';workflow.append(note);}
+ if(pending)appendContainerWaitDetails(workflow,pending);
  live.append(workflow);
  if(active&&data.site){const link=document.createElement('a');link.href=data.site;link.target='_blank';link.rel='noopener noreferrer';link.className='site-link';link.textContent='Visit website ↗';live.append(link);}
  const refresh=document.createElement('button');refresh.type='button';refresh.className='refresh-status';refresh.textContent='Refresh status';refresh.addEventListener('click',()=>refreshProject(project,role,version).catch(error));live.append(refresh);
@@ -1229,7 +1246,7 @@ $('new-project-details').addEventListener('toggle',async()=>{
 
 // Elapsed time is not a failure signal. Update the waiting notice independently
 // of status snapshots, which may remain unchanged while a worker is busy.
-setInterval(()=>{if(document.hidden||$('workspace-view').hidden)return;for(const note of document.querySelectorAll('.operation-delay'))note.hidden=Date.now()/1000-Number(note.dataset.requestedAt)<300;},30000);
+setInterval(()=>{if(document.hidden||$('workspace-view').hidden)return;updateContainerWaitLabels();for(const note of document.querySelectorAll('.operation-delay'))note.hidden=Date.now()/1000-Number(note.dataset.requestedAt)<300;},30000);
 
 function renderRuntimeLogs(card,project,role,version){
  if(role==='viewer')return;
