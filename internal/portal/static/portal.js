@@ -490,6 +490,11 @@ function renderNodeLive(entry,node){
   const line=document.createElement('p');line.textContent='Build · '+build.state+' · '+new Date(build.created_at*1000).toLocaleString();history.append(line);
   if(role!=='viewer'&&typeof build.message==='string'&&build.message){const progress=document.createElement('p');progress.className='muted';progress.textContent=build.message;history.append(progress);}
   else if(build.state==='failed'){const hint=document.createElement('p');hint.textContent=role==='viewer'?'Build failed.':'Build failed. Review your project or contact the operator, then choose Build again.';history.append(hint);}
+  if(role!=='viewer'&&build.state==='failed'){
+   const details=disclosure('View build output','build-output');const output=document.createElement('pre');output.textContent='Open to load the available build output.';details.append(output);
+   let loaded=false;details.addEventListener('toggle',async()=>{if(!details.open||loaded)return;loaded=true;output.textContent='Loading build output…';try{const data=await api('/api/node/build-log?project='+encodeURIComponent(project.id)+'&id='+encodeURIComponent(build.id));if(version!==generation||!details.isConnected)return;output.textContent=data.available?data.log:'No captured output is available for this build. Older builds and failures before the builder starts may not have a log.';}catch(e){loaded=false;if(version===generation&&details.isConnected)output.textContent=e.message;}});history.append(details);
+  }
+
   if(role!=='viewer'&&build.state==='queued'){
    const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel build';cancel.addEventListener('click',async()=>{cancel.disabled=true;entry.mutating=true;try{await api('/api/node/builds/cancel',{project:project.id,id:build.id});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation)error(e);cancel.disabled=false;}finally{entry.mutating=false;}});history.append(cancel);
   }

@@ -2,7 +2,9 @@ package portal
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/buildlog"
 	"net/http"
 )
 
@@ -31,6 +33,29 @@ func copyNodeProjects(input map[string]NodeProjectConfig) (map[string]NodeProjec
 }
 func (h *HTTP) nodeHTTP(w http.ResponseWriter, r *http.Request, token string) {
 	assignments := h.nodeProjectSnapshot()
+	if r.Method == "GET" && r.URL.Path == "/api/node/build-log" {
+		project, id := r.URL.Query().Get("project"), r.URL.Query().Get("id")
+		tx, err := h.store.db.BeginTx(r.Context(), nil)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		defer tx.Rollback()
+		if _, _, err = h.store.uploadProject(r.Context(), tx, token, project, true); err != nil {
+			h.storeError(w, err)
+			return
+		}
+		var result []byte
+		if err = tx.QueryRowContext(r.Context(), "SELECT result FROM node_builds WHERE id=? AND project_id=?", id, project).Scan(&result); err != nil {
+			httpError(w, 404, "Build log unavailable")
+			return
+		}
+		var evidence struct{ FailureLog string }
+		_ = json.Unmarshal(result, &evidence)
+		log := buildlog.Sanitize(evidence.FailureLog)
+		httpJSON(w, map[string]any{"log": log, "available": log != ""})
+		return
+	}
 	if r.Method == "GET" && r.URL.Path == "/api/node" {
 		project := r.URL.Query().Get("project")
 		p, err := h.store.GetProject(r.Context(), token, project)

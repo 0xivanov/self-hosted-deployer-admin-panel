@@ -22,10 +22,11 @@ import (
 )
 
 type fixtureExecutor struct {
-	mu      sync.Mutex
-	request portal.NodeExecutionRequest
-	submits int
-	stale   bool
+	mu         sync.Mutex
+	request    portal.NodeExecutionRequest
+	submits    int
+	stale      bool
+	failureLog string
 }
 
 func (f *fixtureExecutor) SubmitNodeExecution(_ context.Context, r portal.NodeExecutionRequest) error {
@@ -41,7 +42,7 @@ func (f *fixtureExecutor) observation() portal.NodeExecutionObservation {
 		now = now.Add(-time.Minute)
 	}
 	r := f.request
-	return portal.NodeExecutionObservation{ProjectID: r.ProjectID, ExecutionID: r.ExecutionID, SourceSHA256: r.Plan.SourceSHA256, ToolchainSHA256: r.ToolchainSHA256, Architecture: r.Plan.Architecture, Outcome: "succeeded", Retired: true, ObservedAt: now}
+	return portal.NodeExecutionObservation{ProjectID: r.ProjectID, ExecutionID: r.ExecutionID, SourceSHA256: r.Plan.SourceSHA256, ToolchainSHA256: r.ToolchainSHA256, Architecture: r.Plan.Architecture, Outcome: "succeeded", FailureLog: f.failureLog, Retired: true, ObservedAt: now}
 }
 func (f *fixtureExecutor) InspectNodeExecution(context.Context, string) (portal.NodeExecutionObservation, error) {
 	f.mu.Lock()
@@ -102,6 +103,16 @@ func TestBuildTransportRoundTripAndRejection(t *testing.T) {
 	if err != nil || observation.ExecutionID != request.ExecutionID || observation.ObservedAt.Before(started) {
 		t.Fatal(observation, err)
 	}
+	provider.mu.Lock()
+	provider.failureLog = "Error: cannot resolve dependency"
+	provider.mu.Unlock()
+	withLog, err := client.InspectNodeExecution(t.Context(), request.ExecutionID)
+	if err != nil || withLog.FailureLog != "Error: cannot resolve dependency" {
+		t.Fatal("log transport", err)
+	}
+	provider.mu.Lock()
+	provider.failureLog = ""
+	provider.mu.Unlock()
 	artifact, data, err := client.ReadNodeArtifact(t.Context(), request.ExecutionID)
 	if err != nil || !bytes.Equal(data, request.Archive) || artifact.DependencyManifestSHA256 != request.Bundle.ManifestSHA256 {
 		t.Fatal(artifact, err)

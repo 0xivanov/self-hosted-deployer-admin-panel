@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/buildlog"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -36,13 +37,14 @@ type Executor struct {
 	done     chan struct{}
 }
 type record struct {
-	Request   portal.NodeExecutionRequest `json:"request"`
-	State     string                      `json:"state"`
-	Outcome   string                      `json:"outcome,omitempty"`
-	Cleaned   bool                        `json:"cleaned,omitempty"`
-	Artifact  string                      `json:"artifact,omitempty"`
-	Container string                      `json:"container"`
-	Output    string                      `json:"output"`
+	FailureLog string                      `json:"failure_log,omitempty"`
+	Request    portal.NodeExecutionRequest `json:"request"`
+	State      string                      `json:"state"`
+	Outcome    string                      `json:"outcome,omitempty"`
+	Cleaned    bool                        `json:"cleaned,omitempty"`
+	Artifact   string                      `json:"artifact,omitempty"`
+	Container  string                      `json:"container"`
+	Output     string                      `json:"output"`
 }
 
 var ErrExecutor = errors.New("container build executor unavailable")
@@ -348,6 +350,17 @@ func (e *Executor) InspectNodeExecution(ctx context.Context, id string) (portal.
 			if !timedOut && state.ExitCode == 0 {
 				r.Outcome = "succeeded"
 			}
+			if r.Outcome == "failed" {
+				logCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				var output buildlog.Tail
+				cmd := exec.CommandContext(logCtx, "docker", "logs", "--tail", "200", r.Container)
+				cmd.Stdout = &output
+				cmd.Stderr = &output
+				if cmd.Run() == nil {
+					r.FailureLog = buildlog.Sanitize(string(output.Data))
+				}
+				cancel()
+			}
 			if err = e.save(id, r); err != nil {
 				return portal.NodeExecutionObservation{}, err
 			}
@@ -365,7 +378,7 @@ func (e *Executor) InspectNodeExecution(ctx context.Context, id string) (portal.
 	if outcome == "" {
 		outcome = "running"
 	}
-	return portal.NodeExecutionObservation{ProjectID: e.cfg.Project, ExecutionID: id, SourceSHA256: r.Request.Plan.SourceSHA256, ToolchainSHA256: r.Request.ToolchainSHA256, Architecture: r.Request.Plan.Architecture, Outcome: outcome, Retired: r.State == "retired", ObservedAt: time.Now()}, nil
+	return portal.NodeExecutionObservation{ProjectID: e.cfg.Project, ExecutionID: id, SourceSHA256: r.Request.Plan.SourceSHA256, ToolchainSHA256: r.Request.ToolchainSHA256, Architecture: r.Request.Plan.Architecture, Outcome: outcome, FailureLog: buildlog.Sanitize(r.FailureLog), Retired: r.State == "retired", ObservedAt: time.Now()}, nil
 }
 func (e *Executor) ReadNodeArtifact(ctx context.Context, id string) (portal.NodeArtifactObservation, []byte, error) {
 	e.mu.Lock()

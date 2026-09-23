@@ -23,7 +23,7 @@ Acceptance: an invited developer finds a site, uploads a revision, publishes and
 
 ### 2. Remove the launch blockers
 - Shipped: transactional configured fleet-capacity admission using project rows as reservations, including deleting projects; workspace allowance and static/Node availability displayed before creation. Remaining: operational health-aware provisioning diagnostics and reconciliation for orphan assignments created outside this flow.
-- Shipped: safe build/deployment stage explanations, explicit failed-publication retry, request timestamps/support references and long-wait guidance. Retained release restoration is available in history. Remaining: actionable build/runtime logs with safe secrets handling and broader operational recovery. No invented progress percentages.
+- Shipped: safe build/deployment stage explanations, explicit failed-publication retry, request timestamps/support references and long-wait guidance. Retained release restoration is available in history. Shipped: on-demand sanitized failed-build output for owners/developers. Remaining: runtime application logs, richer build output and broader operational recovery. No invented progress percentages.
 - Usage summary and straightforward support contact.
 - Verify and document restoration and failure handling appropriate to a limited paid pilot. Existing private-launch shared-kernel infrastructure is not an unrestricted public execution service.
 

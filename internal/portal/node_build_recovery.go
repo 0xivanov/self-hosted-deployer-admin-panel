@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/buildlog"
 	"time"
 )
 
@@ -12,6 +13,7 @@ import (
 // never a report from customer code. Retired means the operation cannot start or
 // resume, including a delayed create request. Merely not finding a VM is NOT proof.
 type NodeExecutionObservation struct {
+	FailureLog string `json:"FailureLog,omitempty"`
 	// ProjectID is required by the remote executor transport to verify scope.
 	ProjectID       string
 	ExecutionID     string
@@ -66,6 +68,7 @@ func (s *Store) ReconcileNodeBuildFailure(ctx context.Context, p NodeExecutionRe
 	if observation.ExecutionID != execution || observation.SourceSHA256 != job.Plan.SourceSHA256 || observation.ToolchainSHA256 != job.ToolchainSHA256 || observation.Architecture != job.Plan.Architecture || !observation.Retired || (observation.Outcome != "failed" && observation.Outcome != "cancelled") || observation.ObservedAt.Before(started) || observation.ObservedAt.After(s.now()) {
 		return false, ErrBuildConflict
 	}
+	observation.FailureLog = buildlog.Sanitize(observation.FailureLog)
 	raw, err := json.Marshal(observation)
 	if err != nil {
 		return false, err
