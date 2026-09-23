@@ -64,7 +64,7 @@ func readContainerOperation(path string) (containerOperation, error) {
 		return containerOperation{}, errors.New("invalid container deployment state")
 	}
 	encoded, err := json.Marshal(op)
-	if err != nil || !bytes.Equal(b, encoded) || (op.Stage != "preparing" && op.Stage != "dispatched") || op.Domain == "" {
+	if err != nil || !bytes.Equal(b, encoded) || (op.Stage != "preparing" && op.Stage != "dispatched" && op.Stage != "not_submitted") || op.Domain == "" {
 		return containerOperation{}, errors.New("invalid container deployment state")
 	}
 	return op, nil
@@ -100,6 +100,17 @@ func (r *containerRuntime) save(op containerOperation) error {
 		return err
 	}
 	return writeFsync(r.statePath(op.Request.Deployment.ID), b)
+}
+
+// rejectBeforeSubmission records proof that DeployApp was never called. Keep
+// upstream errors out of the durable record: they may contain private details.
+// If writing fails, the old preparing/dispatched record remains conservative.
+func (r *containerRuntime) rejectBeforeSubmission(op containerOperation, cause error) error {
+	op.Stage = "not_submitted"
+	if err := r.save(op); err != nil {
+		return errors.Join(cause, err)
+	}
+	return cause
 }
 
 func (r *containerRuntime) SubmitContainerRuntime(ctx context.Context, q portal.ContainerRuntimeRequest) error {
@@ -145,32 +156,32 @@ func (r *containerRuntime) SubmitContainerRuntime(ctx context.Context, q portal.
 		return err
 	}
 	if err = ctx.Err(); err != nil {
-		return err
+		return r.rejectBeforeSubmission(op, err)
 	}
 	spec, err := renderContainerYAML(r.a, q.Release)
 	if err != nil {
-		return err
+		return r.rejectBeforeSubmission(op, err)
 	}
 	c, err := r.w.factory(r.a.id)
 	if err != nil {
-		return err
+		return r.rejectBeforeSubmission(op, err)
 	}
 	defer c.Close()
 	if _, err = c.PreflightApp(ctx, spec); err != nil {
-		return err
+		return r.rejectBeforeSubmission(op, err)
 	}
 	if ctx.Err() != nil || q.ActivateBefore <= time.Now().Unix() {
-		return errors.New("activation deadline expired before dispatch")
+		return r.rejectBeforeSubmission(op, errors.New("activation deadline expired before dispatch"))
 	}
 	op.Stage = "dispatched"
 	if err = r.save(op); err != nil {
 		return err
 	}
 	if err = ctx.Err(); err != nil {
-		return err
+		return r.rejectBeforeSubmission(op, err)
 	}
 	if q.ActivateBefore <= time.Now().Unix() {
-		return errors.New("activation deadline expired after dispatch intent")
+		return r.rejectBeforeSubmission(op, errors.New("activation deadline expired after dispatch intent"))
 	}
 	_, err = c.DeployApp(ctx, spec)
 	return err
@@ -210,8 +221,8 @@ func (r *containerRuntime) InspectContainerRuntime(ctx context.Context, q portal
 	if err != nil || !reflect.DeepEqual(op.Request, q) || op.Domain != r.a.p.Domain {
 		return portal.ContainerRuntimeObservation{}, errors.New("container deployment request conflict")
 	}
-	if op.Stage == "preparing" {
-		if r.w.lock == nil || q.ActivateBefore > time.Now().Unix() {
+	if op.Stage == "preparing" || op.Stage == "not_submitted" {
+		if op.Stage == "preparing" && q.ActivateBefore > time.Now().Unix() {
 			return containerObservation(q, "pending"), nil
 		}
 		if q.Previous != nil {

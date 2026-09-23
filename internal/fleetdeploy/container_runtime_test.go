@@ -191,6 +191,8 @@ func TestContainerRuntimeExpiredPreparingNeedsLockAndHealthyPrior(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Simulate an interrupted worker before preflight completed.
+	op.Stage = "preparing"
 	op.Request.ActivateBefore = time.Now().Add(-time.Second).Unix()
 	q.ActivateBefore = op.Request.ActivateBefore
 	if err := r.save(op); err != nil {
@@ -215,5 +217,65 @@ func TestContainerRuntimeExpiredPreparingNeedsLockAndHealthyPrior(t *testing.T) 
 	o, err := containerRuntimeFor(locked, q).InspectContainerRuntime(t.Context(), q)
 	if err != nil || o.State != "failed" {
 		t.Fatalf("locked observation=%+v err=%v", o, err)
+	}
+}
+
+func TestContainerRuntimeKnownUnsubmittedFailureSettlesBeforeDeadline(t *testing.T) {
+	mock := &containerDeployerMock{preflightErr: errors.New("private upstream details")}
+	w, q, cleanup := containerRuntimeFixture(t, mock)
+	defer cleanup()
+	r := containerRuntimeFor(w, q)
+	if err := r.SubmitContainerRuntime(t.Context(), q); err == nil {
+		t.Fatal("expected preflight failure")
+	}
+	op, err := readContainerOperation(r.statePath(q.Deployment.ID))
+	if err != nil || op.Stage != "not_submitted" {
+		t.Fatalf("missing proof of no submission: %+v %v", op, err)
+	}
+	raw, err := os.ReadFile(r.statePath(q.Deployment.ID))
+	if err != nil || strings.Contains(string(raw), "private upstream details") {
+		t.Fatalf("upstream details persisted or read failed: %v", err)
+	}
+	observation, err := r.InspectContainerRuntime(t.Context(), q)
+	if err != nil || observation.State != "failed" {
+		t.Fatalf("known rejection still pending: %+v %v", observation, err)
+	}
+	// A later worker must not revive a rejected intent after a restart.
+	w.Close()
+	restarted, err := New(w.store, Config{StateDirectory: w.cfg.StateDirectory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	restarted.cfg.Projects = w.cfg.Projects
+	restarted.factory = w.factory
+	mock.preflightErr = nil
+	if err := containerRuntimeFor(restarted, q).SubmitContainerRuntime(t.Context(), q); err != nil {
+		t.Fatal(err)
+	}
+	if mock.deploy != 0 || mock.preflight != 1 {
+		t.Fatalf("rejected intent replayed: deploy=%d preflight=%d", mock.deploy, mock.preflight)
+	}
+}
+
+func TestContainerRuntimeUnsubmittedUpdateStillRequiresHealthyPrevious(t *testing.T) {
+	mock := &containerDeployerMock{preflightErr: errors.New("preflight rejected")}
+	w, q, cleanup := containerRuntimeFixture(t, mock)
+	defer cleanup()
+	prior := q.Release
+	prior.ID = strings.Repeat("5", 64)
+	q.Previous = &prior
+	r := containerRuntimeFor(w, q)
+	if err := r.SubmitContainerRuntime(t.Context(), q); err == nil {
+		t.Fatal("expected rejection")
+	}
+	observation, err := r.InspectContainerRuntime(t.Context(), q)
+	if err != nil || observation.State != "pending" {
+		t.Fatalf("settled without previous release health: %+v %v", observation, err)
+	}
+	mock.status = healthyContainerStatus(t, r.a, prior)
+	observation, err = r.InspectContainerRuntime(t.Context(), q)
+	if err != nil || observation.State != "failed" {
+		t.Fatalf("healthy previous release did not settle rejection: %+v %v", observation, err)
 	}
 }

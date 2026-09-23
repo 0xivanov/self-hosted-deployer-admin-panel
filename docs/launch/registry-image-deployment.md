@@ -84,3 +84,17 @@ Only public Docker Hub/GHCR metadata access is wired by the default server resol
 8. Add the customer create/check/publish/progress/rollback path and qualify one public and one private image end to end on the fleet. Only then advertise registry deployment in the landing page and onboarding.
 
 GitHub deploy-on-push and isolated Dockerfile builds remain separate subsequent work in the original launch plan.
+
+## Known unsubmitted failures
+
+The fleet worker now saves a `not_submitted` outcome when local setup, preflight or a deadline check rejects the request before `DeployApp` is called. Reconciliation can make that attempt retryable immediately, without waiting for its activation deadline. For an update, the previous release must still pass its health/configuration checks before the attempt is marked failed. Restarting the worker cannot replay the rejected request.
+
+A transport error after calling `DeployApp` is still ambiguous. The worker does not turn elapsed time into proof of failure or submit a second deployment. Fully dispatched rollout failures still need a recovery protocol that proves the rejected candidate cannot activate later. This change is local only and does not enable container hosting on the live fleet.
+
+Focused verification covers prompt settlement before deadline, previous-release health, restart replay prevention, omission of upstream error details from the saved operation, and the existing lost-reply behavior.
+
+## Private-image implementation decision
+
+Private pull credentials require changes to the underlying deployer, not only a password field in the portal. Use separate encrypted app-scoped, immutable credential revisions and generated, app-owned Kubernetes image-pull Secrets. Do not put registry credentials into application environment Secrets or allow customers to choose Kubernetes Secret names. Release configuration should retain only an opaque credential revision reference. Rotation must retain revisions referenced by active and restorable releases; deletion must reject references that are still needed. Resolve the same revision during rollback. Write APIs return metadata only and audit records omit credential values.
+
+Before enabling this path, wire the project-to-app authorization boundary, credential creation/rotation, release references, deployer resolution, owned pull-Secret reconciliation, and cleanup together. Qualify a real private ARM64 image and restoration after rotation. Public-image hosting remains gated until the documented runtime and recovery requirements are met.
