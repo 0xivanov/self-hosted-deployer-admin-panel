@@ -1,5 +1,7 @@
 package client
 
+import "encoding/json"
+
 import "github.com/0xivanov/self-hosted-deployer-admin-panel/internal/appconfig"
 
 type ServerStatus struct {
@@ -61,8 +63,10 @@ type RouteInfo struct {
 }
 
 type DeployResult struct {
-	App        AppInfo        `json:"app"`
-	Deployment DeploymentInfo `json:"deployment"`
+	WithdrawalConfirmed bool            `json:"withdrawal_confirmed,omitempty"`
+	RequestedState      json.RawMessage `json:"requested_state,omitempty"`
+	App                 AppInfo         `json:"app"`
+	Deployment          DeploymentInfo  `json:"deployment"`
 }
 
 type PreflightResult struct {

@@ -165,14 +165,10 @@ func desiredResource(c map[string]any, tier, key string) string {
 	return s
 }
 
-func healthyContainer(s client.AppStatusResult, a assignment, release portal.ContainerRelease) bool {
-	desired := map[string]any(s.App.DesiredState)
+func containerDesiredMatches(desired map[string]any, a assignment, release portal.ContainerRelease) bool {
 	credentialID, _ := desired["image_pull_credential"].(string)
 	environmentID, _ := desired["environment_revision"].(string)
-	if environmentID != release.Input.EnvironmentID || credentialID != release.Input.CredentialID || !validContainerRelease(a, release) ||
-		s.App.Name != appName(a.id) ||
-		s.App.Image != release.Image.Image ||
-		(s.App.Domain != "" && s.App.Domain != a.p.Domain) ||
+	if !validContainerRelease(a, release) || credentialID != release.Input.CredentialID || environmentID != release.Input.EnvironmentID ||
 		desired["name"] != appName(a.id) ||
 		desired["image"] != release.Image.Image ||
 		desiredString(desired, "routing", "domain") != a.p.Domain ||
@@ -190,8 +186,18 @@ func healthyContainer(s client.AppStatusResult, a assignment, release portal.Con
 		desiredResource(desiredMap(desired, "hosting"), "requests", "ephemeralStorage") != "64Mi" ||
 		desiredResource(desiredMap(desired, "hosting"), "limits", "cpu") != "500m" ||
 		desiredResource(desiredMap(desired, "hosting"), "limits", "memory") != "256Mi" ||
-		desiredResource(desiredMap(desired, "hosting"), "limits", "ephemeralStorage") != "256Mi" ||
-		s.LatestDeployment.Status != "healthy" ||
+		desiredResource(desiredMap(desired, "hosting"), "limits", "ephemeralStorage") != "256Mi" {
+		return false
+	}
+	return true
+}
+
+func healthyContainer(s client.AppStatusResult, a assignment, release portal.ContainerRelease) bool {
+	return s.LatestDeployment.Status == "healthy" && healthyContainerRuntime(s, a, release)
+}
+
+func healthyContainerRuntime(s client.AppStatusResult, a assignment, release portal.ContainerRelease) bool {
+	if !containerDesiredMatches(map[string]any(s.App.DesiredState), a, release) || s.App.Name != appName(a.id) || s.App.Image != release.Image.Image || (s.App.Domain != "" && s.App.Domain != a.p.Domain) ||
 		s.RuntimeStatus != "healthy" ||
 		s.DesiredReplicas != 2 ||
 		s.AvailableReplicas < 2 {

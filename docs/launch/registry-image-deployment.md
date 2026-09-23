@@ -134,3 +134,13 @@ The existing `--container-credential-key-file` and fleet `container_credential_k
 Before preflight the fleet resolves the exact project/version and stages it through `deployer environment create --values` using a private temporary file. No values enter the fleet operation journal or YAML. The deployer stores encrypted app-scoped bundles in migration 8 and injects them through separate immutable Kubernetes Secrets. Its publish/rollback path resolves the corresponding version, rather than changing mutable settings on a running app. Existing ZIP/Node deployments and legacy deployer secrets retain their prior behavior.
 
 Local checks cover API authorization/CSRF, cross-project reference denial before registry calls, request retries, size limits, ciphertext binding, migration preservation, private-file cleanup and registration before deployment. Browser checks with synthetic data verified refresh preservation, immediate selection, cleared fields and an empty settings version. Core checks additionally cover value injection, original-version rollback, immutable Kubernetes references and app cleanup. This remains source-level and local-runtime evidence, not a live fleet rollout.
+
+## Confirmed failed-apply withdrawal (local)
+
+The container worker now requests structured withdrawal reporting from the matching deployer CLI. A positive receipt is accepted only when its app/deployment identity and requested configuration match the intended release and the complete canonical preflight response. The worker persists the receipt's app/deployment IDs and `withdrawn` stage without upstream error details. Restarting cannot resubmit that attempt.
+
+For an update, settlement still waits for fresh confirmation that the previous configuration, environment/image-access revisions, replicas and HTTPS route are healthy. The latest core deployment must be the exact failed attempt identified in the receipt. This deliberately allows a healthy restored runtime while its latest attempt is recorded as failed. Initial confirmed cleanup can settle without a predecessor.
+
+Core compensation is opt-in. It reports proof only for definitive apply rejections or failures after acknowledged apply, and only after rollback/cleanup and failed-status persistence succeed. A runtime timeout or uncertain server error cannot produce proof. Legacy callers retain their current behavior. This is implemented and verified locally, not deployed.
+
+Lost replies and accepted-but-stuck rollouts remain unresolved. They continue pending rather than risking duplicate deployment. Durable operation identities, withdrawal tombstones and runtime fencing remain the next recovery work before fleet qualification and enabling Docker hosting. See core `docs/deployment-withdrawal.md`.

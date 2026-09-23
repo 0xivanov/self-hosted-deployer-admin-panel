@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/client"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/portal"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/registryimage"
 )
@@ -23,9 +24,11 @@ type containerRuntime struct {
 }
 
 type containerOperation struct {
-	Request portal.ContainerRuntimeRequest `json:"request"`
-	Domain  string                         `json:"domain"`
-	Stage   string                         `json:"stage"`
+	WithdrawalDeploymentID string                         `json:"withdrawal_deployment_id,omitempty"`
+	WithdrawalAppID        string                         `json:"withdrawal_app_id,omitempty"`
+	Request                portal.ContainerRuntimeRequest `json:"request"`
+	Domain                 string                         `json:"domain"`
+	Stage                  string                         `json:"stage"`
 }
 
 func (r *containerRuntime) statePath(id string) string {
@@ -65,8 +68,11 @@ func readContainerOperation(path string) (containerOperation, error) {
 		return containerOperation{}, errors.New("invalid container deployment state")
 	}
 	encoded, err := json.Marshal(op)
-	if err != nil || !bytes.Equal(b, encoded) || (op.Stage != "preparing" && op.Stage != "dispatched" && op.Stage != "not_submitted") || op.Domain == "" {
+	if err != nil || !bytes.Equal(b, encoded) || (op.Stage != "preparing" && op.Stage != "dispatched" && op.Stage != "not_submitted" && op.Stage != "withdrawn") || op.Domain == "" {
 		return containerOperation{}, errors.New("invalid container deployment state")
+	}
+	if (op.Stage == "withdrawn") != (op.WithdrawalDeploymentID != "" && op.WithdrawalAppID != "") {
+		return containerOperation{}, errors.New("invalid container withdrawal state")
 	}
 	return op, nil
 }
@@ -208,7 +214,8 @@ func (r *containerRuntime) SubmitContainerRuntime(ctx context.Context, q portal.
 			return r.rejectBeforeSubmission(op, errors.New("environment registration failed"))
 		}
 	}
-	if _, err = c.PreflightApp(ctx, spec); err != nil {
+	preflight, err := c.PreflightApp(ctx, spec)
+	if err != nil {
 		return r.rejectBeforeSubmission(op, err)
 	}
 	if ctx.Err() != nil || q.ActivateBefore <= time.Now().Unix() {
@@ -223,6 +230,24 @@ func (r *containerRuntime) SubmitContainerRuntime(ctx context.Context, q portal.
 	}
 	if q.ActivateBefore <= time.Now().Unix() {
 		return r.rejectBeforeSubmission(op, errors.New("activation deadline expired after dispatch intent"))
+	}
+	if reporter, ok := c.(interface {
+		DeployAppReportingWithdrawal(context.Context, string) (client.DeployResult, error)
+	}); ok {
+		result, callErr := reporter.DeployAppReportingWithdrawal(ctx, spec)
+		if callErr != nil {
+			return callErr
+		}
+		if result.WithdrawalConfirmed {
+			if !confirmedContainerWithdrawal(result, r.a, q.Release) || !matchingContainerStates(result.RequestedState, preflight.DesiredState) {
+				return errors.New("invalid container withdrawal response")
+			}
+			op.Stage = "withdrawn"
+			op.WithdrawalDeploymentID = result.Deployment.ID
+			op.WithdrawalAppID = result.App.ID
+			return r.save(op)
+		}
+		return nil
 	}
 	_, err = c.DeployApp(ctx, spec)
 	return err
@@ -262,6 +287,15 @@ func (r *containerRuntime) InspectContainerRuntime(ctx context.Context, q portal
 	if err != nil || !reflect.DeepEqual(op.Request, q) || op.Domain != r.a.p.Domain {
 		return portal.ContainerRuntimeObservation{}, errors.New("container deployment request conflict")
 	}
+	if op.Stage == "withdrawn" {
+		if q.Previous != nil {
+			s, statusErr := r.w.status(ctx, r.a)
+			if statusErr != nil || s.App.ID != op.WithdrawalAppID || s.LatestDeployment.ID != op.WithdrawalDeploymentID || s.LatestDeployment.Status != "failed" || !healthyContainerRuntime(s, r.a, *q.Previous) {
+				return containerObservation(q, "pending"), nil
+			}
+		}
+		return containerObservation(q, "failed"), nil
+	}
 	if op.Stage == "preparing" || op.Stage == "not_submitted" {
 		if op.Stage == "preparing" && q.ActivateBefore > time.Now().Unix() {
 			return containerObservation(q, "pending"), nil
@@ -288,3 +322,22 @@ func (r *containerRuntime) InspectContainerRuntime(ctx context.Context, q portal
 }
 
 var _ portal.ContainerRuntime = (*containerRuntime)(nil)
+
+func confirmedContainerWithdrawal(result client.DeployResult, a assignment, release portal.ContainerRelease) bool {
+	if !result.WithdrawalConfirmed || result.App.Name != appName(a.id) || result.App.ID == "" || result.Deployment.ID == "" || result.Deployment.AppID != result.App.ID || result.Deployment.Status != "failed" {
+		return false
+	}
+	var desired map[string]any
+	if json.Unmarshal(result.RequestedState, &desired) != nil {
+		return false
+	}
+	return containerDesiredMatches(desired, a, release)
+}
+
+func matchingContainerStates(receipt json.RawMessage, preflight string) bool {
+	var actual, expected map[string]any
+	if json.Unmarshal(receipt, &actual) != nil || json.Unmarshal([]byte(preflight), &expected) != nil || actual == nil || expected == nil {
+		return false
+	}
+	return reflect.DeepEqual(actual, expected)
+}

@@ -209,7 +209,7 @@ func (c *CLI) StreamLogs(ctx context.Context, name string, tail int32, _ bool, r
 	}
 	return receive(string(data))
 }
-func (c *CLI) withYAML(ctx context.Context, data, command string, result any) error {
+func (c *CLI) withYAML(ctx context.Context, data, command string, result any, flags ...string) error {
 	f, err := os.CreateTemp(c.directory, "app-*.yaml")
 	if err != nil {
 		return err
@@ -222,7 +222,9 @@ func (c *CLI) withYAML(ctx context.Context, data, command string, result any) er
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return c.read(ctx, result, command, "--file", f.Name())
+	args := append([]string{command}, flags...)
+	args = append(args, "--file", f.Name())
+	return c.read(ctx, result, args...)
 }
 func (c *CLI) PreflightApp(ctx context.Context, data string) (v PreflightResult, e error) {
 	e = c.withYAML(ctx, data, "preflight", &v)
@@ -230,6 +232,13 @@ func (c *CLI) PreflightApp(ctx context.Context, data string) (v PreflightResult,
 }
 func (c *CLI) DeployApp(ctx context.Context, data string) (v DeployResult, e error) {
 	e = c.withYAML(ctx, data, "deploy", &v)
+	return
+}
+
+// DeployAppReportingWithdrawal requests positive compensation evidence. A CLI
+// or transport error still conveys no proof that the candidate is withdrawn.
+func (c *CLI) DeployAppReportingWithdrawal(ctx context.Context, data string) (v DeployResult, e error) {
+	e = c.withYAML(ctx, data, "deploy", &v, "--report-withdrawal")
 	return
 }
 
