@@ -209,3 +209,50 @@ main{padding:20px 24px 60px}
 @keyframes progress-sweep{from{background-position:100% 0}to{background-position:-100% 0}}
 @keyframes step-pulse{50%{opacity:.35}}
 @media(prefers-reduced-motion:reduce){.operation-progress progress:indeterminate,.project-workflow[data-tone=busy] .workflow-steps li.current::after{animation:none}.operation-progress progress::-webkit-progress-value{transition:none}}
+
+/* Freelancer workspace foundation. Shared surfaces keep both themes consistent. */
+:root{--surface:#fff;--surface-soft:#f1f5f3;--surface-hover:#e8efeb;--accent:#216b50;--accent-soft:#e5f2ea;--danger:#a33229;--danger-soft:#fff0ed;--ink:#172e26;--muted:#566b61;--paper:#f3f6f4;--line:#d5e0d9;color-scheme:light}
+:root[data-theme=dark]{--surface:#17251f;--surface-soft:#1d3027;--surface-hover:#294135;--accent:#95ddb5;--accent-soft:#203c2d;--danger:#ffb3a8;--danger-soft:#422923;--ink:#edf5ef;--muted:#a8bcaf;--paper:#0e1914;--line:#365044;color-scheme:dark}
+body{background:var(--paper);color:var(--ink)}
+.site-header{background:var(--surface);height:72px}
+.theme-picker{display:flex;align-items:center;gap:8px;margin:0;font-size:11px;color:var(--muted);font-weight:500}
+.theme-picker select{width:auto;margin:0;padding:6px 9px}
+.workspace-heading{padding:28px 0 32px;align-items:flex-start}
+.workspace-heading h1{font-size:36px;letter-spacing:-1.2px}
+.workspace-nav{gap:8px;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.workspace-nav button{padding:9px 18px;border-radius:7px}
+.workspace-nav button[aria-current=page]{background:var(--accent-soft);color:var(--accent)}
+.workspace-nav button[aria-current=page]:after{display:none}
+.portfolio-tools{grid-column:1/-1;display:flex;align-items:flex-end;gap:16px;padding:18px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.portfolio-tools label{margin:0;flex:1}
+.portfolio-tools label:first-child{flex:2}
+.portfolio-tools p{margin:0 0 10px;color:var(--muted);font-size:12px;white-space:nowrap}
+.getting-started{grid-column:1/-1;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:14px 18px}
+.getting-started summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--accent)}
+.getting-started ol{padding-left:22px;max-width:85ch;color:var(--muted);font-size:13px}
+.getting-started li{margin:10px 0}
+.getting-started strong{color:var(--ink)}
+#website-no-results{grid-column:1/-1;margin:0}
+.project{box-shadow:none;border-radius:14px;padding:24px}
+.project-heading strong{font-size:19px}
+.project-workflow{padding:20px}
+button,input,select,.site-header,.account-block,.project,.auth-card,.new-project-details[open],#domain-panel,#billing-panel,#merchant-panel,#member-panel{background:var(--surface);color:var(--ink);border-color:var(--line)}
+button:hover{background:var(--surface-hover)}
+.workspace-selector select,input[type=file],.subscription-card{background:var(--surface-soft)}
+input::file-selector-button{background:var(--surface);color:var(--ink);border-color:var(--line)}
+.notice,.project-status,.project-icon,.project-workflow,.project-workflow[data-tone=live],.project-workflow[data-tone=busy],.domain-state,#billing-return-message{background:var(--accent-soft);color:var(--accent);border-color:var(--line)}
+.project-workflow h3{color:var(--ink)}
+.project-workflow p,.progress-caption{color:var(--muted)}
+.eyebrow,.site-link,.project summary,.project-domains>summary,.project-rename summary,.upload-details>a,.domain-record strong{color:var(--accent)}
+.project details>div,.project-domain,.domain-record{border-color:var(--line)}
+.workflow-steps li{background:var(--surface-soft);color:var(--muted)}
+.workflow-steps .complete{background:var(--accent-soft);color:var(--accent)}
+.button-dark,.button-orange,.primary-link,.project-workflow .workflow-primary,.project details form button,.workflow-steps .current{background:#246d50;color:#fff;border-color:#246d50}
+.button-dark:hover,.button-orange:hover,.project-workflow .workflow-primary:hover,.project details form button:hover{background:#19563d}
+#error,.domain-error,.deletion-error,.project-deleting .project-status{background:var(--danger-soft);color:var(--danger)!important;border-color:var(--danger)}
+.project-danger>summary,.project-danger p,.project-workflow .workflow-error,.operation-progress[data-failed=true] .progress-caption{color:var(--danger)}
+.button-danger,.project-danger form button{background:#9c352b!important;color:#fff!important;border-color:#9c352b!important}
+.launch-label{color:var(--accent);border-color:var(--line)}
+@media(min-width:1450px){#projects{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:800px){.workspace-heading h1{font-size:30px}.theme-picker{font-size:0}.theme-picker select{font-size:12px}.header-context{display:none}.wordmark{flex:1}.portfolio-tools{flex-wrap:wrap}.portfolio-tools p{width:100%;margin:0}.workspace-nav{gap:3px}.workspace-nav button{padding:9px 13px}}
+@media(max-width:480px){.portfolio-tools{gap:12px}.portfolio-tools label,.portfolio-tools label:first-child{flex:1 1 100%}.theme-picker select{max-width:85px}.project{padding:18px}}

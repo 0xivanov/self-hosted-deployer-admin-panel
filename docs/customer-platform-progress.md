@@ -1,15 +1,16 @@
 # Customer platform implementation progress
 
-Updated: 2026-09-22. The four-part goal remains active and incomplete. The private portal now runs customer websites through the self-hosted deployer on the two Pi workers. The Mac is no longer in the hosting/build path. Registration is limited by the operator's allowlist; Stripe remains in test mode, and live merchant sales and domain resale are not enabled. See the current snapshot below and [fleet deployment](../deploy/fleet/README.md). Older chronological entries describe superseded implementation stages.
+Updated: 2026-09-23. The four-part goal remains active and incomplete. The private portal now runs customer websites through the self-hosted deployer on the two Pi workers. The Mac is no longer in the hosting/build path. Registration is limited by the operator's allowlist; Stripe remains in test mode, and live merchant sales and domain resale are not enabled. See the current snapshot below and [fleet deployment](../deploy/fleet/README.md). Older chronological entries describe superseded implementation stages.
 
-## Current snapshot, September 17
+## Current snapshot, September 23
 
 - Accounts: verified multi-user accounts, workspace roles, invitations and account mail are implemented. Private-launch registration is allowlisted. Public-service abuse controls and operator recovery qualification remain gates.
 - Websites: static and Node uploads, builds, publishing and prior-release restoration connect to the existing deployer fleet. Runtime replicas run on both Pi workers; the home Pi performs restricted container builds. This is shared-kernel private-launch isolation, not certification for hostile public uploads.
 - Website management: customer-owned domains support DNS verification, attachment and HTTPS. Actions update in place. Protected uploads explain why they cannot be removed. Owner-confirmed project deletion was deployed from `296e3c6`, using core CLI `d4a14ca`; cleanup retries before releasing the hosting slot. Four existing projects remained present and healthy after that rollout. No user project was deleted during verification.
 - Payments: hosting checkout and management work in Stripe test mode. Live hosting charges and merchant Connect sales still require provider configuration and end-to-end release evidence.
 - Domain resale: purchasing, renewal and transfer-out remain a separate unfinished goal. Connecting an already-owned domain does not complete resale.
-- Local features awaiting release: project display-name editing, original ZIP download, and automatic static publication/setup status updates. These scheduled-run changes have not been deployed.
+- Released portal improvements: project name editing, original ZIP downloads, automatic status updates, guided publishing, upload/build/publish progress, active custom-domain links and explicit assignment waiting. The provisioner currently allows six fleet assignments; atomic capacity admission remains outstanding.
+- Freelancer-first release: website navigation/search/type filters, light/dark/system appearance, onboarding guidance and explicit workspace-wide team access. See [launch plan](launch/freelancer-launch-plan.md) for audience, acceptance criteria and commercial milestones.
 
 Release gates still include provider activation, payment/registrar reconciliation, backup recovery, appropriate isolation and a real invited-customer pilot. Do not infer completion from historical component test results.
 
@@ -2169,3 +2170,11 @@ availability checks remain. Thirteen workflow checks and the Linux portal build
 passed. Deployed both provisioner configuration and portal change. Public
 self-service capacity admission and richer per-project provisioning reasons remain
 future work; this bounded pilot setting is not autoscaling.
+
+## September 23: freelancer-first launch foundation
+
+Chose freelancers and small agencies hosting client websites as the primary launch audience; indie developers remain secondary. Created a phased plan covering portfolio/detail UX, honest capacity admission, logs/recovery, project-scoped collaboration, registry/Git deployment and paid onboarding. Existing domain resale and merchant sales goals remain unfinished.
+
+Shipped website search and type filters, light/dark/system preference, revised workspace navigation and an onboarding checklist. Team copy explicitly states the current workspace-wide access boundary. No database migration or application deployment was required. The portal service was updated with the prior binary retained as `customer-portal.pre-freelancer-20260923`; its public HTML/JS and the existing custom-domain website returned HTTP 200.
+
+Validation: 22 existing frontend checks pass, JavaScript syntax and Linux build pass, disposable local browser verified creating a website, search/no-results, and both theme layouts. No customer website was created or modified by the check. The landing-page repository contains updated audience messaging and a marketing kit with unsent outreach drafts and interview/onboarding checklists.
