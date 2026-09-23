@@ -11,6 +11,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/fleetlogs"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/hostingbilling"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/merchantbilling"
 	"io"
@@ -53,6 +54,7 @@ func run() error {
 	domainDNS := flag.String("domain-dns-resolver", "", "optional IP:port resolver for public custom-domain verification only")
 	projectCapacity := flag.Int("hosting-project-capacity", 0, "total fleet project slots, including queued and deleting projects; 0 disables admission cap")
 	nodeCapacity := flag.Int("hosting-node-capacity", 0, "Node project slots within total fleet capacity")
+	runtimeLogs := flag.String("runtime-log-socket", "", "private fleet log bridge Unix socket")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return errors.New("unexpected arguments")
@@ -253,6 +255,12 @@ func run() error {
 		signupAllowed = portal.SignupAllowlist(*signupAllowlist)
 	}
 	opts := portal.HTTPOptions{TestMerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
+	if *runtimeLogs != "" {
+		if !filepath.IsAbs(*runtimeLogs) {
+			return errors.New("runtime log socket must be absolute")
+		}
+		opts.RuntimeLogs = fleetlogs.Reader(*runtimeLogs)
+	}
 	if nodeProjectProvider != nil {
 		opts.NodeProjectLookup = nodeProjectProvider.Snapshot
 	}

@@ -223,3 +223,18 @@ actual fleet resources and updating the provisioner/builder configuration.
 The deployed portal systemd override is `customer-portal.service.d/capacity.conf`.
 When rolling back to a binary without these flags, remove that override and reload
 systemd before restarting the restored binary.
+
+### Runtime output
+
+`fleet-logs.service` is installed as `launchstead-fleet-logs.service`. It uses the
+existing fleet assignment/configuration and deployer CLI credentials on the
+operator side, and exposes only a project-ID-based read through a private Unix
+socket. Configure the portal with `--runtime-log-socket
+/run/launchstead-logs/logs.sock`. The service and portal currently share the
+`launchstead-portal` OS account; the Unix socket is not an isolation boundary
+against a compromise of that account. Customer workloads do not receive it.
+
+Runtime output is on-demand, bounded and sanitized, not persisted by the portal.
+Empty output differs from unavailable output (for example, no deployed pods).
+Restarting the service recreates its RuntimeDirectory/socket. Keep the directory
+0700 and socket 0600; never proxy it publicly. Do not print application secrets.

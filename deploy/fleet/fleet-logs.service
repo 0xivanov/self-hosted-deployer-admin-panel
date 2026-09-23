@@ -1,0 +1,20 @@
+[Unit]
+Description=Launchstead private read-only runtime log bridge
+After=network-online.target
+[Service]
+ExecStart=/opt/launchstead-fleet/fleet-logs --config /etc/launchstead-fleet/worker.json --socket /run/launchstead-logs/logs.sock
+User=launchstead-portal
+Group=launchstead-portal
+RuntimeDirectory=launchstead-logs
+RuntimeDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+MemoryMax=128M
+TasksMax=32
+[Install]
+WantedBy=multi-user.target
