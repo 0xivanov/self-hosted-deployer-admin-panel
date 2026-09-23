@@ -56,6 +56,9 @@ func (s *Store) UploadAccess(ctx context.Context, token, project string) (Projec
 	if err != nil {
 		return p, err
 	}
+	if p.Kind == "container" {
+		return p, ErrInvalid
+	}
 	if err = s.requireHostingKind(ctx, tx, p.WorkspaceID, p.Kind); err != nil {
 		return p, err
 	}

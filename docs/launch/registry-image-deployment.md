@@ -34,6 +34,16 @@ Read-only probes from the development Mac succeeded for both registries:
 
 These are metadata observations, not runtime qualification, vulnerability scanning, image trust verification or deployment results. No layers were downloaded and no customer workloads or live databases were changed. Private credentials were tested through mock transports only; real private-repository access and worker-node pull behavior remain unverified.
 
+## Local release storage (not deployed)
+
+Schema 43 adds a distinct `container` project kind and immutable, project-scoped release records. The parent-table migration preserves existing project identities and checks all foreign keys before committing. Every database-consuming binary must be upgraded together; do not run a new binary against the live schema-42 database independently.
+
+Container project creation is disabled by default and has no public configuration switch yet. When enabled internally, containers share the existing Node entitlement and dynamic-application capacity pool, count against the total project allowance, and reject ZIP uploads. This is an implementation guard, not a new advertised plan.
+
+Release preparation authorizes owners/developers before registry resolution and again before saving. Retries retain the original digest even if a tag moves; reusing a request key with different settings is rejected. Records include the source, immutable ARM64 pin, port, health path, actor and revision. Each project may retain up to 50 releases. Ports must be 1024 through 65535 for the non-root profile. Health paths must be local paths without query strings or fragments. No registry credentials or environment secrets are saved in release records.
+
+These records do not publish an image. Fleet dispatch, private credential lifecycle, environment settings, customer controls and runtime qualification remain outstanding.
+
 ## Required integration before exposing Deploy
 
 1. Add a distinct container project type with a migration that preserves the many foreign keys referencing `projects`. Do not label arbitrary images as Node source uploads. Include capacity/entitlement checks and project deletion.

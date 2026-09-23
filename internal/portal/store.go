@@ -30,11 +30,12 @@ var (
 )
 
 type Store struct {
-	projectCapacity int
-	nodeCapacity    int
-	db              *sql.DB
-	now             func() time.Time
-	hashes          chan struct{}
+	containerProjects bool
+	projectCapacity   int
+	nodeCapacity      int
+	db                *sql.DB
+	now               func() time.Time
+	hashes            chan struct{}
 }
 type Account struct {
 	ID          string `json:"id"`
@@ -99,7 +100,10 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db, now: time.Now, hashes: make(chan struct{}, 2)}
-	if err = s.migrate(); err != nil {
+	if err = s.migrate(); err == nil {
+		err = s.migrateContainers()
+	}
+	if err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -116,7 +120,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 42 {
+	if version > 43 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -663,8 +667,11 @@ func (s *Store) authorize(ctx context.Context, tx *sql.Tx, token, workspace stri
 	return id, nil
 }
 func (s *Store) CreateProject(ctx context.Context, token, workspace, name, kind string) (Project, error) {
+	if kind == "container" && !s.containerProjects {
+		return Project{}, ErrContainerUnavailable
+	}
 	name = strings.TrimSpace(name)
-	if name == "" || len(name) > 100 || (kind != "static" && kind != "node") {
+	if name == "" || len(name) > 100 || (kind != "static" && kind != "node" && kind != "container") {
 		return Project{}, ErrInvalid
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -691,7 +698,7 @@ func (s *Store) CreateProject(ctx context.Context, token, workspace, name, kind 
 	if err != nil {
 		return Project{}, err
 	}
-	if (kind == "static" && !staticRoom) || (kind == "node" && !nodeRoom) {
+	if (kind == "static" && !staticRoom) || ((kind == "node" || kind == "container") && !nodeRoom) {
 		return Project{}, ErrHostingCapacity
 	}
 	p := Project{ID: randomToken(), WorkspaceID: workspace, Name: name, Kind: kind}

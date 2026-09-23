@@ -25,6 +25,7 @@ type ProjectAvailability struct {
 	Limit              *int64 `json:"limit,omitempty"`
 	Static             bool   `json:"static"`
 	Node               bool   `json:"node"`
+	Container          bool   `json:"container"`
 	CapacityConfigured bool   `json:"capacity_configured"`
 	Message            string `json:"message"`
 }
@@ -34,7 +35,7 @@ func (s *Store) capacityAvailable(ctx context.Context, tx *sql.Tx) (bool, bool, 
 		return true, true, nil
 	}
 	var total, node int
-	if err := tx.QueryRowContext(ctx, "SELECT count(*),COALESCE(sum(CASE WHEN kind='node' THEN 1 ELSE 0 END),0) FROM projects").Scan(&total, &node); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT count(*),COALESCE(sum(CASE WHEN kind IN ('node','container') THEN 1 ELSE 0 END),0) FROM projects").Scan(&total, &node); err != nil {
 		return false, false, err
 	}
 	room := total < s.projectCapacity
@@ -80,5 +81,6 @@ func (s *Store) ProjectAvailability(ctx context.Context, token, workspace string
 	if result.Message == "" {
 		result.Message = "Space is checked again when you create a website. Websites being removed count until cleanup finishes."
 	}
+	result.Container = s.containerProjects && result.Node
 	return result, tx.Commit()
 }

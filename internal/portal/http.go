@@ -804,6 +804,8 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 func (h *HTTP) storeError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrContainerUnavailable):
+		httpError(w, 409, "Container hosting is not available yet. No website was created.")
 	case errors.Is(err, ErrHostingPlanLimit):
 		httpError(w, 409, "Hosting plan limit reached or Node.js is not included. Check plan usage in billing.")
 	case errors.Is(err, ErrHostingCapacity):

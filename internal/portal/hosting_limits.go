@@ -80,7 +80,7 @@ func (s *Store) requireHostingKind(ctx context.Context, tx *sql.Tx, workspace, k
 	if err != nil {
 		return err
 	}
-	if limits != nil && kind == "node" && !limits.Node {
+	if limits != nil && (kind == "node" || kind == "container") && !limits.Node {
 		return ErrHostingPlanLimit
 	}
 	return nil
@@ -93,7 +93,7 @@ func (s *Store) requireHostingProject(ctx context.Context, tx *sql.Tx, workspace
 	if limits == nil {
 		return nil
 	}
-	if kind == "node" && !limits.Node {
+	if (kind == "node" || kind == "container") && !limits.Node {
 		return ErrHostingPlanLimit
 	}
 	var count int64
