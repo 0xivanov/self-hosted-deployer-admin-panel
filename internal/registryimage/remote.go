@@ -22,6 +22,10 @@ type Credentials struct {
 	Username string `json:"-"`
 	Password string `json:"-"`
 }
+
+func (Credentials) String() string   { return "[registry credentials redacted]" }
+func (Credentials) GoString() string { return "[registry credentials redacted]" }
+
 type remote struct {
 	client *http.Client
 	ref    Reference

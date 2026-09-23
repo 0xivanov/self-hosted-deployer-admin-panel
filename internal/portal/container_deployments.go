@@ -17,7 +17,7 @@ func (s *Store) migrateContainerDeployments() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version == 44 {
+	if version == 44 || version == 45 {
 		return nil
 	}
 	if version != 43 {
@@ -33,6 +33,35 @@ func (s *Store) migrateContainerDeployments() error {
  UNIQUE(project_id,request_key),UNIQUE(project_id,revision));
  CREATE UNIQUE INDEX IF NOT EXISTS container_deployment_pending ON container_deployments(project_id) WHERE state IN ('queued','running');
  PRAGMA user_version=44;`)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) migrateContainerCredentials() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var version int
+	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return err
+	}
+	if version == 45 {
+		return nil
+	}
+	if version != 44 {
+		return errors.New("container credential migration requires schema 44")
+	}
+	_, err = tx.Exec(`CREATE TABLE IF NOT EXISTS container_credentials(
+ id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+ request_key TEXT NOT NULL,registry TEXT NOT NULL CHECK(registry IN ('docker.io','ghcr.io')),
+ label TEXT NOT NULL,ciphertext BLOB NOT NULL,created_at INTEGER NOT NULL,
+ UNIQUE(project_id,request_key));
+ CREATE INDEX IF NOT EXISTS container_credentials_project ON container_credentials(project_id,created_at,id);
+ PRAGMA user_version=45;`)
 	if err != nil {
 		return err
 	}

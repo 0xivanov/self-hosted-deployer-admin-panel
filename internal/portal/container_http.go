@@ -9,6 +9,8 @@ import (
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/registryimage"
 )
 
+type ContainerRegistryResolver func(context.Context, string, registryimage.Credentials) (registryimage.Candidate, error)
+
 // ContainerProjectConfig is an operator assignment, never browser input.
 type ContainerProjectConfig struct {
 	RuntimeID string `json:"runtime_id"`
@@ -68,8 +70,16 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 			h.storeError(w, err)
 			return
 		}
+		var credentials []ContainerCredential
+		if h.containerCredentials != nil {
+			credentials, err = h.containerCredentials.List(r.Context(), token, project)
+			if err != nil {
+				h.storeError(w, err)
+				return
+			}
+		}
 		_, available := assignments[project]
-		httpJSON(w, map[string]any{"available": available, "releases": releases, "deployments": deployments, "active": active, "site": site})
+		httpJSON(w, map[string]any{"private_images": h.containerCredentials != nil, "credentials": credentials, "available": available, "releases": releases, "deployments": deployments, "active": active, "site": site})
 		return
 	}
 	if r.Method != "POST" {
@@ -77,13 +87,18 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 		return
 	}
 	var input struct {
-		Project    string `json:"project"`
-		Key        string `json:"key"`
-		Reference  string `json:"reference"`
-		Port       int    `json:"port"`
-		HealthPath string `json:"health_path"`
-		Release    string `json:"release"`
-		ID         string `json:"id"`
+		CredentialID string `json:"credential_id"`
+		Label        string `json:"label"`
+		Registry     string `json:"registry"`
+		Username     string `json:"username"`
+		Password     string `json:"password"`
+		Project      string `json:"project"`
+		Key          string `json:"key"`
+		Reference    string `json:"reference"`
+		Port         int    `json:"port"`
+		HealthPath   string `json:"health_path"`
+		Release      string `json:"release"`
+		ID           string `json:"id"`
 	}
 	if !httpDecode(w, r, &input) {
 		return
@@ -106,8 +121,37 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 	}
 	var result any = map[string]bool{"ok": true}
 	switch r.URL.Path {
+	case "/api/container/credentials":
+		if h.containerCredentials == nil {
+			httpError(w, 409, "Private registry access is not enabled.")
+			return
+		}
+		result, err = h.containerCredentials.Create(r.Context(), token, input.Project, input.Key, input.Label, input.Registry, registryimage.Credentials{Username: input.Username, Password: input.Password})
+		if errors.Is(err, ErrContainerCredentialLimit) {
+			httpError(w, 409, "This website has reached the limit of 20 saved registry credentials. Contact support before adding another.")
+			return
+		}
 	case "/api/container/releases":
-		result, err = h.store.PrepareContainerRelease(r.Context(), token, input.Project, input.Key, ContainerReleaseInput{Reference: input.Reference, Port: input.Port, HealthPath: input.HealthPath}, h.containerResolver)
+		resolve := h.containerResolver
+		if input.CredentialID != "" {
+			if h.containerCredentials == nil {
+				httpError(w, 409, "Private registry access is not enabled.")
+				return
+			}
+			resolve = func(ctx context.Context, project, reference string) (registryimage.Candidate, error) {
+				credentials, e := h.containerCredentials.Resolve(ctx, project, input.CredentialID, reference)
+				if e != nil {
+					return registryimage.Candidate{}, ErrInvalid
+				}
+				reader := h.containerRegistryResolver
+				if reader == nil {
+					reader = registryimage.Resolve
+				}
+				candidate, e := reader(ctx, reference, credentials)
+				return candidate, containerRegistryError(e)
+			}
+		}
+		result, err = h.store.PrepareContainerRelease(r.Context(), token, input.Project, input.Key, ContainerReleaseInput{CredentialID: input.CredentialID, Reference: input.Reference, Port: input.Port, HealthPath: input.HealthPath}, resolve)
 	case "/api/container/deployments":
 		assignment, available := assignments[input.Project]
 		if !available {
@@ -123,10 +167,12 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 	}
 	if err != nil {
 		switch {
+		case errors.Is(err, ErrContainerCredentialInvalid):
+			httpError(w, 400, "Use a label, Docker Hub or GHCR, a registry username and a valid access token.")
 		case errors.Is(err, ErrQuota):
 			httpError(w, 409, "This website has reached the limit of 50 saved image releases. Contact support before adding another.")
 		case errors.Is(err, ErrContainerRegistry):
-			httpError(w, 502, "Could not check this image. Confirm the repository is public and the tag exists, then retry.")
+			httpError(w, 502, "Could not check this image. Confirm the tag exists and the selected registry access can read it, then retry.")
 		case errors.Is(err, registryimage.ErrReference):
 			httpError(w, 400, "Use a Docker Hub or GHCR image with an explicit tag or SHA-256 digest.")
 		case errors.Is(err, registryimage.ErrPlatform):
@@ -145,10 +191,13 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 
 func publicContainerResolver(ctx context.Context, project, reference string) (registryimage.Candidate, error) {
 	candidate, err := registryimage.Resolve(ctx, reference, registryimage.Credentials{})
+	return candidate, containerRegistryError(err)
+}
+func containerRegistryError(err error) error {
 	if err != nil && !errors.Is(err, registryimage.ErrReference) && !errors.Is(err, registryimage.ErrPlatform) && !errors.Is(err, registryimage.ErrSize) && !errors.Is(err, registryimage.ErrManifest) {
-		return candidate, ErrContainerRegistry
+		return ErrContainerRegistry
 	}
-	return candidate, err
+	return err
 }
 
 var ErrContainerRegistry = errors.New("registry image could not be checked")

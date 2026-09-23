@@ -15,15 +15,16 @@ import (
 // These types intentionally describe only the deployer document we own. Using
 // yaml.Marshal here keeps release-controlled strings from becoming YAML syntax.
 type containerSpec struct {
-	Name       string              `yaml:"name"`
-	Image      string              `yaml:"image"`
-	Service    containerService    `yaml:"service"`
-	Routing    containerRouting    `yaml:"routing"`
-	Deploy     containerDeploy     `yaml:"deploy"`
-	Placement  containerPlacement  `yaml:"placement"`
-	State      containerState      `yaml:"state"`
-	Resilience containerResilience `yaml:"resilience"`
-	Hosting    containerHosting    `yaml:"hosting"`
+	ImagePullCredential string              `yaml:"imagePullCredential,omitempty"`
+	Name                string              `yaml:"name"`
+	Image               string              `yaml:"image"`
+	Service             containerService    `yaml:"service"`
+	Routing             containerRouting    `yaml:"routing"`
+	Deploy              containerDeploy     `yaml:"deploy"`
+	Placement           containerPlacement  `yaml:"placement"`
+	State               containerState      `yaml:"state"`
+	Resilience          containerResilience `yaml:"resilience"`
+	Hosting             containerHosting    `yaml:"hosting"`
 }
 
 type containerService struct {
@@ -85,7 +86,7 @@ func validContainerRelease(a assignment, release portal.ContainerRelease) bool {
 	if !hexID(a.id) || a.p.Kind != "container" || release.ProjectID != a.id || !validDomain(a.p.Domain) {
 		return false
 	}
-	if release.Input.Port < 1024 || release.Input.Port > 65535 || !validContainerHealthPath(release.Input.HealthPath) {
+	if (release.Input.CredentialID != "" && !hexID(release.Input.CredentialID)) || release.Input.Port < 1024 || release.Input.Port > 65535 || !validContainerHealthPath(release.Input.HealthPath) {
 		return false
 	}
 	source, err := registryimage.Parse(release.Input.Reference)
@@ -111,7 +112,8 @@ func renderContainerYAML(a assignment, release portal.ContainerRelease) (string,
 		Limits:   containerResourceSet{CPU: "500m", Memory: "256Mi", EphemeralStorage: "256Mi"},
 	}
 	spec := containerSpec{
-		Name: appName(a.id), Image: release.Image.Image,
+		ImagePullCredential: release.Input.CredentialID,
+		Name:                appName(a.id), Image: release.Image.Image,
 		Service:   containerService{Port: release.Input.Port, Health: containerHealth{Path: release.Input.HealthPath}},
 		Routing:   containerRouting{Domain: a.p.Domain},
 		Deploy:    containerDeploy{Replicas: 2, Strategy: "rolling"},
@@ -163,7 +165,8 @@ func desiredResource(c map[string]any, tier, key string) string {
 
 func healthyContainer(s client.AppStatusResult, a assignment, release portal.ContainerRelease) bool {
 	desired := map[string]any(s.App.DesiredState)
-	if !validContainerRelease(a, release) ||
+	credentialID, _ := desired["image_pull_credential"].(string)
+	if credentialID != release.Input.CredentialID || !validContainerRelease(a, release) ||
 		s.App.Name != appName(a.id) ||
 		s.App.Image != release.Image.Image ||
 		(s.App.Domain != "" && s.App.Domain != a.p.Domain) ||

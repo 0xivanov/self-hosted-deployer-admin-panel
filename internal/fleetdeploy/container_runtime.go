@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/portal"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/registryimage"
 )
 
 // containerRuntime is the worker side of the portal's committed container
@@ -167,6 +168,28 @@ func (r *containerRuntime) SubmitContainerRuntime(ctx context.Context, q portal.
 		return r.rejectBeforeSubmission(op, err)
 	}
 	defer c.Close()
+	if q.Release.Input.CredentialID != "" {
+		if r.w.containerCredentials == nil {
+			return r.rejectBeforeSubmission(op, errors.New("private image credentials are unavailable"))
+		}
+		registrar, ok := c.(interface {
+			CreateRegistryCredential(context.Context, string, string, string, registryimage.Credentials) error
+		})
+		if !ok {
+			return r.rejectBeforeSubmission(op, errors.New("private image credential registration is unavailable"))
+		}
+		credentials, err := r.w.containerCredentials.Resolve(ctx, q.Deployment.ProjectID, q.Release.Input.CredentialID, q.Release.Image.Image)
+		if err != nil {
+			return r.rejectBeforeSubmission(op, errors.New("private image credential could not be resolved"))
+		}
+		ref, err := registryimage.Parse(q.Release.Image.Image)
+		if err != nil {
+			return r.rejectBeforeSubmission(op, errors.New("invalid private image"))
+		}
+		if err = registrar.CreateRegistryCredential(ctx, appName(r.a.id), q.Release.Input.CredentialID, ref.Registry, credentials); err != nil {
+			return r.rejectBeforeSubmission(op, errors.New("private image credential registration failed"))
+		}
+	}
 	if _, err = c.PreflightApp(ctx, spec); err != nil {
 		return r.rejectBeforeSubmission(op, err)
 	}

@@ -30,6 +30,7 @@ type Project struct {
 	Architecture    string `json:"architecture"`
 }
 type Config struct {
+	ContainerCredentialKeyFile string             `json:"container_credential_key_file,omitempty"`
 	EnableContainerDeployments bool               `json:"enable_container_deployments,omitempty"`
 	Database                   string             `json:"database"`
 	DeployerBinary             string             `json:"deployer_binary"`
@@ -99,10 +100,11 @@ func LoadConfig(path string) (Config, error) {
 }
 
 type Worker struct {
-	store   *portal.Store
-	cfg     Config
-	factory Factory
-	lock    *os.File
+	containerCredentials *portal.ContainerCredentials
+	store                *portal.Store
+	cfg                  Config
+	factory              Factory
+	lock                 *os.File
 }
 
 func New(s *portal.Store, c Config) (*Worker, error) {
@@ -121,6 +123,22 @@ func New(s *portal.Store, c Config) (*Worker, error) {
 		return nil, errors.New("fleet worker already running")
 	}
 	w := &Worker{store: s, cfg: c, lock: f}
+	if c.ContainerCredentialKeyFile != "" {
+		if !c.EnableContainerDeployments {
+			w.Close()
+			return nil, errors.New("container credentials require container deployment support")
+		}
+		key, err := portal.LoadContainerCredentialKey(c.ContainerCredentialKeyFile)
+		if err != nil {
+			w.Close()
+			return nil, err
+		}
+		w.containerCredentials, err = portal.NewContainerCredentials(s, key)
+		if err != nil {
+			w.Close()
+			return nil, err
+		}
+	}
 	w.factory = func(_ string) (Deployer, error) { return client.New(c.DeployerBinary, c.DeployerConfig, c.Context) }
 	return w, nil
 }

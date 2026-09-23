@@ -47,7 +47,8 @@ func run() error {
 	merchantWebhookFile := flag.String("test-merchant-webhook-secret-file", "", "Private Stripe Connect test webhook signing secret")
 	webhookFile := flag.String("test-webhook-secret-file", "", "private Stripe test webhook signing secret file")
 	testBilling := flag.Bool("test-billing", false, "enable owner billing request API for a separately configured Stripe test worker")
-	containerHosting := flag.Bool("container-hosting", false, "enable experimental public registry image hosting after fleet qualification")
+	containerCredentialKey := flag.String("container-credential-key-file", "", "owner-private 32-byte hex key shared with the fleet worker for private registry access")
+	containerHosting := flag.Bool("container-hosting", false, "enable experimental registry image hosting after fleet qualification")
 	containerProjectsFile := flag.String("container-projects", "", "private JSON mapping container project IDs to operator-assigned runtimes")
 	nodeProjectsFile := flag.String("node-projects", "", "private JSON mapping Node project IDs to assigned build settings and runtimes")
 	publicationFile := flag.String("publication-sites", "", "private JSON mapping assigned static project IDs to HTTPS content origins")
@@ -270,6 +271,19 @@ func run() error {
 	}
 	opts := portal.HTTPOptions{TestMerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
 	opts.ContainerHosting = *containerHosting
+	if *containerCredentialKey != "" {
+		if !*containerHosting {
+			return errors.New("private registry access requires --container-hosting")
+		}
+		key, err := portal.LoadContainerCredentialKey(*containerCredentialKey)
+		if err != nil {
+			return err
+		}
+		opts.ContainerCredentials, err = portal.NewContainerCredentials(store, key)
+		if err != nil {
+			return err
+		}
+	}
 	if containerProjectProvider != nil {
 		opts.ContainerProjectLookup = containerProjectProvider.Snapshot
 	}

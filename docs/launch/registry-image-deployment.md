@@ -1,6 +1,6 @@
 # Registry image deployment
 
-Status: implementation in progress. The portal does not yet create or deploy registry-image projects. Existing ZIP-based static and Node deployments are unchanged.
+Status: implementation in progress. Container projects and public/private image workflows are implemented locally behind disabled feature flags; they are not deployed. Existing ZIP-based static and Node deployments are unchanged.
 
 ## Implemented image check
 
@@ -38,7 +38,7 @@ These are metadata observations, not runtime qualification, vulnerability scanni
 
 Schema 43 adds a distinct `container` project kind and immutable, project-scoped release records. The parent-table migration preserves existing project identities and checks all foreign keys before committing. Every database-consuming binary must be upgraded together; do not run a new binary against the live schema-42 database independently.
 
-Container project creation is disabled by default and has no public configuration switch yet. When enabled internally, containers share the existing Node entitlement and dynamic-application capacity pool, count against the total project allowance, and reject ZIP uploads. This is an implementation guard, not a new advertised plan.
+Container project creation is disabled by default and requires the operator `--container-hosting` flag. When enabled internally, containers share the existing Node entitlement and dynamic-application capacity pool, count against the total project allowance, and reject ZIP uploads. This is an implementation guard, not a new advertised plan.
 
 Release preparation authorizes owners/developers before registry resolution and again before saving. Retries retain the original digest even if a tag moves; reusing a request key with different settings is rejected. Records include the source, immutable ARM64 pin, port, health path, actor and revision. Each project may retain up to 50 releases. Ports must be 1024 through 65535 for the non-root profile. Health paths must be local paths without query strings or fragments. No registry credentials or environment secrets are saved in release records.
 
@@ -50,7 +50,7 @@ Runtime submissions retain the full request, assigned domain and revision fence 
 
 Selecting a retained earlier release uses a new deployment revision and retains the last successful release as its predecessor. This uses the same dispatch and reconciliation path, not an untracked direct image replacement.
 
-This implementation is verified with local fake deployer responses, not a fleet rollout. Private credential lifecycle, environment settings and public/private runtime qualification remain outstanding. Provisioning/deletion integration is implemented locally but has not been installed on the live fleet. Do not enable the operator switch until those integration requirements are complete.
+This implementation is verified with local fake deployer responses, not a fleet rollout. Private credential integration is implemented locally; credential garbage collection, environment settings and public/private runtime qualification remain outstanding. Provisioning/deletion integration is implemented locally but has not been installed on the live fleet. Do not enable the operator switch until those integration requirements are complete.
 
 ## Local controller integration (not deployed)
 
@@ -70,7 +70,7 @@ The server flag `--container-hosting` defaults off. Enabling it requires `--cont
 
 Browser verification on a disposable local database covered a real public GHCR metadata check, preserved form values through assignment refresh, queued publication and cancellation. No application image was executed or deployed during this check.
 
-Only public Docker Hub/GHCR metadata access is wired by the default server resolver. Credentials are not accepted from browser fields. The portal and fleet flags are separate and both remain off in production.
+Public access works without a credential key. An optional encrypted credential vault enables project-scoped private Docker Hub/GHCR access through the browser controls described below. The portal and fleet flags are separate and both remain off in production.
 
 ## Required integration before exposing Deploy
 
@@ -103,4 +103,23 @@ Before enabling this path, wire the project-to-app authorization boundary, crede
 
 Core commit `50ef655` provides an operator-only credential creation/listing service and private-file CLI, encrypted application-scoped immutable revisions, `imagePullCredential` configuration, separate owned Kubernetes pull Secrets, original-revision rollback and final application cleanup. Migration 7 is additive in the deployer database. Existing public-image configurations retain their current path. Focused temporary-database and fake-Kubernetes checks passed; no live server, database, worker or workload was changed.
 
-This does not yet make portal private images usable. Next connect the portal's project authorization, encrypted metadata-check credential access, release credential references and fleet submission to the operator APIs. Environment settings, unambiguous recovery after dispatched failures and actual private ARM64 pulls remain required. Credentials staged before an initial app exists need orphan cleanup; individual revision garbage collection must respect retained releases. See core `docs/private-registry-images.md` for lifecycle and compatibility details.
+The portal and fleet integration below now connects these APIs locally. Environment settings, unambiguous recovery after dispatched failures and actual private ARM64 pulls remain required. Credentials staged before an initial app exists need orphan cleanup; individual revision garbage collection must respect retained releases. See core `docs/private-registry-images.md` for lifecycle and compatibility details.
+
+
+## Portal private-image integration (local, schema 45)
+
+Owners and developers can save up to 20 immutable registry access revisions per container project, select one while checking an image, and retain its opaque ID with the release. Viewers cannot save access or prepare releases. Credential creation requires the existing session, CSRF protection and current hosting entitlement. Reusing a creation request key with different values is rejected. Passwords are cleared from the form after saving; refresh preserves unsaved form input. Responses and audit/history records expose metadata only.
+
+Schema 45 stores AES-256-GCM ciphertext bound to project, revision and registry. The portal decrypts only for the bounded registry metadata reader. Fleet submission resolves the same project/revision, registers it with the app-scoped deployer API before preflight, and places only the opaque ID in deployment configuration. The CLI bridge uses a private temporary file, removes it after the call and sanitizes errors. Readiness checks require the expected credential revision. Restoring a retained release retains its original credential revision.
+
+### Rollout wiring
+
+- Rebuild and coordinate all seven portal database consumers: customer-portal, billing-worker, node-build-worker, node-deployment-worker, publication-worker, billing-plan and fleet-worker. The live database is still schema 42; do not independently start a schema-45 binary against it.
+- Install the matching core server and deployer CLI with migration 7 support before enabling private submissions. Back up core and portal databases, binaries and configuration first. Pause writers and timers, migrate with writers stopped, verify integrity and preserved records, then restart the previously active services. An old portal binary cannot read schema 45; do not restore an older database after accepting new writes.
+- Supply a randomly generated 32-byte key encoded as 64 hexadecimal characters in an owner-private regular file. Configure the portal with `--container-credential-key-file /absolute/private/key` and the fleet JSON with `container_credential_key_file`. Both require container hosting enabled in their respective configuration. Both services must receive identical key material. If they have different service users, use separately owned private copies, not group-readable permissions.
+- Back up the key securely and separately from the database. Replacing it makes existing saved credentials unreadable. Never commit the key, paste it into logs or place it in command arguments.
+- Keep container feature flags disabled until controlled public/private ARM64 publication and restoration after credential rotation are verified. Environment controls and recovery of definitively failed dispatched rollouts still need completion before advertising the planned Docker product.
+
+Credential revisions cannot be individually removed yet. Old credentials remain available to retained releases; final project cleanup cascades portal records and core application cleanup removes app credentials and owned pull Secrets. Orphan staging and reference-aware revision garbage collection remain follow-up work.
+
+Focused local verification covers encryption and associated-data tamper rejection, migration preservation, role/project isolation, CSRF, request retries, CLI temporary-file cleanup, register-before-preflight ordering, rejection without deployment and credential-specific health checks. A disposable local browser check used synthetic credentials and confirmed immediate selection after saving and cleared login fields. This is not evidence of a real private registry pull or a live deployment.

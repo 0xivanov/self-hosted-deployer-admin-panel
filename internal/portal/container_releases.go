@@ -3,6 +3,7 @@ package portal
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/url"
@@ -19,9 +20,10 @@ var ErrContainerUnavailable = errors.New("container hosting is not enabled")
 func (s *Store) ConfigureContainerProjects(enabled bool) { s.containerProjects = enabled }
 
 type ContainerReleaseInput struct {
-	Reference  string `json:"reference"`
-	Port       int    `json:"port"`
-	HealthPath string `json:"health_path"`
+	CredentialID string `json:"credential_id,omitempty"`
+	Reference    string `json:"reference"`
+	Port         int    `json:"port"`
+	HealthPath   string `json:"health_path"`
 }
 type ContainerRelease struct {
 	ID        string                  `json:"id"`
@@ -37,6 +39,12 @@ type ContainerRelease struct {
 type ContainerImageResolver func(context.Context, string, string) (registryimage.Candidate, error)
 
 func normalizeContainerInput(in ContainerReleaseInput) (ContainerReleaseInput, error) {
+	if in.CredentialID != "" {
+		b, err := hex.DecodeString(in.CredentialID)
+		if err != nil || len(b) != 32 || hex.EncodeToString(b) != in.CredentialID {
+			return in, ErrInvalid
+		}
+	}
 	ref, err := registryimage.Parse(in.Reference)
 	if err != nil {
 		return in, err

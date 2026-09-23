@@ -164,7 +164,13 @@ function refreshProject(project,role,version){
    const upload=card.querySelector('.upload-details form');const freshUpload=staging.querySelector('.upload-details form');
    if(upload&&freshUpload)freshUpload.replaceWith(upload);
    const containerForm=card.querySelector('.container-release-form');const freshContainerForm=staging.querySelector('.container-release-form');
-   if(containerForm&&freshContainerForm)freshContainerForm.replaceWith(containerForm);
+   if(containerForm&&freshContainerForm){
+    const oldAccess=containerForm.querySelector('select[name="credential_id"]'), freshAccess=freshContainerForm.querySelector('select[name="credential_id"]');
+    if(oldAccess&&freshAccess){const selected=oldAccess.value;oldAccess.replaceChildren(...[...freshAccess.options].map(option=>option.cloneNode(true)));oldAccess.disabled=freshAccess.disabled;oldAccess.value=[...oldAccess.options].some(option=>option.value===selected)?selected:'';}
+    freshContainerForm.replaceWith(containerForm);
+   }
+   const containerCredentials=card.querySelector('.container-credentials');const freshContainerCredentials=staging.querySelector('.container-credentials');
+   if(containerCredentials&&freshContainerCredentials)freshContainerCredentials.replaceWith(containerCredentials);
    const focusText=focused?.textContent;const focusTag=focused?.tagName;
    const heading=card.querySelector('.project-heading');const rename=card.querySelector('.project-rename');const domains=card.querySelector('.project-domains');const danger=card.querySelector('.project-danger');
    const children=[heading,card.querySelector('.website-summary'),card.querySelector('.website-detail-links'),...staging.childNodes,card.querySelector('.project-runtime-logs'),card.querySelector('.project-clients'),domains,rename,danger].filter(Boolean);
@@ -415,7 +421,7 @@ async function projectUploads(card,project,role,version){
 }
 
 function containerJobActive(job){return job&&(job.state==='queued'||job.state==='running');}
-function containerSnapshot(data){return JSON.stringify([data.available,data.active,data.site,data.releases,data.deployments]);}
+function containerSnapshot(data){return JSON.stringify([data.available,data.active,data.site,data.releases,data.deployments,data.private_images,data.credentials]);}
 function trackContainerStatus(project,role,version,data){
  if(version!==generation||project.deleting)return;
  const pending=!data.available||(data.deployments||[]).some(containerJobActive);
@@ -434,6 +440,7 @@ async function pollContainerStatus(state){
 function renderContainerLive(entry,data){
  const {live,project,role,version}=entry;
  const oldForm=live.querySelector('.container-release-form');
+ const oldCredentials=live.querySelector('.container-credentials');
  const releases=Array.isArray(data.releases)?data.releases:[], deployments=Array.isArray(data.deployments)?data.deployments:[];
  const active=data.active||null, pending=deployments.find(containerJobActive), latest=deployments[0];
  live.replaceChildren();
@@ -449,7 +456,7 @@ function renderContainerLive(entry,data){
  }else if(active){
   workflow.dataset.tone='live';title.textContent='Your container is live';text.textContent='Check a new image for your next update, or restore a previously published release below.';
  }else{
-  workflow.dataset.tone='next';title.textContent=releases.length?'Ready to publish':'Check your container image';text.textContent=releases.length?'Choose Deploy beside a saved release below.':'Enter a public image reference, its listening port and a health-check path.';
+  workflow.dataset.tone='next';title.textContent=releases.length?'Ready to publish':'Check your container image';text.textContent=releases.length?'Choose Deploy beside a saved release below.':'Enter an image reference, its listening port and a health-check path.';
  }
  workflow.append(title,text);
  if(pending||!data.available){const progress=createProgress(pending?(pending.state==='queued'?'Waiting for the deployment worker…':'Checking application and HTTPS readiness…'):'Waiting for hosting setup…');progress.bar.removeAttribute('value');workflow.append(progress.box);}
@@ -457,20 +464,23 @@ function renderContainerLive(entry,data){
  live.append(workflow);
  if(active&&data.site){const link=document.createElement('a');link.href=data.site;link.target='_blank';link.rel='noopener noreferrer';link.className='site-link';link.textContent='Visit website ↗';live.append(link);}
  const refresh=document.createElement('button');refresh.type='button';refresh.className='refresh-status';refresh.textContent='Refresh status';refresh.addEventListener('click',()=>refreshProject(project,role,version).catch(error));live.append(refresh);
- const limits=document.createElement('p');limits.className='muted';limits.textContent='Public Docker Hub or GHCR images only. Linux ARM64, non-root and stateless. Up to 512 MiB of compressed image layers. Private images and environment settings are not available yet.';live.append(limits);
+ const limits=document.createElement('p');limits.className='muted';limits.textContent=data.private_images?'Docker Hub or GHCR images. Linux ARM64, non-root and stateless. Up to 512 MiB of compressed image layers. Environment variables are not supported yet.':'Public Docker Hub or GHCR images only. Linux ARM64, non-root and stateless. Up to 512 MiB of compressed image layers. Private images and environment settings are not available yet.';live.append(limits);
  if(role!=='viewer'){
   const form=oldForm||document.createElement('form');form.className='container-release-form';
+  let credential=form.querySelector('select[name=credential_id]');
+  if(credential){const selected=credential.value;credential.replaceChildren(Object.assign(document.createElement('option'),{value:'',textContent:'Public image'}));for(const item of (data.credentials||[])){const option=document.createElement('option');option.value=item.id;option.textContent=item.label+' · '+item.registry;credential.append(option);}credential.value=(data.credentials||[]).some(item=>item.id===selected)?selected:'';credential.disabled=!data.private_images;}
   if(!oldForm){
+   credential=document.createElement('select');credential.name='credential_id';const pub=document.createElement('option');pub.value='';pub.textContent='Public image';credential.append(pub);for(const item of (data.credentials||[])){const option=document.createElement('option');option.value=item.id;option.textContent=item.label+' · '+item.registry;credential.append(option);}credential.disabled=!data.private_images;
+   const credentialLabel=document.createElement('label');credentialLabel.textContent='Image access';credentialLabel.append(credential);form.append(credentialLabel);
    const image=document.createElement('input');image.name='reference';image.required=true;image.maxLength=512;image.placeholder='ghcr.io/example/app:stable';
    const port=document.createElement('input');port.name='port';port.type='number';port.min='1024';port.max='65535';port.value='8080';port.required=true;
    const health=document.createElement('input');health.name='health_path';health.value='/';health.required=true;health.maxLength=512;
    for(const [name,input] of [['Image reference',image],['Port (1024 to 65535)',port],['Health path',health]]){const label=document.createElement('label');label.textContent=name;label.append(input);form.append(label);}
    const button=document.createElement('button');button.type='submit';button.className='button button-dark';button.textContent='Check image and save release';form.append(button);
-   let lastInput='',requestKey='';
+   let requestKey='',lastInput='';
    form.addEventListener('submit',async event=>{
     event.preventDefault();if(form.dataset.busy||version!==generation)return;
-    const input={reference:image.value.trim(),port:Number(port.value),health_path:health.value.trim()},signature=JSON.stringify(input);
-    if(signature!==lastInput||!requestKey){requestKey=crypto.randomUUID();lastInput=signature;}
+    const input={reference:image.value.trim(),port:Number(port.value),health_path:health.value.trim(),credential_id:credential.value};const signature=JSON.stringify(input);if(!requestKey||signature!==lastInput){requestKey=crypto.randomUUID();lastInput=signature;}
     form.dataset.busy='true';button.disabled=true;form.querySelector('.container-release-error')?.remove();
     const progress=createProgress('Checking image metadata…');progress.bar.removeAttribute('value');form.append(progress.box);
     try{
@@ -483,6 +493,40 @@ function renderContainerLive(entry,data){
    });
   }
   live.append(form);
+  if(data.private_images){
+   const access=oldCredentials||disclosure('Private registry access','container-credentials');
+   if(!oldCredentials){
+    const hint=document.createElement('p');hint.className='muted';hint.textContent='Use a registry token with permission to pull your image. Save new access when rotating a token; retained releases keep their original access. Up to 20 saved credentials per website.';access.append(hint);
+    const credentialForm=document.createElement('form');credentialForm.className='container-credential-form';
+    const labelInput=document.createElement('input');labelInput.name='label';labelInput.maxLength=80;labelInput.placeholder='Production registry';
+    const registry=document.createElement('select');registry.name='registry';
+    for(const [value,name] of [['ghcr.io','GitHub Container Registry'],['docker.io','Docker Hub']]){const option=document.createElement('option');option.value=value;option.textContent=name;registry.append(option);}
+    const username=document.createElement('input');username.name='username';username.maxLength=256;username.autocomplete='off';username.spellcheck=false;
+    const password=document.createElement('input');password.name='password';password.type='password';password.maxLength=8192;password.autocomplete='new-password';
+    const fields=[labelInput,registry,username,password];
+    for(const [name,input] of [['Credential label',labelInput],['Registry',registry],['Registry username',username],['Access token',password]]){input.required=true;const label=document.createElement('label');label.textContent=name;label.append(input);credentialForm.append(label);}
+    const save=document.createElement('button');save.type='submit';save.className='button button-dark';save.textContent='Save registry access';credentialForm.append(save);
+    let requestKey=crypto.randomUUID();
+    credentialForm.addEventListener('input',()=>{requestKey=crypto.randomUUID();});
+    credentialForm.addEventListener('change',()=>{requestKey=crypto.randomUUID();});
+    credentialForm.addEventListener('submit',async event=>{
+     event.preventDefault();if(credentialForm.dataset.busy||version!==generation)return;
+     credentialForm.dataset.busy='true';save.disabled=true;for(const field of fields)field.disabled=true;
+     credentialForm.querySelector('.credential-feedback')?.remove();
+     try{
+      const result=await api('/api/container/credentials',{project:project.id,key:requestKey,label:labelInput.value.trim(),registry:registry.value,username:username.value,password:password.value});
+      username.value='';password.value='';requestKey=crypto.randomUUID();
+      if(version!==generation)return;
+      const note=document.createElement('p');note.className='credential-feedback';note.setAttribute('role','status');note.textContent='Registry access saved.';credentialForm.append(note);
+      try{await refreshProject(project,role,version);if(version!==generation)return;const next=projectCard(project)?.querySelector('select[name="credential_id"]');if(next&&result.id)next.value=result.id;}
+      catch(e){if(version===generation)note.textContent='Registry access saved. Refresh status to update the image selector.';}
+     }catch(e){if(version===generation){const note=document.createElement('p');note.className='credential-feedback workflow-error';note.setAttribute('role','alert');note.textContent=e.message;credentialForm.append(note);}}
+     finally{credentialForm.dataset.busy='';save.disabled=false;for(const field of fields)field.disabled=false;}
+    });
+    access.append(credentialForm);
+   }
+   live.append(access);
+  }
  }
  const history=disclosure('Saved releases and deployment history','project-history container-history');history.open=releases.length>0;live.append(history);
  if(!releases.length){const empty=document.createElement('p');empty.textContent='Your checked images will appear here. Checking an image does not publish it.';history.append(empty);}

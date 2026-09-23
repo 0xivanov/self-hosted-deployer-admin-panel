@@ -26,6 +26,8 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
+	ContainerCredentials      *ContainerCredentials
+	ContainerRegistryResolver ContainerRegistryResolver
 	ContainerHosting          bool
 	ContainerProjects         map[string]ContainerProjectConfig
 	ContainerProjectLookup    func() map[string]ContainerProjectConfig
@@ -55,37 +57,43 @@ type attemptWindow struct {
 	count int
 }
 type HTTP struct {
-	containerHosting       bool
-	containerProjects      map[string]ContainerProjectConfig
-	containerProjectLookup func() map[string]ContainerProjectConfig
-	containerResolver      ContainerImageResolver
-	runtimeLogs            func(context.Context, string) (string, error)
-	customDomainResolver   DNSResolver
-	merchantWebhook        http.Handler
-	merchant               MerchantProvider
-	merchantCountries      []string
-	shopAttempts           map[string]attemptWindow
-	nodeProjects           map[string]NodeProjectConfig
-	nodeProjectLookup      func() map[string]NodeProjectConfig
-	domainQuotes           DomainQuoteReader
-	domainMarkupMinor      int64
-	domainAttempts         map[string]attemptWindow
-	billingManagement      BillingManagement
-	billingWebhook         http.Handler
-	testBilling            bool
-	mail                   *AccountMail
-	publicationSites       func() map[string]string
-	signup                 bool
-	signupAllowed          func(string) bool
-	store                  *Store
-	origin, host, cookie   string
-	development            bool
-	slots                  chan struct{}
-	mu                     sync.Mutex
-	attempts               map[string]attemptWindow
+	containerCredentials      *ContainerCredentials
+	containerRegistryResolver ContainerRegistryResolver
+	containerHosting          bool
+	containerProjects         map[string]ContainerProjectConfig
+	containerProjectLookup    func() map[string]ContainerProjectConfig
+	containerResolver         ContainerImageResolver
+	runtimeLogs               func(context.Context, string) (string, error)
+	customDomainResolver      DNSResolver
+	merchantWebhook           http.Handler
+	merchant                  MerchantProvider
+	merchantCountries         []string
+	shopAttempts              map[string]attemptWindow
+	nodeProjects              map[string]NodeProjectConfig
+	nodeProjectLookup         func() map[string]NodeProjectConfig
+	domainQuotes              DomainQuoteReader
+	domainMarkupMinor         int64
+	domainAttempts            map[string]attemptWindow
+	billingManagement         BillingManagement
+	billingWebhook            http.Handler
+	testBilling               bool
+	mail                      *AccountMail
+	publicationSites          func() map[string]string
+	signup                    bool
+	signupAllowed             func(string) bool
+	store                     *Store
+	origin, host, cookie      string
+	development               bool
+	slots                     chan struct{}
+	mu                        sync.Mutex
+	attempts                  map[string]attemptWindow
 }
 
 func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
+	if opts.ContainerCredentials != nil && (!opts.ContainerHosting || opts.ContainerCredentials.store != store) {
+		return nil, errors.New("container credentials require container hosting and the same portal store")
+	}
+
 	if opts.Merchant != nil && (opts.Development || len(opts.MerchantCountries) == 0) {
 		return nil, errors.New("merchant integration requires HTTPS and configured countries")
 	}
@@ -170,7 +178,7 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if resolverImage == nil {
 		resolverImage = publicContainerResolver
 	}
-	return &HTTP{containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 
 func (h *HTTP) nodeProjectSnapshot() map[string]NodeProjectConfig {
