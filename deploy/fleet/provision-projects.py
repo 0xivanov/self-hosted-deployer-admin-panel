@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enroll static and Node projects in the private worker fleet.
+"""Enroll static, Node and explicitly enabled container projects in the private worker fleet.
 
 Assignments and credentials remain operator controlled. The portal enforces
 workspace permissions and hosting entitlement before accepting jobs.
@@ -10,6 +10,7 @@ from pathlib import Path
 DATABASE = Path(os.environ.get("PORTAL_DATABASE", "/var/lib/launchstead-portal/portal.sqlite"))
 FLEET_CONFIG = Path(os.environ.get("FLEET_CONFIG", "/etc/launchstead-fleet/worker.json"))
 PUBLICATION_SITES = Path(os.environ.get("PUBLICATION_SITES", "/etc/launchstead-portal/publication-sites.json"))
+CONTAINER_PROJECTS = Path(os.environ.get("CONTAINER_PROJECTS", "/etc/launchstead-portal/container-projects.json"))
 LOCK = Path(os.environ.get("PROVISION_LOCK", "/var/lib/launchstead-fleet/provision.lock"))
 HOST_SUFFIX = "159-195-146-26.sslip.io"
 MAX_PROJECTS = int(os.environ.get("FLEET_MAX_PROJECTS", "5"))
@@ -38,15 +39,46 @@ def load(path, default):
     if not path.exists(): return default
     with path.open() as f: return json.load(f)
 
-def eligible(db):
+def eligible(db, containers_enabled=False):
     # The portal queue already enforces the authoritative billing/hosting gate.
     # This controller only enrolls projects from the current schema.
     rows = db.execute("SELECT id,kind FROM projects WHERE deletion_requested_at=0 ORDER BY id").fetchall()
     result = []
     for project, kind in rows:
         if not ID_RE.fullmatch(project): raise RuntimeError("invalid project identity")
-        if kind in ("static", "node"): result.append((project, kind))
+        if kind in ("static", "node") or (kind == "container" and containers_enabled): result.append((project, kind))
     return result
+
+def enroll_container(project, fleet, sites, containers):
+    """Repair this project's assignments using its retained runtime identity."""
+    if not isinstance(project, str) or not ID_RE.fullmatch(project):
+        raise RuntimeError("invalid container project identity")
+    if fleet.get("enable_container_deployments") is not True:
+        return False
+    existing = fleet["projects"].get(project)
+    if existing is None and len(fleet["projects"]) >= MAX_PROJECTS:
+        return False
+    if existing is not None and (existing.get("kind") != "container" or existing.get("architecture") != "arm64"):
+        raise RuntimeError("container assignment kind or architecture conflict")
+    recorded = containers.get(project, {})
+    runtime = existing.get("runtime_id") if existing else recorded.get("runtime_id", secrets.token_hex(32))
+    if not isinstance(runtime, str) or not ID_RE.fullmatch(runtime):
+        raise RuntimeError("invalid container runtime identity")
+    if recorded and recorded.get("runtime_id") != runtime:
+        raise RuntimeError("container portal assignment conflict")
+    if any(key != project and item.get("runtime_id") == runtime for key, item in fleet["projects"].items()):
+        raise RuntimeError("container runtime is shared with another project")
+    if any(key != project and item.get("runtime_id") == runtime for key, item in containers.items()):
+        raise RuntimeError("container portal runtime is shared")
+    host = existing["domain"] if existing else "site-" + project[:24] + "." + HOST_SUFFIX
+    # Preserve the operator's established domain; never replace it during repair.
+    assignment = dict(existing) if existing else {"kind":"container", "domain":host, "runtime_id":runtime, "architecture":"arm64"}
+    portal_assignment = {"runtime_id":runtime}
+    changed = existing != assignment or containers.get(project) != portal_assignment or sites.get(project) != "https://" + host
+    fleet["projects"][project] = assignment
+    containers[project] = portal_assignment
+    sites[project] = "https://" + host
+    return changed
 
 def main():
     if os.geteuid() != 0: raise RuntimeError("must run as root")
@@ -56,15 +88,20 @@ def main():
         fleet = load(FLEET_CONFIG, None)
         if not fleet: raise RuntimeError("existing fleet configuration required")
         sites = load(PUBLICATION_SITES, {})
+        containers = load(CONTAINER_PROJECTS, {})
         node_path=Path("/etc/launchstead-portal/node-projects.json")
         nodes=load(node_path,{})
         build_template=load(Path("/etc/launchstead-fleet/build-template.json"),None)
         with sqlite3.connect("file:" + str(DATABASE) + "?mode=ro", uri=True) as db:
-            projects = eligible(db)
+            projects = eligible(db, fleet.get("enable_container_deployments") is True)
         static_count = sum(1 for p in fleet["projects"].values() if p.get("kind") == "static")
         changed = False
         pending_nodes = []
         for project, kind in projects:
+            if kind == "container":
+                if project in nodes: raise RuntimeError("container has an existing Node assignment")
+                changed = enroll_container(project, fleet, sites, containers) or changed
+                continue
             if kind == "node":
                 existing=fleet["projects"].get(project)
                 if existing and project in nodes:
@@ -110,6 +147,7 @@ def main():
             atomic(FLEET_CONFIG, fleet, "launchstead-portal")
             atomic(PUBLICATION_SITES, sites, "launchstead-portal")
             atomic(node_path,nodes,"launchstead-portal")
+            atomic(CONTAINER_PROJECTS,containers,"launchstead-portal")
         fingerprint=hashlib.sha256(json.dumps(fleet,sort_keys=True).encode()).hexdigest()
         applied=LOCK.parent/"provision-applied.json"
         if load(applied,None)!=fingerprint:

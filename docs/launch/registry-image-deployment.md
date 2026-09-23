@@ -50,7 +50,17 @@ Runtime submissions retain the full request, assigned domain and revision fence 
 
 Selecting a retained earlier release uses a new deployment revision and retains the last successful release as its predecessor. This uses the same dispatch and reconciliation path, not an untracked direct image replacement.
 
-This implementation is verified with local fake deployer responses, not a fleet rollout. Private credential lifecycle, environment settings, provisioning/deletion integration and public/private runtime qualification remain outstanding. Do not enable the operator switch until those integration requirements are complete.
+This implementation is verified with local fake deployer responses, not a fleet rollout. Private credential lifecycle, environment settings and public/private runtime qualification remain outstanding. Provisioning/deletion integration is implemented locally but has not been installed on the live fleet. Do not enable the operator switch until those integration requirements are complete.
+
+## Local controller integration (not deployed)
+
+The provisioning controller enrolls container projects only when the fleet config explicitly enables container deployments. Container projects share the total fleet cap and receive a stable runtime ID and ARM64 assignment, without starting a Node build worker. The portal mapping defaults to `/etc/launchstead-portal/container-projects.json`; `CONTAINER_PROJECTS` can override it and the portal must use the same path. Retries repair missing portal/site mappings from the retained fleet assignment without changing its runtime or domain. Conflicting or shared runtime identities fail closed.
+
+Project deletion checks pending container jobs before external cleanup, skips Node builder cleanup for containers, removes only the target assignment, and deletes deployment records before their referenced releases. The controller still supports the live schema-42 database, where container tables do not exist. Existing required tables must be present.
+
+Custom-domain ingress copies the numeric port from the project-owned source ingress, restricted to 1024 through 65535. Static and Node projects retain their existing port 8080 behavior.
+
+Focused local controller checks cover disabled/full-capacity admission, repeated enrollment, partial-write repair, identity conflict, deleting-project exclusion, alternate ports, container record/assignment isolation, pending work and older-schema compatibility. These are mocked controller checks, not live cleanup or rollout evidence.
 
 ## Local customer workflow (not deployed)
 

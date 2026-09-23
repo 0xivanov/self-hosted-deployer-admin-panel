@@ -25,6 +25,16 @@ class DomainReconcilerTest(unittest.TestCase):
         cert = mod.desired_certificate(domain_id, project, "www.customer.example")
         self.assertEqual(cert["spec"]["secretName"], ingress["spec"]["tls"][0]["secretName"])
 
+    def test_container_port_is_preserved_and_unsafe_ports_rejected(self):
+        project = "a" * 64
+        source = {"metadata":{"labels":{"app.kubernetes.io/managed-by":"deployer","deployer.io/app":"site-" + project[:24]}}, "spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"site-" + project[:24],"port":{"number":9090}}}}]}}]}}
+        ingress = mod.desired_ingress("b" * 64, project, "client.example", source)
+        self.assertEqual(ingress["spec"]["rules"][0]["http"]["paths"][0]["backend"]["service"]["port"]["number"], 9090)
+        for port in (0, 80, 65536, True, "9090"):
+            source["spec"]["rules"][0]["http"]["paths"][0]["backend"]["service"]["port"]["number"] = port
+            with self.assertRaises(RuntimeError):
+                mod.desired_ingress("b" * 64, project, "client.example", source)
+
     def test_multiple_domains_on_one_project_get_distinct_owned_resources(self):
         project = "a" * 64
         source = {"metadata":{"labels":{"app.kubernetes.io/managed-by":"deployer","deployer.io/app":"site-" + project[:24]}}, "spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"site-" + project[:24],"port":{"number":8080}}}}]}}]}}

@@ -238,3 +238,11 @@ Runtime output is on-demand, bounded and sanitized, not persisted by the portal.
 Empty output differs from unavailable output (for example, no deployed pods).
 Restarting the service recreates its RuntimeDirectory/socket. Keep the directory
 0700 and socket 0600; never proxy it publicly. Do not print application secrets.
+
+## Container controller integration (local, not yet enabled live)
+
+Container enrollment requires `enable_container_deployments: true` in the fleet config. Each project receives its own ARM64 runtime assignment and a portal mapping in `/etc/launchstead-portal/container-projects.json`. `CONTAINER_PROJECTS` overrides this path for both provisioning and cleanup; configure the portal's `--container-projects` flag to match. Containers count toward `FLEET_MAX_PROJECTS` and do not start Node build services.
+
+Retries retain the existing runtime and domain and repair missing mappings. Project removal waits for queued/running container jobs, completes external app/domain cleanup, removes only the target mappings, and purges deployment records before releases. The cleanup controller remains compatible with schema 42 when the new tables are absent.
+
+Custom domains follow the owned source ingress port, including container ports other than 8080. Do not enable container hosting on the live fleet solely because these controllers are present: private credentials, environment settings and end-to-end runtime qualification remain pending. See `docs/launch/registry-image-deployment.md` for the full readiness record.

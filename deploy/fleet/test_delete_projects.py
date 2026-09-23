@@ -92,6 +92,64 @@ class DeleteProjectsTest(unittest.TestCase):
                 mod.delete_one(self.db, project, "static")
         self.assertIsNotNone(self.db.execute("SELECT 1 FROM projects WHERE id=?", (project,)).fetchone())
 
+    def add_container_records(self, project, state="succeeded"):
+        self.db.executescript("""
+            CREATE TABLE IF NOT EXISTS container_releases(
+                id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
+                actor_id TEXT, request_key TEXT, revision INTEGER, input BLOB, image BLOB, created_at INTEGER);
+            CREATE TABLE IF NOT EXISTS container_deployments(
+                id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
+                release_id TEXT NOT NULL REFERENCES container_releases(id), state TEXT);
+        """)
+        self.db.execute("INSERT INTO container_releases VALUES(?,?,?,?,?,?,?,?)",
+                        ("release-" + project[:1], project, "actor", "request", 1, b"", b"", 1))
+        self.db.execute("INSERT INTO container_deployments VALUES(?,?,?,?)",
+                        ("container-deploy-" + project[:1], project, "release-" + project[:1], state))
+
+    def test_purge_container_records_deletes_deployments_before_releases(self):
+        project = next(iter(self.projects))
+        self.projects[project] = "container"
+        self.db.execute("UPDATE projects SET kind='container' WHERE id=?", (project,))
+        self.add_container_records(project)
+        other = "b" * 64
+        self.add_container_records(other)
+        mod.purge_records(self.db, project)
+        self.assertEqual(self.db.execute("SELECT project_id FROM container_releases").fetchall(), [(other,)])
+        self.assertEqual(self.db.execute("SELECT project_id FROM container_deployments").fetchall(), [(other,)])
+        self.assertEqual(self.db.execute("SELECT id FROM projects").fetchall(), [(other,)])
+
+    def test_purge_rejects_pending_container_deployment(self):
+        project = next(iter(self.projects))
+        self.db.execute("UPDATE projects SET kind='container' WHERE id=?", (project,))
+        self.add_container_records(project, state="queued")
+        with self.assertRaisesRegex(RuntimeError, "operation still active"):
+            mod.purge_records(self.db, project)
+        self.assertIsNotNone(self.db.execute("SELECT 1 FROM projects WHERE id=?", (project,)).fetchone())
+
+    def test_schema42_without_container_tables_remains_compatible(self):
+        project = next(iter(self.projects))
+        mod.purge_records(self.db, project)
+        self.assertIsNone(self.db.execute("SELECT 1 FROM projects WHERE id=?", (project,)).fetchone())
+
+    def test_container_cleanup_removes_only_its_assignment_and_skips_builder(self):
+        project, other = self.projects
+        self.db.execute("UPDATE projects SET kind='container' WHERE id=?", (project,))
+        self.add_container_records(project)
+        config = {'deployer_binary':'deployer', 'deployer_config':'config', 'projects':{
+            project:{'kind':'container','domain':'one.example'}, other:{'kind':'node','domain':'two.example'}}}
+        saved = {}
+        def load(path, default):
+            return config if path == mod.FLEET else {project:{'runtime_id':'1'*64},other:{'runtime_id':'2'*64}}
+        with mock.patch.object(mod,'root',side_effect=lambda:nullcontext()), mock.patch.object(mod.domains,'get_optional',return_value=None), mock.patch.object(mod.provision,'load',side_effect=load), mock.patch.object(mod.provision,'atomic',side_effect=lambda path,value,owner:saved.update({str(path):dict(value)})), mock.patch.object(mod,'command') as command, mock.patch.object(mod,'remove_builder') as builder, mock.patch.object(mod,'remove_primary_tls'), mock.patch.object(mod,'remove_private_files'):
+            mod.delete_one(self.db,project,'container')
+        builder.assert_not_called()
+        mapping=saved[str(mod.provision.CONTAINER_PROJECTS)]
+        self.assertNotIn(project,mapping)
+        self.assertIn(other,mapping)
+        self.assertIsNotNone(self.db.execute("SELECT 1 FROM projects WHERE id=?",(other,)).fetchone())
+        self.assertIsNone(self.db.execute("SELECT 1 FROM projects WHERE id=?",(project,)).fetchone())
+        self.assertTrue(any('delete' in call.args[0] for call in command.call_args_list))
+
 
 if __name__ == "__main__":
     unittest.main()

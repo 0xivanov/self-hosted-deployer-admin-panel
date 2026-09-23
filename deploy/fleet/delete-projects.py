@@ -30,8 +30,12 @@ def command(args):
     with root():
         return subprocess.run(args, check=True, capture_output=True, text=True, timeout=90)
 
+def has_table(db, name):
+    return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+
 def busy(db, project):
-    return any(db.execute('SELECT 1 FROM '+table+" WHERE project_id=? AND state IN ('queued','running') LIMIT 1", (project,)).fetchone() for table in ('publication_jobs','node_builds','node_deployments'))
+    tables = ('publication_jobs', 'node_builds', 'node_deployments', 'container_deployments')
+    return any((table != 'container_deployments' or has_table(db, table)) and db.execute('SELECT 1 FROM '+table+" WHERE project_id=? AND state IN ('queued','running') LIMIT 1", (project,)).fetchone() for table in tables)
 
 def remove_builder(project):
     # The assignment remains available until all external cleanup has succeeded.
@@ -95,6 +99,12 @@ def purge_records(db, project):
         db.execute('DELETE FROM node_deployments WHERE project_id=?',(project,))
         db.execute('DELETE FROM node_releases WHERE build_id IN (SELECT id FROM node_builds WHERE project_id=?)',(project,))
         db.execute('DELETE FROM node_builds WHERE project_id=?',(project,))
+        # Deployments reference releases, so remove child rows first. These
+        # tables were introduced after schema 42 and are optional here.
+        if has_table(db, 'container_deployments'):
+            db.execute('DELETE FROM container_deployments WHERE project_id=?',(project,))
+        if has_table(db, 'container_releases'):
+            db.execute('DELETE FROM container_releases WHERE project_id=?',(project,))
         db.execute('DELETE FROM publications WHERE project_id=?',(project,))
         db.execute('DELETE FROM publication_jobs WHERE project_id=?',(project,))
         db.execute('DELETE FROM uploads WHERE project_id=?',(project,))
@@ -102,7 +112,7 @@ def purge_records(db, project):
         db.execute('DELETE FROM projects WHERE id=? AND deletion_requested_at>0',(project,))
 
 def delete_one(db, project, kind):
-    if not ID.fullmatch(project) or kind not in ('node','static'): raise RuntimeError('invalid project')
+    if not ID.fullmatch(project) or kind not in ('node','static','container'): raise RuntimeError('invalid project')
     if busy(db,project): raise RuntimeError('project operation still active')
     with db:
         db.execute("UPDATE project_domains SET state='removing' WHERE project_id=?",(project,))
@@ -123,7 +133,7 @@ def delete_one(db, project, kind):
     with root():
         config['projects'].pop(project,None)
         provision.atomic(FLEET,config,'launchstead-portal')
-        for path in (Path('/etc/launchstead-portal/publication-sites.json'),Path('/etc/launchstead-portal/node-projects.json')):
+        for path in (Path('/etc/launchstead-portal/publication-sites.json'),Path('/etc/launchstead-portal/node-projects.json'),provision.CONTAINER_PROJECTS):
             values=provision.load(path,{})
             values.pop(project,None)
             provision.atomic(path,values,'launchstead-portal')

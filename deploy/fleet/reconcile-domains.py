@@ -74,7 +74,8 @@ def desired_ingress(domain_id, project, host, source):
     if len(rules) != 1 or rules[0].get("http", {}).get("paths", [{}])[0].get("backend", {}).get("service", {}).get("name") != app:
         raise RuntimeError("source ingress backend is not the expected project service")
     service = rules[0]["http"]["paths"][0]["backend"]["service"]
-    if service.get("port", {}).get("number") != 8080:
+    port = service.get("port", {}).get("number")
+    if type(port) is not int or not 1024 <= port <= 65535:
         raise RuntimeError("source ingress backend port is not the expected project port")
     return {"apiVersion":"networking.k8s.io/v1", "kind":"Ingress", "metadata":{"name":name,"namespace":NAMESPACE,"labels":{MANAGED:"deployer",LABEL:project[:24]},"annotations":annotations}, "spec":{"ingressClassName":"traefik", "tls":[{"hosts":[host],"secretName":name+"-tls"}], "rules":[{"host":host,"http":{"paths":[{"path":"/","pathType":"Prefix","backend":{"service":{"name":service["name"],"port":{"number":service["port"]["number"]}}}}]}}]}}
 
