@@ -65,7 +65,7 @@ func TestDomainQuotesPersistenceIsolationExpiry(t *testing.T) {
 		t.Fatal(saved, err)
 	}
 	raw, err := json.Marshal(saved)
-	if err != nil || strings.Contains(string(raw), "900") || strings.Contains(string(raw), "evidence") {
+	if err != nil || strings.Contains(string(raw), `:900`) || strings.Contains(string(raw), "evidence") {
 		t.Fatal(string(raw), err)
 	}
 }

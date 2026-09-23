@@ -78,8 +78,16 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 				return
 			}
 		}
+		var environments []ContainerEnvironment
+		if h.containerEnvironments != nil {
+			environments, err = h.containerEnvironments.List(r.Context(), token, project)
+			if err != nil {
+				h.storeError(w, err)
+				return
+			}
+		}
 		_, available := assignments[project]
-		httpJSON(w, map[string]any{"private_images": h.containerCredentials != nil, "credentials": credentials, "available": available, "releases": releases, "deployments": deployments, "active": active, "site": site})
+		httpJSON(w, map[string]any{"environment_settings": h.containerEnvironments != nil, "environments": environments, "private_images": h.containerCredentials != nil, "credentials": credentials, "available": available, "releases": releases, "deployments": deployments, "active": active, "site": site})
 		return
 	}
 	if r.Method != "POST" {
@@ -87,20 +95,26 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 		return
 	}
 	var input struct {
-		CredentialID string `json:"credential_id"`
-		Label        string `json:"label"`
-		Registry     string `json:"registry"`
-		Username     string `json:"username"`
-		Password     string `json:"password"`
-		Project      string `json:"project"`
-		Key          string `json:"key"`
-		Reference    string `json:"reference"`
-		Port         int    `json:"port"`
-		HealthPath   string `json:"health_path"`
-		Release      string `json:"release"`
-		ID           string `json:"id"`
+		EnvironmentID string            `json:"environment_id"`
+		Values        map[string]string `json:"values"`
+		CredentialID  string            `json:"credential_id"`
+		Label         string            `json:"label"`
+		Registry      string            `json:"registry"`
+		Username      string            `json:"username"`
+		Password      string            `json:"password"`
+		Project       string            `json:"project"`
+		Key           string            `json:"key"`
+		Reference     string            `json:"reference"`
+		Port          int               `json:"port"`
+		HealthPath    string            `json:"health_path"`
+		Release       string            `json:"release"`
+		ID            string            `json:"id"`
 	}
-	if !httpDecode(w, r, &input) {
+	limit := int64(16 * 1024)
+	if r.URL.Path == "/api/container/environments" {
+		limit = 256 * 1024
+	}
+	if !httpDecodeLimit(w, r, &input, limit) {
 		return
 	}
 	// Authorize before revealing assignment state or contacting a registry.
@@ -121,6 +135,12 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 	}
 	var result any = map[string]bool{"ok": true}
 	switch r.URL.Path {
+	case "/api/container/environments":
+		if h.containerEnvironments == nil {
+			httpError(w, 409, "Environment settings are not enabled.")
+			return
+		}
+		result, err = h.containerEnvironments.Create(r.Context(), token, input.Project, input.Key, input.Label, input.Values)
 	case "/api/container/credentials":
 		if h.containerCredentials == nil {
 			httpError(w, 409, "Private registry access is not enabled.")
@@ -132,6 +152,10 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 			return
 		}
 	case "/api/container/releases":
+		if input.EnvironmentID != "" && h.containerEnvironments == nil {
+			httpError(w, 409, "Environment settings are not enabled.")
+			return
+		}
 		resolve := h.containerResolver
 		if input.CredentialID != "" {
 			if h.containerCredentials == nil {
@@ -151,7 +175,7 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 				return candidate, containerRegistryError(e)
 			}
 		}
-		result, err = h.store.PrepareContainerRelease(r.Context(), token, input.Project, input.Key, ContainerReleaseInput{CredentialID: input.CredentialID, Reference: input.Reference, Port: input.Port, HealthPath: input.HealthPath}, resolve)
+		result, err = h.store.PrepareContainerRelease(r.Context(), token, input.Project, input.Key, ContainerReleaseInput{EnvironmentID: input.EnvironmentID, CredentialID: input.CredentialID, Reference: input.Reference, Port: input.Port, HealthPath: input.HealthPath}, resolve)
 	case "/api/container/deployments":
 		assignment, available := assignments[input.Project]
 		if !available {
@@ -167,6 +191,10 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 	}
 	if err != nil {
 		switch {
+		case errors.Is(err, ErrContainerEnvironmentLimit):
+			httpError(w, 409, "This website has reached the limit of 50 saved environment versions. Contact support before adding another.")
+		case errors.Is(err, ErrContainerEnvironmentInvalid):
+			httpError(w, 400, "Use a label and up to 64 valid variable names. Each value may contain up to 8192 bytes; all names and values together may contain up to 32 KiB.")
 		case errors.Is(err, ErrContainerCredentialInvalid):
 			httpError(w, 400, "Use a label, Docker Hub or GHCR, a registry username and a valid access token.")
 		case errors.Is(err, ErrQuota):

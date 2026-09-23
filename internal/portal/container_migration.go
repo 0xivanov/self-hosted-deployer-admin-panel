@@ -20,7 +20,7 @@ func (s *Store) migrateContainers() (result error) {
 	if err = conn.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version == 43 || version == 44 || version == 45 {
+	if version == 43 || version == 44 || version == 45 || version == 46 {
 		return nil
 	}
 	if version != 42 {
@@ -43,7 +43,7 @@ func (s *Store) migrateContainers() (result error) {
 	if err = tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version == 43 || version == 44 || version == 45 {
+	if version == 43 || version == 44 || version == 45 || version == 46 {
 		return nil
 	}
 	if version != 42 {

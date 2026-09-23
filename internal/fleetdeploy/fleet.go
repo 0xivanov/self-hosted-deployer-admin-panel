@@ -100,11 +100,12 @@ func LoadConfig(path string) (Config, error) {
 }
 
 type Worker struct {
-	containerCredentials *portal.ContainerCredentials
-	store                *portal.Store
-	cfg                  Config
-	factory              Factory
-	lock                 *os.File
+	containerEnvironments *portal.ContainerEnvironments
+	containerCredentials  *portal.ContainerCredentials
+	store                 *portal.Store
+	cfg                   Config
+	factory               Factory
+	lock                  *os.File
 }
 
 func New(s *portal.Store, c Config) (*Worker, error) {
@@ -134,6 +135,11 @@ func New(s *portal.Store, c Config) (*Worker, error) {
 			return nil, err
 		}
 		w.containerCredentials, err = portal.NewContainerCredentials(s, key)
+		if err != nil {
+			w.Close()
+			return nil, err
+		}
+		w.containerEnvironments, err = portal.NewContainerEnvironments(s, key)
 		if err != nil {
 			w.Close()
 			return nil, err

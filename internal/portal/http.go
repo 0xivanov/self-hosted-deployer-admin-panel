@@ -26,6 +26,7 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
+	ContainerEnvironments     *ContainerEnvironments
 	ContainerCredentials      *ContainerCredentials
 	ContainerRegistryResolver ContainerRegistryResolver
 	ContainerHosting          bool
@@ -57,6 +58,7 @@ type attemptWindow struct {
 	count int
 }
 type HTTP struct {
+	containerEnvironments     *ContainerEnvironments
 	containerCredentials      *ContainerCredentials
 	containerRegistryResolver ContainerRegistryResolver
 	containerHosting          bool
@@ -90,6 +92,9 @@ type HTTP struct {
 }
 
 func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
+	if opts.ContainerEnvironments != nil && (!opts.ContainerHosting || opts.ContainerEnvironments.store != store) {
+		return nil, errors.New("container environments require container hosting and the same portal store")
+	}
 	if opts.ContainerCredentials != nil && (!opts.ContainerHosting || opts.ContainerCredentials.store != store) {
 		return nil, errors.New("container credentials require container hosting and the same portal store")
 	}
@@ -178,7 +183,7 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if resolverImage == nil {
 		resolverImage = publicContainerResolver
 	}
-	return &HTTP{containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{containerEnvironments: opts.ContainerEnvironments, containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 
 func (h *HTTP) nodeProjectSnapshot() map[string]NodeProjectConfig {
@@ -881,12 +886,15 @@ func httpError(w http.ResponseWriter, code int, message string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 func httpDecode(w http.ResponseWriter, r *http.Request, v any) bool {
+	return httpDecodeLimit(w, r, v, 16*1024)
+}
+func httpDecodeLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
 	typ, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || typ != "application/json" {
 		httpError(w, 415, "JSON required")
 		return false
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	if err = d.Decode(v); err != nil {

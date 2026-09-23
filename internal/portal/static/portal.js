@@ -167,10 +167,14 @@ function refreshProject(project,role,version){
    if(containerForm&&freshContainerForm){
     const oldAccess=containerForm.querySelector('select[name="credential_id"]'), freshAccess=freshContainerForm.querySelector('select[name="credential_id"]');
     if(oldAccess&&freshAccess){const selected=oldAccess.value;oldAccess.replaceChildren(...[...freshAccess.options].map(option=>option.cloneNode(true)));oldAccess.disabled=freshAccess.disabled;oldAccess.value=[...oldAccess.options].some(option=>option.value===selected)?selected:'';}
+    const oldEnvironment=containerForm.querySelector('select[name="environment_id"]'), freshEnvironment=freshContainerForm.querySelector('select[name="environment_id"]');
+    if(oldEnvironment&&freshEnvironment){const selected=oldEnvironment.value;oldEnvironment.replaceChildren(...[...freshEnvironment.options].map(option=>option.cloneNode(true)));oldEnvironment.disabled=freshEnvironment.disabled;oldEnvironment.value=[...oldEnvironment.options].some(option=>option.value===selected)?selected:'';}
     freshContainerForm.replaceWith(containerForm);
    }
    const containerCredentials=card.querySelector('.container-credentials');const freshContainerCredentials=staging.querySelector('.container-credentials');
    if(containerCredentials&&freshContainerCredentials)freshContainerCredentials.replaceWith(containerCredentials);
+   const containerEnvironments=card.querySelector('.container-environments');const freshContainerEnvironments=staging.querySelector('.container-environments');
+   if(containerEnvironments&&freshContainerEnvironments)freshContainerEnvironments.replaceWith(containerEnvironments);
    const focusText=focused?.textContent;const focusTag=focused?.tagName;
    const heading=card.querySelector('.project-heading');const rename=card.querySelector('.project-rename');const domains=card.querySelector('.project-domains');const danger=card.querySelector('.project-danger');
    const children=[heading,card.querySelector('.website-summary'),card.querySelector('.website-detail-links'),...staging.childNodes,card.querySelector('.project-runtime-logs'),card.querySelector('.project-clients'),domains,rename,danger].filter(Boolean);
@@ -421,7 +425,7 @@ async function projectUploads(card,project,role,version){
 }
 
 function containerJobActive(job){return job&&(job.state==='queued'||job.state==='running');}
-function containerSnapshot(data){return JSON.stringify([data.available,data.active,data.site,data.releases,data.deployments,data.private_images,data.credentials]);}
+function containerSnapshot(data){return JSON.stringify([data.available,data.active,data.site,data.releases,data.deployments,data.private_images,data.credentials,data.environment_settings,data.environments]);}
 function trackContainerStatus(project,role,version,data){
  if(version!==generation||project.deleting)return;
  const pending=!data.available||(data.deployments||[]).some(containerJobActive);
@@ -441,6 +445,7 @@ function renderContainerLive(entry,data){
  const {live,project,role,version}=entry;
  const oldForm=live.querySelector('.container-release-form');
  const oldCredentials=live.querySelector('.container-credentials');
+ const oldEnvironments=live.querySelector('.container-environments');
  const releases=Array.isArray(data.releases)?data.releases:[], deployments=Array.isArray(data.deployments)?data.deployments:[];
  const active=data.active||null, pending=deployments.find(containerJobActive), latest=deployments[0];
  live.replaceChildren();
@@ -464,14 +469,17 @@ function renderContainerLive(entry,data){
  live.append(workflow);
  if(active&&data.site){const link=document.createElement('a');link.href=data.site;link.target='_blank';link.rel='noopener noreferrer';link.className='site-link';link.textContent='Visit website ↗';live.append(link);}
  const refresh=document.createElement('button');refresh.type='button';refresh.className='refresh-status';refresh.textContent='Refresh status';refresh.addEventListener('click',()=>refreshProject(project,role,version).catch(error));live.append(refresh);
- const limits=document.createElement('p');limits.className='muted';limits.textContent=data.private_images?'Docker Hub or GHCR images. Linux ARM64, non-root and stateless. Up to 512 MiB of compressed image layers. Environment variables are not supported yet.':'Public Docker Hub or GHCR images only. Linux ARM64, non-root and stateless. Up to 512 MiB of compressed image layers. Private images and environment settings are not available yet.';live.append(limits);
+ const limits=document.createElement('p');limits.className='muted';limits.textContent=data.environment_settings?(data.private_images?'Docker Hub or GHCR images. Linux ARM64, non-root and stateless. Up to 512 MiB compressed image layers. Environment bundles support up to 64 variables, 8 KiB per value and 32 KiB total.':'Public Docker Hub or GHCR images only. Linux ARM64, non-root and stateless. Up to 512 MiB compressed image layers. Environment bundles support up to 64 variables, 8 KiB per value and 32 KiB total.'):(data.private_images?'Docker Hub or GHCR images. Linux ARM64, non-root and stateless. Up to 512 MiB of compressed image layers. Environment variables are not supported yet.':'Public Docker Hub or GHCR images only. Linux ARM64, non-root and stateless. Up to 512 MiB of compressed image layers. Private images and environment settings are not available yet.');live.append(limits);
  if(role!=='viewer'){
   const form=oldForm||document.createElement('form');form.className='container-release-form';
   let credential=form.querySelector('select[name=credential_id]');
-  if(credential){const selected=credential.value;credential.replaceChildren(Object.assign(document.createElement('option'),{value:'',textContent:'Public image'}));for(const item of (data.credentials||[])){const option=document.createElement('option');option.value=item.id;option.textContent=item.label+' · '+item.registry;credential.append(option);}credential.value=(data.credentials||[]).some(item=>item.id===selected)?selected:'';credential.disabled=!data.private_images;}
+ if(credential){const selected=credential.value;credential.replaceChildren(Object.assign(document.createElement('option'),{value:'',textContent:'Public image'}));for(const item of (data.credentials||[])){const option=document.createElement('option');option.value=item.id;option.textContent=item.label+' · '+item.registry;credential.append(option);}credential.value=(data.credentials||[]).some(item=>item.id===selected)?selected:'';credential.disabled=!data.private_images;}
+  let environment=form.querySelector('select[name=environment_id]');
+  if(environment){const selected=environment.value;environment.replaceChildren(Object.assign(document.createElement('option'),{value:'',textContent:'No environment variables'}));for(const item of (data.environments||[])){const option=document.createElement('option');option.value=item.id;option.textContent=item.label+' · '+item.names.length+' variables';environment.append(option);}environment.value=(data.environments||[]).some(item=>item.id===selected)?selected:'';environment.disabled=!data.environment_settings;}
   if(!oldForm){
    credential=document.createElement('select');credential.name='credential_id';const pub=document.createElement('option');pub.value='';pub.textContent='Public image';credential.append(pub);for(const item of (data.credentials||[])){const option=document.createElement('option');option.value=item.id;option.textContent=item.label+' · '+item.registry;credential.append(option);}credential.disabled=!data.private_images;
    const credentialLabel=document.createElement('label');credentialLabel.textContent='Image access';credentialLabel.append(credential);form.append(credentialLabel);
+   environment=document.createElement('select');environment.name='environment_id';const noEnvironment=document.createElement('option');noEnvironment.value='';noEnvironment.textContent='No environment variables';environment.append(noEnvironment);for(const item of (data.environments||[])){const option=document.createElement('option');option.value=item.id;option.textContent=item.label+' · '+item.names.length+' variables';environment.append(option);}environment.disabled=!data.environment_settings;const environmentLabel=document.createElement('label');environmentLabel.textContent='Environment bundle';environmentLabel.append(environment);form.append(environmentLabel);
    const image=document.createElement('input');image.name='reference';image.required=true;image.maxLength=512;image.placeholder='ghcr.io/example/app:stable';
    const port=document.createElement('input');port.name='port';port.type='number';port.min='1024';port.max='65535';port.value='8080';port.required=true;
    const health=document.createElement('input');health.name='health_path';health.value='/';health.required=true;health.maxLength=512;
@@ -480,7 +488,7 @@ function renderContainerLive(entry,data){
    let requestKey='',lastInput='';
    form.addEventListener('submit',async event=>{
     event.preventDefault();if(form.dataset.busy||version!==generation)return;
-    const input={reference:image.value.trim(),port:Number(port.value),health_path:health.value.trim(),credential_id:credential.value};const signature=JSON.stringify(input);if(!requestKey||signature!==lastInput){requestKey=crypto.randomUUID();lastInput=signature;}
+    const input={reference:image.value.trim(),port:Number(port.value),health_path:health.value.trim(),credential_id:credential.value,environment_id:environment.value};const signature=JSON.stringify([input.reference,input.port,input.health_path,input.credential_id,input.environment_id]);if(!requestKey||signature!==lastInput){requestKey=crypto.randomUUID();lastInput=signature;}
     form.dataset.busy='true';button.disabled=true;form.querySelector('.container-release-error')?.remove();
     const progress=createProgress('Checking image metadata…');progress.bar.removeAttribute('value');form.append(progress.box);
     try{
@@ -526,6 +534,66 @@ function renderContainerLive(entry,data){
     access.append(credentialForm);
    }
    live.append(access);
+  }
+  if(data.environment_settings){
+   const environments=oldEnvironments||disclosure('Environment variables','container-environments');
+   if(!oldEnvironments){
+    const intro=document.createElement('p');intro.className='muted';
+    intro.textContent='Save a version of your environment settings, then select it when preparing a release. Saving alone does not change your website. Restoring a release uses its original settings. Up to 50 saved versions, 64 variables per version, 8192 bytes per value and 32 KiB for all names and values combined.';
+    environments.append(intro);
+    const envForm=document.createElement('form');envForm.className='container-environment-form';
+    const labelInput=document.createElement('input');labelInput.name='label';labelInput.required=true;labelInput.maxLength=80;labelInput.placeholder='Production settings';
+    const label=document.createElement('label');label.textContent='Settings label';label.append(labelInput);envForm.append(label);
+    const rows=document.createElement('div');rows.className='environment-rows';
+    const add=document.createElement('button');add.type='button';add.textContent='Add variable';
+    const save=document.createElement('button');save.type='submit';save.className='button button-dark';save.textContent='Save environment settings';
+    const feedback=document.createElement('p');feedback.className='environment-feedback';feedback.setAttribute('role','status');
+    let requestKey=crypto.randomUUID();
+    const updateAdd=()=>{add.disabled=envForm.dataset.busy==='true'||rows.children.length>=64;};
+    const changed=()=>{requestKey=crypto.randomUUID();feedback.textContent='';feedback.className='environment-feedback';feedback.setAttribute('role','status');};
+    function addRow(){
+     if(rows.children.length>=64)return;
+     const row=document.createElement('div');row.className='environment-row';
+     const key=document.createElement('input');key.name='name';key.required=true;key.maxLength=128;key.pattern='[A-Za-z_][A-Za-z0-9_]*';key.spellcheck=false;key.autocomplete='off';key.placeholder='API_TOKEN';
+     const secret=document.createElement('input');secret.name='value';secret.type='password';secret.maxLength=8192;secret.autocomplete='new-password';secret.spellcheck=false;
+     const nameLabel=document.createElement('label');nameLabel.textContent='Variable name';nameLabel.append(key);
+     const valueLabel=document.createElement('label');valueLabel.textContent='Value';valueLabel.append(secret);
+     const remove=document.createElement('button');remove.type='button';remove.textContent='Remove variable';
+     remove.addEventListener('click',()=>{changed();row.remove();updateAdd();});
+     row.append(nameLabel,valueLabel,remove);rows.append(row);
+    }
+    add.addEventListener('click',()=>{changed();addRow();updateAdd();});
+    envForm.addEventListener('input',changed);envForm.addEventListener('change',changed);
+    envForm.addEventListener('submit',async event=>{
+     event.preventDefault();if(envForm.dataset.busy||version!==generation)return;
+     envForm.dataset.busy='true';for(const input of envForm.querySelectorAll('input,select,button'))input.disabled=true;
+     feedback.textContent='';feedback.className='environment-feedback';feedback.setAttribute('role','status');
+     try{
+      const values=Object.create(null),encoder=new TextEncoder();let total=0;
+      for(const row of rows.children){
+       const key=row.querySelector('[name=name]').value.trim(),value=row.querySelector('[name=value]').value;
+       if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)||key.length>128||Object.hasOwn(values,key))throw new Error('Use unique variable names with letters, numbers and underscores, starting with a letter or underscore.');
+       if(value.includes('\0'))throw new Error('Values cannot contain NUL bytes.');
+       const bytes=encoder.encode(value).byteLength;
+       if(bytes>8192)throw new Error('Each value must be at most 8192 bytes.');
+       total+=encoder.encode(key).byteLength+bytes;
+       if(total>32768)throw new Error('Names and values together must be at most 32 KiB.');
+       values[key]=value;
+      }
+      const result=await api('/api/container/environments',{project:project.id,key:requestKey,label:labelInput.value.trim(),values});
+      rows.replaceChildren();labelInput.value='';requestKey=crypto.randomUUID();
+      if(version!==generation)return;
+      feedback.textContent='Environment settings saved.';
+      try{
+       await refreshProject(project,role,version);if(version!==generation)return;
+       const next=projectCard(project)?.querySelector('select[name="environment_id"]');if(next&&result.id)next.value=result.id;
+      }catch(e){if(version===generation)feedback.textContent='Environment settings saved. Refresh status to update the settings selector.';}
+     }catch(e){if(version===generation){feedback.className='environment-feedback workflow-error';feedback.setAttribute('role','alert');feedback.textContent=e.message;}}
+     finally{envForm.dataset.busy='';for(const input of envForm.querySelectorAll('input,select,button'))input.disabled=false;updateAdd();}
+    });
+    addRow();envForm.append(rows,add,save,feedback);environments.append(envForm);
+   }
+   live.append(environments);
   }
  }
  const history=disclosure('Saved releases and deployment history','project-history container-history');history.open=releases.length>0;live.append(history);

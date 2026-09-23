@@ -20,10 +20,11 @@ var ErrContainerUnavailable = errors.New("container hosting is not enabled")
 func (s *Store) ConfigureContainerProjects(enabled bool) { s.containerProjects = enabled }
 
 type ContainerReleaseInput struct {
-	CredentialID string `json:"credential_id,omitempty"`
-	Reference    string `json:"reference"`
-	Port         int    `json:"port"`
-	HealthPath   string `json:"health_path"`
+	EnvironmentID string `json:"environment_id,omitempty"`
+	CredentialID  string `json:"credential_id,omitempty"`
+	Reference     string `json:"reference"`
+	Port          int    `json:"port"`
+	HealthPath    string `json:"health_path"`
 }
 type ContainerRelease struct {
 	ID        string                  `json:"id"`
@@ -39,10 +40,12 @@ type ContainerRelease struct {
 type ContainerImageResolver func(context.Context, string, string) (registryimage.Candidate, error)
 
 func normalizeContainerInput(in ContainerReleaseInput) (ContainerReleaseInput, error) {
-	if in.CredentialID != "" {
-		b, err := hex.DecodeString(in.CredentialID)
-		if err != nil || len(b) != 32 || hex.EncodeToString(b) != in.CredentialID {
-			return in, ErrInvalid
+	for _, id := range []string{in.CredentialID, in.EnvironmentID} {
+		if id != "" {
+			b, err := hex.DecodeString(id)
+			if err != nil || len(b) != 32 || hex.EncodeToString(b) != id {
+				return in, ErrInvalid
+			}
 		}
 	}
 	ref, err := registryimage.Parse(in.Reference)
@@ -132,6 +135,9 @@ func (s *Store) PrepareContainerRelease(ctx context.Context, token, project, key
 	if _, _, err = s.containerAccess(ctx, tx, token, project); err != nil {
 		return zero, err
 	}
+	if err = validateContainerEnvironmentReference(ctx, tx, project, in.EnvironmentID); err != nil {
+		return zero, err
+	}
 	old, err := savedContainerRelease(ctx, tx, project, key)
 	if err == nil {
 		if old.Input != in {
@@ -164,6 +170,9 @@ func (s *Store) PrepareContainerRelease(ctx context.Context, token, project, key
 	defer tx.Rollback()
 	p, actor, err := s.containerAccess(ctx, tx, token, project)
 	if err != nil {
+		return zero, err
+	}
+	if err = validateContainerEnvironmentReference(ctx, tx, project, in.EnvironmentID); err != nil {
 		return zero, err
 	}
 	old, err = savedContainerRelease(ctx, tx, project, key)
@@ -245,4 +254,20 @@ func (s *Store) ContainerReleases(ctx context.Context, token, project string) ([
 		return nil, err
 	}
 	return out, tx.Commit()
+}
+
+// Resolve ownership inside both authorization transactions so metadata lookups
+// and persisted releases cannot bind another project's environment revision.
+func validateContainerEnvironmentReference(ctx context.Context, tx *sql.Tx, project, id string) error {
+	if id == "" {
+		return nil
+	}
+	var count int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM container_environments WHERE project_id=? AND id=?", project, id).Scan(&count); err != nil {
+		return err
+	}
+	if count != 1 {
+		return ErrDenied
+	}
+	return nil
 }

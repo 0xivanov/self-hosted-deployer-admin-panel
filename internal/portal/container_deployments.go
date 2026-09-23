@@ -17,7 +17,7 @@ func (s *Store) migrateContainerDeployments() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version == 44 || version == 45 {
+	if version == 44 || version == 45 || version == 46 {
 		return nil
 	}
 	if version != 43 {
@@ -49,7 +49,7 @@ func (s *Store) migrateContainerCredentials() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version == 45 {
+	if version == 45 || version == 46 {
 		return nil
 	}
 	if version != 44 {
@@ -62,6 +62,34 @@ func (s *Store) migrateContainerCredentials() error {
  UNIQUE(project_id,request_key));
  CREATE INDEX IF NOT EXISTS container_credentials_project ON container_credentials(project_id,created_at,id);
  PRAGMA user_version=45;`)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) migrateContainerEnvironments() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var version int
+	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return err
+	}
+	if version == 46 {
+		return nil
+	}
+	if version != 45 {
+		return errors.New("container environment migration requires schema 45")
+	}
+	_, err = tx.Exec(`CREATE TABLE IF NOT EXISTS container_environments(
+ id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+ request_key TEXT NOT NULL,label TEXT NOT NULL,names BLOB NOT NULL,ciphertext BLOB NOT NULL,created_at INTEGER NOT NULL,
+ UNIQUE(project_id,request_key));
+ CREATE INDEX IF NOT EXISTS container_environments_project ON container_environments(project_id,created_at,id);
+ PRAGMA user_version=46;`)
 	if err != nil {
 		return err
 	}

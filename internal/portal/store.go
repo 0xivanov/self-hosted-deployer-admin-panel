@@ -109,6 +109,9 @@ func Open(path string) (*Store, error) {
 	if err == nil {
 		err = s.migrateContainerCredentials()
 	}
+	if err == nil {
+		err = s.migrateContainerEnvironments()
+	}
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -126,7 +129,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 45 {
+	if version > 46 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {

@@ -47,7 +47,7 @@ func run() error {
 	merchantWebhookFile := flag.String("test-merchant-webhook-secret-file", "", "Private Stripe Connect test webhook signing secret")
 	webhookFile := flag.String("test-webhook-secret-file", "", "private Stripe test webhook signing secret file")
 	testBilling := flag.Bool("test-billing", false, "enable owner billing request API for a separately configured Stripe test worker")
-	containerCredentialKey := flag.String("container-credential-key-file", "", "owner-private 32-byte hex key shared with the fleet worker for private registry access")
+	containerCredentialKey := flag.String("container-credential-key-file", "", "owner-private 32-byte hex key shared with the fleet worker for encrypted registry access and environment settings")
 	containerHosting := flag.Bool("container-hosting", false, "enable experimental registry image hosting after fleet qualification")
 	containerProjectsFile := flag.String("container-projects", "", "private JSON mapping container project IDs to operator-assigned runtimes")
 	nodeProjectsFile := flag.String("node-projects", "", "private JSON mapping Node project IDs to assigned build settings and runtimes")
@@ -273,13 +273,17 @@ func run() error {
 	opts.ContainerHosting = *containerHosting
 	if *containerCredentialKey != "" {
 		if !*containerHosting {
-			return errors.New("private registry access requires --container-hosting")
+			return errors.New("container secrets require --container-hosting")
 		}
 		key, err := portal.LoadContainerCredentialKey(*containerCredentialKey)
 		if err != nil {
 			return err
 		}
 		opts.ContainerCredentials, err = portal.NewContainerCredentials(store, key)
+		if err != nil {
+			return err
+		}
+		opts.ContainerEnvironments, err = portal.NewContainerEnvironments(store, key)
 		if err != nil {
 			return err
 		}

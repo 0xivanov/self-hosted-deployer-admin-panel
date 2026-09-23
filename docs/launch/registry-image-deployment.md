@@ -50,7 +50,7 @@ Runtime submissions retain the full request, assigned domain and revision fence 
 
 Selecting a retained earlier release uses a new deployment revision and retains the last successful release as its predecessor. This uses the same dispatch and reconciliation path, not an untracked direct image replacement.
 
-This implementation is verified with local fake deployer responses, not a fleet rollout. Private credential integration is implemented locally; credential garbage collection, environment settings and public/private runtime qualification remain outstanding. Provisioning/deletion integration is implemented locally but has not been installed on the live fleet. Do not enable the operator switch until those integration requirements are complete.
+This implementation is verified with local fake deployer responses, not a fleet rollout. Private credential integration is implemented locally; credential garbage collection and public/private runtime qualification remain outstanding. Environment settings are now implemented locally as described below. Provisioning/deletion integration is implemented locally but has not been installed on the live fleet. Do not enable the operator switch until those integration requirements are complete.
 
 ## Local controller integration (not deployed)
 
@@ -103,7 +103,7 @@ Before enabling this path, wire the project-to-app authorization boundary, crede
 
 Core commit `50ef655` provides an operator-only credential creation/listing service and private-file CLI, encrypted application-scoped immutable revisions, `imagePullCredential` configuration, separate owned Kubernetes pull Secrets, original-revision rollback and final application cleanup. Migration 7 is additive in the deployer database. Existing public-image configurations retain their current path. Focused temporary-database and fake-Kubernetes checks passed; no live server, database, worker or workload was changed.
 
-The portal and fleet integration below now connects these APIs locally. Environment settings, unambiguous recovery after dispatched failures and actual private ARM64 pulls remain required. Credentials staged before an initial app exists need orphan cleanup; individual revision garbage collection must respect retained releases. See core `docs/private-registry-images.md` for lifecycle and compatibility details.
+The portal and fleet integration below now connects these APIs locally. Unambiguous recovery after dispatched failures and actual private ARM64 pulls remain required. Credentials staged before an initial app exists need orphan cleanup; individual revision garbage collection must respect retained releases. See core `docs/private-registry-images.md` for lifecycle and compatibility details.
 
 
 ## Portal private-image integration (local, schema 45)
@@ -114,12 +114,23 @@ Schema 45 stores AES-256-GCM ciphertext bound to project, revision and registry.
 
 ### Rollout wiring
 
-- Rebuild and coordinate all seven portal database consumers: customer-portal, billing-worker, node-build-worker, node-deployment-worker, publication-worker, billing-plan and fleet-worker. The live database is still schema 42; do not independently start a schema-45 binary against it.
-- Install the matching core server and deployer CLI with migration 7 support before enabling private submissions. Back up core and portal databases, binaries and configuration first. Pause writers and timers, migrate with writers stopped, verify integrity and preserved records, then restart the previously active services. An old portal binary cannot read schema 45; do not restore an older database after accepting new writes.
+- Rebuild and coordinate all seven portal database consumers: customer-portal, billing-worker, node-build-worker, node-deployment-worker, publication-worker, billing-plan and fleet-worker. The live database is still schema 42; do not independently start a schema-46 binary against it.
+- Install the matching core server and deployer CLI with migrations 7 and 8 support before enabling private submissions. Back up core and portal databases, binaries and configuration first. Pause writers and timers, migrate with writers stopped, verify integrity and preserved records, then restart the previously active services. An old portal binary cannot read schema 46; do not restore an older database after accepting new writes.
 - Supply a randomly generated 32-byte key encoded as 64 hexadecimal characters in an owner-private regular file. Configure the portal with `--container-credential-key-file /absolute/private/key` and the fleet JSON with `container_credential_key_file`. Both require container hosting enabled in their respective configuration. Both services must receive identical key material. If they have different service users, use separately owned private copies, not group-readable permissions.
 - Back up the key securely and separately from the database. Replacing it makes existing saved credentials unreadable. Never commit the key, paste it into logs or place it in command arguments.
-- Keep container feature flags disabled until controlled public/private ARM64 publication and restoration after credential rotation are verified. Environment controls and recovery of definitively failed dispatched rollouts still need completion before advertising the planned Docker product.
+- Keep container feature flags disabled until controlled public/private ARM64 publication and restoration after credential rotation are verified. Recovery of definitively failed dispatched rollouts still needs completion before advertising the planned Docker product.
 
 Credential revisions cannot be individually removed yet. Old credentials remain available to retained releases; final project cleanup cascades portal records and core application cleanup removes app credentials and owned pull Secrets. Orphan staging and reference-aware revision garbage collection remain follow-up work.
 
 Focused local verification covers encryption and associated-data tamper rejection, migration preservation, role/project isolation, CSRF, request retries, CLI temporary-file cleanup, register-before-preflight ordering, rejection without deployment and credential-specific health checks. A disposable local browser check used synthetic credentials and confirmed immediate selection after saving and cleared login fields. This is not evidence of a real private registry pull or a live deployment.
+
+
+## Environment settings (local, schema 46)
+
+Owners and developers can now save encrypted, immutable versions of environment settings and select one while preparing a release. Each version contains a label and up to 64 name/value pairs; the API returns only its ID, label and sorted names. Values remain hidden after saving. Refresh preserves unsaved fields, saving updates the selector immediately, and an empty version can clear variables. Saving settings alone does not change the running app; publish a release with the selected version. Restoring a retained release preserves its environment ID.
+
+The existing `--container-credential-key-file` and fleet `container_credential_key_file` now enable both registry credentials and environment settings. Distinct encryption purposes bind environment ciphertext to its project and revision. Schema 46 adds `container_environments` with project-cascade cleanup. There are up to 50 saved versions per project, 128 bytes per variable name, 8192 bytes per value and 32 KiB for all names and values together. Empty values are allowed; NUL bytes and invalid names are rejected.
+
+Before preflight the fleet resolves the exact project/version and stages it through `deployer environment create --values` using a private temporary file. No values enter the fleet operation journal or YAML. The deployer stores encrypted app-scoped bundles in migration 8 and injects them through separate immutable Kubernetes Secrets. Its publish/rollback path resolves the corresponding version, rather than changing mutable settings on a running app. Existing ZIP/Node deployments and legacy deployer secrets retain their prior behavior.
+
+Local checks cover API authorization/CSRF, cross-project reference denial before registry calls, request retries, size limits, ciphertext binding, migration preservation, private-file cleanup and registration before deployment. Browser checks with synthetic data verified refresh preservation, immediate selection, cleared fields and an empty settings version. Core checks additionally cover value injection, original-version rollback, immutable Kubernetes references and app cleanup. This remains source-level and local-runtime evidence, not a live fleet rollout.

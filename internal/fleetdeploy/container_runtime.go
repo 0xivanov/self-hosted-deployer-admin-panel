@@ -190,6 +190,24 @@ func (r *containerRuntime) SubmitContainerRuntime(ctx context.Context, q portal.
 			return r.rejectBeforeSubmission(op, errors.New("private image credential registration failed"))
 		}
 	}
+	if q.Release.Input.EnvironmentID != "" {
+		if r.w.containerEnvironments == nil {
+			return r.rejectBeforeSubmission(op, errors.New("environment settings are unavailable"))
+		}
+		registrar, ok := c.(interface {
+			CreateEnvironment(context.Context, string, string, map[string]string) error
+		})
+		if !ok {
+			return r.rejectBeforeSubmission(op, errors.New("environment registration is unavailable"))
+		}
+		values, err := r.w.containerEnvironments.Resolve(ctx, q.Deployment.ProjectID, q.Release.Input.EnvironmentID)
+		if err != nil {
+			return r.rejectBeforeSubmission(op, errors.New("environment settings could not be resolved"))
+		}
+		if err = registrar.CreateEnvironment(ctx, appName(r.a.id), q.Release.Input.EnvironmentID, values); err != nil {
+			return r.rejectBeforeSubmission(op, errors.New("environment registration failed"))
+		}
+	}
 	if _, err = c.PreflightApp(ctx, spec); err != nil {
 		return r.rejectBeforeSubmission(op, err)
 	}
