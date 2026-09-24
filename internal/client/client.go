@@ -272,3 +272,23 @@ func (c *CLI) GetDeployRequest(ctx context.Context, app, requestID string) (v De
 	e = c.read(ctx, &v, "apps", "request", app, requestID)
 	return
 }
+
+// AdvanceDeployRequest asks the server to continue a pending candidate using
+// its durable operation identity. The response contains metadata only.
+func (c *CLI) AdvanceDeployRequest(ctx context.Context, app, requestID string) (v DeployRequestResult, e error) {
+	if len(app) > 63 || !registryAppNamePattern.MatchString(app) || !registryRevisionPattern.MatchString(requestID) {
+		return v, errors.New("invalid deployment request identity")
+	}
+	e = c.read(ctx, &v, "apps", "advance", app, requestID)
+	return
+}
+
+// RecoverDeployRequest asks the server to recover a pending candidate using
+// its durable operation identity. The response contains metadata only.
+func (c *CLI) RecoverDeployRequest(ctx context.Context, app, requestID string) (v DeployRequestResult, e error) {
+	if len(app) > 63 || !registryAppNamePattern.MatchString(app) || !registryRevisionPattern.MatchString(requestID) {
+		return v, errors.New("invalid deployment request identity")
+	}
+	e = c.read(ctx, &v, "apps", "recover", app, requestID)
+	return
+}

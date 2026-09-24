@@ -77,7 +77,7 @@ func (s *Store) DispatchContainerDeployment(ctx context.Context, project, runtim
 	if err != nil || normalized != release.Input {
 		return false, ErrInvalid
 	}
-	q := ContainerRuntimeRequest{Deployment: d, Release: release, ActivateBefore: s.now().Add(time.Minute).Unix()}
+	q := ContainerRuntimeRequest{Deployment: d, Release: release, ActivateBefore: s.now().Add(10 * time.Minute).Unix()}
 	var previousID string
 	err = tx.QueryRowContext(ctx, "SELECT release_id FROM container_deployments WHERE project_id=? AND state='succeeded' ORDER BY revision DESC LIMIT 1", project).Scan(&previousID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {

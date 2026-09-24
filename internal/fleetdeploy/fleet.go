@@ -30,6 +30,7 @@ type Project struct {
 	Architecture    string `json:"architecture"`
 }
 type Config struct {
+	EnableCandidateOperations  bool               `json:"enable_candidate_operations,omitempty"`
 	ContainerCredentialKeyFile string             `json:"container_credential_key_file,omitempty"`
 	EnableContainerDeployments bool               `json:"enable_container_deployments,omitempty"`
 	Database                   string             `json:"database"`
@@ -84,6 +85,9 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if c.Database == "" || c.DeployerBinary == "" || c.DeployerConfig == "" || c.StateDirectory == "" || c.ImageBuilder == "" {
 		return c, errors.New("required fleet config field missing")
+	}
+	if c.EnableCandidateOperations && !c.EnableContainerDeployments {
+		return c, errors.New("candidate operations require container deployments to be enabled")
 	}
 	for id, p := range c.Projects {
 		if !hexID(id) || (p.Kind != "static" && p.Kind != "node" && p.Kind != "container") || !validDomain(p.Domain) {

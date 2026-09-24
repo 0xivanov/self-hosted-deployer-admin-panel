@@ -24,6 +24,7 @@ type containerRuntime struct {
 }
 
 type containerOperation struct {
+	CandidateOperations    bool                           `json:"candidate_operations,omitempty"`
 	RequestID              string                         `json:"request_id,omitempty"`
 	PreflightState         string                         `json:"preflight_state,omitempty"`
 	WithdrawalDeploymentID string                         `json:"withdrawal_deployment_id,omitempty"`
@@ -70,11 +71,14 @@ func readContainerOperation(path string) (containerOperation, error) {
 		return containerOperation{}, errors.New("invalid container deployment state")
 	}
 	encoded, err := json.Marshal(op)
-	if err != nil || !bytes.Equal(b, encoded) || (op.Stage != "preparing" && op.Stage != "dispatched" && op.Stage != "not_submitted" && op.Stage != "withdrawn") || op.Domain == "" {
+	if err != nil || !bytes.Equal(b, encoded) || (op.Stage != "preparing" && op.Stage != "dispatched" && op.Stage != "not_submitted" && op.Stage != "withdrawn" && op.Stage != "recovering") || op.Domain == "" {
 		return containerOperation{}, errors.New("invalid container deployment state")
 	}
 	if (op.Stage == "withdrawn") != (op.WithdrawalDeploymentID != "" && op.WithdrawalAppID != "") {
 		return containerOperation{}, errors.New("invalid container withdrawal state")
+	}
+	if (op.CandidateOperations && op.RequestID == "") || (op.Stage == "recovering" && !op.CandidateOperations) {
+		return containerOperation{}, errors.New("invalid candidate operation mode")
 	}
 	if op.RequestID != "" {
 		if op.RequestID != op.Request.Deployment.ID || !hexID(op.RequestID) || !json.Valid([]byte(op.PreflightState)) {
@@ -146,7 +150,7 @@ func (r *containerRuntime) SubmitContainerRuntime(ctx context.Context, q portal.
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if q.ActivateBefore <= time.Now().Unix() || q.ActivateBefore > time.Now().Add(90*time.Second).Unix() {
+	if q.ActivateBefore <= time.Now().Unix() || q.ActivateBefore > time.Now().Add(10*time.Minute+30*time.Second).Unix() {
 		return errors.New("activation deadline expired")
 	}
 	if revision, deployment, err := r.readFence(); err != nil {
@@ -238,6 +242,12 @@ func (r *containerRuntime) SubmitContainerRuntime(ctx context.Context, q portal.
 		}
 		op.RequestID = q.Deployment.ID
 		op.PreflightState = preflight.DesiredState
+	}
+	if r.w.cfg.EnableCandidateOperations {
+		if _, ok := c.(candidateContainerDeployer); !hasTracked || !ok {
+			return r.rejectBeforeSubmission(op, errors.New("candidate deployment operations are unavailable"))
+		}
+		op.CandidateOperations = true
 	}
 	op.Stage = "dispatched"
 	if err = r.save(op); err != nil {

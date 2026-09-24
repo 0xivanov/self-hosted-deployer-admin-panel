@@ -24,6 +24,12 @@ type ContainerRuntimeObserver interface {
 	InspectContainerRuntime(context.Context, ContainerRuntimeRequest) (ContainerRuntimeObservation, error)
 }
 
+// ContainerRuntimeAdvancer is a worker-only operation, separate from observation.
+// allowActivation reflects a fresh authorization check; false permits recovery only.
+type ContainerRuntimeAdvancer interface {
+	AdvanceContainerRuntime(context.Context, ContainerRuntimeRequest, bool) error
+}
+
 func decodeContainerIntent(raw []byte, d ContainerDeployment) (ContainerRuntimeRequest, error) {
 	var q ContainerRuntimeRequest
 	decoder := json.NewDecoder(bytes.NewReader(raw))
@@ -82,11 +88,33 @@ func (s *Store) ReconcileContainerDeployment(ctx context.Context, project, runti
 	if err != nil {
 		return false, err
 	}
+	allowActivation := false
+	advancer, canAdvance := runtime.(ContainerRuntimeAdvancer)
+	if canAdvance {
+		var allowed int
+		err = tx.QueryRowContext(ctx, `SELECT count(*) FROM container_deployments d
+ JOIN projects p ON p.id=d.project_id JOIN users u ON u.id=d.actor_id
+ JOIN memberships m ON m.user_id=u.id AND m.workspace_id=p.workspace_id
+ WHERE d.id=? AND p.kind='container' AND p.deletion_requested_at=0 AND u.verified=1 AND u.disabled=0 AND m.role IN ('owner','developer')`, d.ID).Scan(&allowed)
+		if err != nil {
+			return false, err
+		}
+		accessErr := s.requireProjectHostingAccess(ctx, tx, project)
+		if accessErr != nil && !errors.Is(accessErr, ErrHostingPayment) && !errors.Is(accessErr, ErrHostingPlanLimit) {
+			return false, accessErr
+		}
+		allowActivation = allowed == 1 && accessErr == nil && q.ActivateBefore > s.now().Unix()
+	}
 	if err = tx.Commit(); err != nil {
 		return false, err
 	}
 	call, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	if canAdvance {
+		if err = advancer.AdvanceContainerRuntime(call, q, allowActivation); err != nil {
+			return true, err
+		}
+	}
 	observation, err := runtime.InspectContainerRuntime(call, q)
 	if err != nil {
 		return true, err

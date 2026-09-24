@@ -58,3 +58,32 @@ func TestTrackedDeploymentCLIUsesStableIDAndReadOnlyLookup(t *testing.T) {
 		t.Fatal("wrong tracked CLI commands")
 	}
 }
+
+func TestAdvanceAndRecoverDeployRequestCommands(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "deployer")
+	capture := filepath.Join(dir, "args")
+	id := strings.Repeat("b", 64)
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$RECOVERY_ARGS\"\nprintf '%s' '{\"app_name\":\"my-api\",\"request_id\":\"" + id + "\",\"state\":\"pending\",\"requested_state\":{\"name\":\"my-api\"}}'\n"
+	if err := os.WriteFile(exe, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("RECOVERY_ARGS", capture)
+	c := &CLI{executable: exe, directory: dir, config: filepath.Join(dir, "config.json")}
+	advanced, err := c.AdvanceDeployRequest(t.Context(), "my-api", id)
+	if err != nil || advanced.AppName != "my-api" || advanced.RequestID != id || advanced.State != "pending" {
+		t.Fatalf("advance response: %#v err=%v", advanced, err)
+	}
+	recovered, err := c.RecoverDeployRequest(t.Context(), "my-api", id)
+	if err != nil || recovered.AppName != "my-api" || recovered.RequestID != id || recovered.State != "pending" {
+		t.Fatalf("recover response: %#v err=%v", recovered, err)
+	}
+	raw, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := string(raw)
+	if !strings.Contains(args, "apps advance my-api "+id) || !strings.Contains(args, "apps recover my-api "+id) {
+		t.Fatalf("wrong recovery commands: %q", args)
+	}
+}

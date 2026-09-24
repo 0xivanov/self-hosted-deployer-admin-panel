@@ -153,3 +153,48 @@ func TestContainerClientSummaryExposesPublicationWithoutReleaseAccess(t *testing
 		t.Fatalf("client release access: %v", err)
 	}
 }
+
+type containerAdvanceObserver struct {
+	store   *Store
+	allowed bool
+	calls   int
+}
+
+func (a *containerAdvanceObserver) AdvanceContainerRuntime(_ context.Context, _ ContainerRuntimeRequest, allowed bool) error {
+	a.allowed = allowed
+	a.calls++
+	return nil
+}
+func (a *containerAdvanceObserver) InspectContainerRuntime(_ context.Context, q ContainerRuntimeRequest) (ContainerRuntimeObservation, error) {
+	return observationFor(a.store, q, "pending"), nil
+}
+func TestContainerReconciliationRechecksAccessBeforeAdvance(t *testing.T) {
+	for _, mode := range []string{"allowed", "disabled", "membership", "deleting", "expired"} {
+		t.Run(mode, func(t *testing.T) {
+			s, _, p, d, q := containerRunning(t)
+			switch mode {
+			case "disabled":
+				if _, err := s.db.Exec("UPDATE users SET disabled=1 WHERE id=(SELECT actor_id FROM container_deployments WHERE id=?)", d.ID); err != nil {
+					t.Fatal(err)
+				}
+			case "membership":
+				if _, err := s.db.Exec("DELETE FROM memberships WHERE user_id=(SELECT actor_id FROM container_deployments WHERE id=?)", d.ID); err != nil {
+					t.Fatal(err)
+				}
+			case "deleting":
+				if _, err := s.db.Exec("UPDATE projects SET deletion_requested_at=1 WHERE id=?", p.ID); err != nil {
+					t.Fatal(err)
+				}
+			case "expired":
+				s.now = func() time.Time { return time.Unix(q.ActivateBefore+1, 0) }
+			}
+			observer := &containerAdvanceObserver{store: s}
+			if _, err := s.ReconcileContainerDeployment(t.Context(), p.ID, d.RuntimeID, observer); err != nil {
+				t.Fatal(err)
+			}
+			if observer.calls != 1 || observer.allowed != (mode == "allowed") {
+				t.Fatalf("activation decision: %+v", observer)
+			}
+		})
+	}
+}
