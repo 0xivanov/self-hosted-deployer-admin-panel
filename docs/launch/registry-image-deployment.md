@@ -167,3 +167,19 @@ The fleet worker now supports `enable_candidate_operations`, default false and r
 New container intents allow ten minutes for staging/activation. Advances use that deadline. Expiry or lost authorization starts recovery, not a terminal failure claim. The worker persists `recovering` before the recovery RPC and never returns that operation to advancement after a restart or lost reply. Fresh recorded outcomes, matching configuration/identities and runtime/HTTPS checks still determine success or retryability. A missing or unconfirmed core result remains pending.
 
 Focused worker/client checks cover deadline handling, durable recovery, identity mismatches, disabled mode, legacy records and read-only observation. Portal integration checks cover current authorization and expiry. This is source-only: no production flags or services changed. Before enablement, finish recovery for requests interrupted before runtime checkpoints, candidate-aware cleanup and real-cluster late-write qualification. Upgrade the core server/CLI and all relevant portal workers together.
+
+### Candidate project removal
+
+Core `DeleteApp` now supports bound candidate history and hidden initial
+withdrawals. The existing project-removal controller already retries this CLI
+operation before purging the portal project. New submissions and preflight are
+blocked while the deletion Service marker is present. Cleanup waits for all
+recorded candidate releases, the legacy Deployment and all app-owned Pods to
+drain; it preserves other projects and the namespace. The Service remains until
+database cleanup completes, allowing retries after interrupted replies.
+
+The source implementation and focused checks are complete in core `fe79007`,
+with no new database schema. It is not installed in production yet. Candidate
+and legacy zero-replica tombstones remain intentionally. Reclaiming running
+capacity after successful updates is a separate remaining step, as are
+missing-request recovery and real-cluster rollout qualification.
