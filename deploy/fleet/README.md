@@ -246,3 +246,23 @@ Container enrollment requires `enable_container_deployments: true` in the fleet 
 Retries retain the existing runtime and domain and repair missing mappings. Project removal waits for queued/running container jobs, completes external app/domain cleanup, removes only the target mappings, and purges deployment records before releases. The cleanup controller remains compatible with schema 42 when the new tables are absent.
 
 Custom domains follow the owned source ingress port, including container ports other than 8080. Do not enable container hosting on the live fleet solely because these controllers are present: private credentials, environment settings and end-to-end runtime qualification remain pending. See `docs/launch/registry-image-deployment.md` for the full readiness record.
+
+### Coordinated upgrade inventory
+
+Before and after upgrading the core server, CLI and portal database consumers,
+run `sudo python3 rollout-inventory.py` on the VPS. From this repository, it can
+also run without installing a file:
+
+```sh
+ssh deployer-vps 'sudo -n python3 -' < deploy/fleet/rollout-inventory.py
+```
+
+The read-only report includes database versions, aggregate record counts,
+unfinished deployment/build jobs, database integrity, fleet availability, service
+states and installed binary hashes. It omits configuration values and customer
+records. Errors produce a nonzero exit code; unhealthy nodes, unfinished jobs or
+missing binaries remain explicit report values for the operator to evaluate.
+This live observation is neither a backup nor proof that writers have stopped.
+Take consistent backups and repeat the inventory after stopping writers before
+migration. Core schema 6 has no tracked-request table, so an empty core
+`unfinished` object does not prove that no legacy deployment is in flight.
