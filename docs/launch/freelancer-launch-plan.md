@@ -80,3 +80,17 @@ Schema 42 adds project-scoped `client_invitations`. Invitation tokens are hashed
 Focused tests covered recipient isolation, replay, approved new-account registration/verification, preserved signup restrictions, revocation, replacement, expiry, owner demotion, deletion, discarded queued mail, direct grant/removal invalidation, migration and CSRF. The portal package suite and 27 frontend checks passed. Browser verification used synthetic accounts and a fake mail sender to exercise invitation creation, sign-in, explicit acceptance and Shared with me. A signed-out same-tab invitation navigation bug was fixed and covered by a regression check. No real invitations were created or sent during verification.
 
 The live VPS now uses schema 42. Backup: `/var/backups/launchstead-client-invitations-20260923T114116Z`. All installed portal database consumer binaries were upgraded together, existing record counts and integrity were checked, and previously active services/timers restarted. The live code matches the release, the existing custom domain returns HTTP 200, and anonymous invitation access returns 401. Use the matching backup and previous binaries together if a rollback is necessary; restoring the database loses subsequent writes. Customer application workloads were not redeployed.
+
+
+## Production enablement authorization, September 24
+
+The owner requested continuation of the launch goal and full production enablement. Production rollout is now an explicit deliverable, not merely local implementation. Enable completed features once their actual dependencies and deployment paths work; do not leave functioning features off without a concrete reason. This authorization covers coordinated server/CLI/portal/worker upgrades and feature enablement. Do not represent unfinished GitHub deployment, unconfigured live payment providers or domain resale as enabled. Outreach, actual customer charges and domain purchases retain their explicit authorization boundaries.
+
+Production rollout order:
+1. Restore fleet health and preserve a fresh database/binary/config rollback point.
+2. Finish candidate retry, deletion and resource cleanup, plus missing-request handling after ambiguous submission. Verify actual Kubernetes behavior for initial publish, update, withdrawal and retry.
+3. Upgrade core server/CLI and all portal database consumers together. Enable candidate operations in core and fleet, container hosting in the portal, encrypted credential/environment access and provisioning/cleanup support. Confirm publication and HTTPS on the actual workers.
+4. Finish and enable GitHub deployment and the remaining client-workspace launch features. Update landing/onboarding material to match verified production behavior.
+5. Enable live hosting subscriptions, merchant payments and domain resale when provider accounts, credentials and lifecycle integration are ready. Record any owner-only account setup that remains. Complete a real paid pilot before claiming the launch goal is finished.
+
+Operational check on September 24: `pi-home` had stopped reporting node status and could not reach the control plane through WireGuard, while direct SSH remained available. Restarting `wg-quick@wg0` restored tunnel traffic and Kubernetes reported the node Ready. This restored connectivity; it did not establish the underlying cause. No feature flags or application binaries were changed during that repair.
