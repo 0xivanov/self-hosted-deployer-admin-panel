@@ -34,7 +34,8 @@ Acceptance: over-capacity requests fail clearly before a project is accepted; a 
 - Shipped: scoped email invitations with seven-day expiry, matching verified-account acceptance, owner authorization recheck, revocation, replacement, rate limits and encrypted queued delivery. New recipients must be approved under the existing signup policy before an invitation is sent; existing verified accounts can be invited while signup is closed. Invitation creation does not grant access.
 - Shipped: owner-only recent client-access history with actor, recipient and date for direct grants/removals and invitation request/revocation/acceptance. It displays the latest 50 recorded changes and excludes unrelated audit data. Installed in production with admin `5e19bcf`.
 - Implemented: workspace-only client labels, visible on portfolio cards and searchable alongside website names. Owners/developers can save or clear a label in Website settings without a reload; labels grant no client access. Live in production with admin `aca110e` and portal schema 54.
-- Remaining: ownership handover and richer portfolio organization. Existing Team roles are still workspace-wide. Registration remains restricted to the operator-approved allowlist. See [client onboarding](client-onboarding.md).
+- Shipped: exact client-label and deployment-status filters plus alphabetical portfolio sorting. Filters preserve selected website details and existing forms.
+- Remaining: ownership handover and broader portfolio summaries. Existing Team roles are still workspace-wide. Registration remains restricted to the operator-approved allowlist. See [client onboarding](client-onboarding.md).
 - Ownership handover requires explicit membership and billing decisions; a client label does not transfer ownership.
 - Implemented: reviewable, copyable website status snapshots with a timestamp and public address, excluding internal labels, logs, files and account details. No message is sent and no access is granted. Live in production with admin `e4f0bec`.
 
@@ -200,3 +201,20 @@ healthy databases, three nodes, eight app deployments, empty queues and HTTPS
 responses. Hosting remains test-mode, merchant sales disabled, GitHub/Docker
 disabled. This is deployment of implementation support, not live provider
 activation or paid pilot completion. See the production upgrade record.
+
+
+September 25 portfolio follow-up: customer-portal `5b39d66` is deployed with
+status filters, exact client-label selection, unassigned-label filtering and
+A–Z/Z–A sorting. Search/type filters combine with these selections. Existing live
+versions remain classified live when a new version is merely awaiting publish;
+active operations and failures take precedence. Unknown/loading state is never
+claimed live. Selected details bypass portfolio filters, and sorting reuses
+existing DOM nodes without rebuilding forms or resetting file inputs.
+
+All 56 JavaScript checks passed, including mixed filters, client labels matching
+reserved names, removed-label fallback, stable sorting, detail preservation and
+workflow classification. Production JavaScript/CSS exactly match the release;
+portal and existing custom domain returned HTTPS 200. Only customer-portal was
+restarted. Schema remains 56 and workers remain `fa4eda4`. No authenticated
+browser visual check is claimed. Previous portal binary is retained at
+`/var/backups/launchstead-portal-portfolio-20260925/customer-portal`.

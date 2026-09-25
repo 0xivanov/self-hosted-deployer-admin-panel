@@ -254,3 +254,18 @@ disabled with an empty merchant mode, and GitHub/Docker disabled. This installs
 live merchant support but does not activate real payments or establish provider
 readiness. No financial transactions or authenticated browser click-through were
 performed. Live activation follows [the merchant runbook](live-merchant-activation.md).
+
+
+## Portfolio controls: customer-portal 5b39d66
+
+Only the customer-portal binary was updated for client/status filters and
+alphabetical sorting. Portal schema remains 56; all other installed portal
+consumers remain `fa4eda4`. Core, Pi agents, deployment configurations and
+application workloads were unchanged. Previous compatible portal binary:
+`/var/backups/launchstead-portal-portfolio-20260925/customer-portal`.
+Binary-only rollback is sufficient for this presentation release; no database
+restore is needed.
+
+All 56 frontend checks passed. Served portal JavaScript/CSS match this release.
+Portal and the existing custom domain returned HTTPS 200. No authenticated
+visual browser review is claimed.
