@@ -36,7 +36,7 @@ Acceptance: over-capacity requests fail clearly before a project is accepted; a 
 - Implemented: workspace-only client labels, visible on portfolio cards and searchable alongside website names. Owners/developers can save or clear a label in Website settings without a reload; labels grant no client access. Live in production with admin `aca110e` and portal schema 54.
 - Remaining: ownership handover and richer portfolio organization. Existing Team roles are still workspace-wide. Registration remains restricted to the operator-approved allowlist. See [client onboarding](client-onboarding.md).
 - Ownership handover requires explicit membership and billing decisions; a client label does not transfer ownership.
-- Implemented: reviewable, copyable website status snapshots with a timestamp and public address, excluding internal labels, logs, files and account details. No message is sent and no access is granted. Production rollout pending.
+- Implemented: reviewable, copyable website status snapshots with a timestamp and public address, excluding internal labels, logs, files and account details. No message is sent and no access is granted. Live in production with admin `e4f0bec`.
 
 Acceptance: a client sees only the intended website; cross-project APIs deny access, including logs, uploads, domains and releases.
 

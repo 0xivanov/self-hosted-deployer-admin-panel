@@ -166,3 +166,27 @@ owner/developer edits, viewer/client/outsider denial, workspace reads, client
 summary non-disclosure, label removal, rename preservation and CSRF. Existing
 migration tests, vet, editor DOM checks and 27 upload/status/workflow/invitation
 checks passed. Production customer data was not changed to exercise the editor.
+
+
+## Website handoff and Docker cleanup: admin e4f0bec
+
+All eight portal database consumers now run `e4f0bec`. Database schemas remain
+core 12 and portal 54. The coordinated backup is
+`/var/backups/launchstead-portal-handoff-20260925`; the prior rollback rules apply.
+This snapshot remains on the VPS and has not been separately exported offsite.
+
+Website details now offer **Share summary**, a reviewable dated snapshot copied
+only on customer request. No message is sent and no portal access is granted.
+Docker saved-settings cleanup is installed behind the unchanged disabled Docker
+feature flag. It protects all retained releases and closes the credential
+delete/prepare race. Refresh now updates saved-settings lists while preserving
+typed forms.
+
+Postflight verified installed artifact hashes, unchanged database versions,
+preserved records, integrity/foreign keys, empty deployment/GitHub queues, all
+three nodes Ready and all eight app deployments healthy. Portal and the existing
+custom-domain website returned HTTPS 200; served portal JavaScript matches this
+release. Focused summary sanitization, settings deletion and existing status
+polling checks passed. GitHub/Docker activation and provider checks remain
+unfulfilled. Browser visual inspection was unavailable because macOS computer
+capture failed; no authenticated production click-through is claimed.
