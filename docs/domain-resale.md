@@ -158,3 +158,26 @@ Do not send the sandbox key to the production endpoint or assume that an
 environment label alone selects OTE. No sandbox request or registration has
 been made at this checkpoint. Keep sandbox domain evidence separate from real
 customer quotes and registrations.
+
+
+### OTE endpoint and read contracts verified
+
+The owner supplied the support-confirmed sandbox base URL:
+https://ote.namesilo.com/api. Read-only requests from the VPS with the separate
+sandbox key succeeded with response code 300 for getPrices and
+checkRegisterAvailability. No production fallback was used.
+
+For unique .com and .net sandbox names, checkRegisterAvailability returned an
+available/domain element with attributes price, renew, premium="0", duration="1".
+Both requested names appeared exactly once. This resolves the earlier missing
+explicit premium-classification evidence for the observed standard-price
+sandbox response. Monetary attributes are decimal strings; parse to integer
+minor units without floating point. Reject absent, ambiguous or unsupported
+premium/duration fields. Pricing must remain labeled sandbox; OTE availability
+does not establish public registration availability.
+
+The getPrices response included com/net registration entries, and the request
+reported source IP 159.195.146.26. These calls did not register domains, renew,
+change nameservers, add funds or charge anything. Registration and renewal
+response/reconciliation contracts are still to be exercised in OTE. The quote
+adapter, payment linkage and persistent domain lifecycle remain unfinished.
