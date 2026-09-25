@@ -183,3 +183,22 @@ with no new database schema. It is not installed in production yet. Candidate
 and legacy zero-replica tombstones remain intentionally. Reclaiming running
 capacity after successful updates is a separate remaining step, as are
 missing-request recovery and real-cluster rollout qualification.
+
+### Reclaiming capacity after updates
+
+After core commits an applied candidate release, explicit advancement now retires
+older bound generations and the legacy predecessor, waiting for observed drain.
+It preserves the selected candidate, routes and versioned release inputs. A
+pending cleanup returns a retryable error while the saved deployment receipt
+remains applied. Read-only request lookup does not perform cleanup.
+
+The fleet worker now calls advancement for applied receipts as well as pending
+ones. For applied receipts this is cleanup only: the original activation deadline
+and revoked activation authorization do not trigger recovery or another deploy.
+Cleanup errors prevent portal settlement and are retried on subsequent worker
+passes. The deadline still bounds activation for pending requests.
+
+Core `273999b` and the corresponding fleet change are source-only. Focused checks
+passed for retained active generations, pending recovery predecessors, expired
+deadlines and retry after worker reconstruction. Lost initial submissions without
+a request record and real-cluster qualification remain before production enablement.

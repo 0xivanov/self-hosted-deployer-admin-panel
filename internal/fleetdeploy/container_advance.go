@@ -69,6 +69,13 @@ func (r *containerRuntime) AdvanceContainerRuntime(ctx context.Context, q portal
 	if record.AppName != appName(r.a.id) || record.RequestID != op.RequestID || !matchingContainerStates(record.RequestedState, op.PreflightState) {
 		return errors.New("candidate receipt identity mismatch")
 	}
+	if record.State == "applied" {
+		// Activation is already committed. Advance now only reclaims older
+		// workloads, even if the original activation deadline has passed.
+		// Keep the portal job running until this retryable cleanup succeeds.
+		_, err = candidate.AdvanceDeployRequest(ctx, appName(r.a.id), op.RequestID)
+		return err
+	}
 	if record.State != "pending" {
 		return nil
 	} // Observation validates and settles terminal receipts.

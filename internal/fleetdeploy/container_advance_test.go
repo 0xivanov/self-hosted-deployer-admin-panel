@@ -15,13 +15,14 @@ type candidateDeployer struct {
 	*trackedDeployer
 	advances, recoveries int
 	recoverErr           error
+	advanceErr           error
 	deadline             time.Time
 }
 
 func (d *candidateDeployer) AdvanceDeployRequest(ctx context.Context, _, _ string) (client.DeployRequestResult, error) {
 	d.advances++
 	d.deadline, _ = ctx.Deadline()
-	return d.request, nil
+	return d.request, d.advanceErr
 }
 func (d *candidateDeployer) RecoverDeployRequest(context.Context, string, string) (client.DeployRequestResult, error) {
 	d.recoveries++
@@ -141,5 +142,51 @@ func TestExpiredCandidateRecoversWithoutAnotherActivation(t *testing.T) {
 	observation, err := r.InspectContainerRuntime(t.Context(), q)
 	if err != nil || observation.State != "pending" {
 		t.Fatal("expiry was treated as confirmed failure")
+	}
+}
+
+func TestAppliedCandidateCleanupRetriesAfterDeadlineWithoutRecovery(t *testing.T) {
+	mock := &candidateDeployer{trackedDeployer: &trackedDeployer{withdrawalDeployer: &withdrawalDeployer{containerDeployerMock: &containerDeployerMock{}}}}
+	w, q, cleanup := containerRuntimeFixture(t, mock.containerDeployerMock)
+	defer cleanup()
+	w.cfg.EnableCandidateOperations = true
+	w.factory = func(string) (Deployer, error) { return mock, nil }
+	r := containerRuntimeFor(w, q)
+	raw, _ := renderContainerYAML(r.a, q.Release)
+	var desired map[string]any
+	_ = yaml.Unmarshal([]byte(raw), &desired)
+	state, _ := json.Marshal(desired)
+	mock.preflightState = string(state)
+	mock.request = client.DeployRequestResult{AppName: appName(r.a.id), RequestID: q.Deployment.ID, State: "pending", RequestedState: state}
+	_ = r.SubmitContainerRuntime(t.Context(), q)
+	// The release committed before its deadline, but old Pods are still draining.
+	mock.request.State = "applied"
+	op, err := readContainerOperation(r.statePath(q.Deployment.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.ActivateBefore = time.Now().Add(-time.Minute).Unix()
+	op.Request = q
+	if err = r.save(op); err != nil {
+		t.Fatal(err)
+	}
+	mock.advanceErr = errors.New("older workloads still draining")
+	if err = r.AdvanceContainerRuntime(t.Context(), q, false); err == nil {
+		t.Fatal("cleanup failure was hidden")
+	}
+	op, err = readContainerOperation(r.statePath(q.Deployment.ID))
+	if err != nil || op.Stage != "dispatched" || mock.recoveries != 0 || mock.advances != 1 {
+		t.Fatalf("committed release entered recovery: %+v %v", op, err)
+	}
+	mock.advanceErr = nil
+	restarted := containerRuntimeFor(w, q)
+	if err = restarted.AdvanceContainerRuntime(t.Context(), q, false); err != nil {
+		t.Fatal(err)
+	}
+	if mock.advances != 2 || mock.recoveries != 0 || mock.submissions != 1 {
+		t.Fatal("cleanup retry activated or resubmitted release")
+	}
+	if !mock.deadline.IsZero() {
+		t.Fatal("cleanup reused expired activation deadline")
 	}
 }
