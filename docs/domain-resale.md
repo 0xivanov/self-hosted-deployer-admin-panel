@@ -125,3 +125,18 @@ cross-workspace protection, recent history, malformed offers and the existing
 quote/order flows. This is source-only; production domain quotes remain disabled.
 The owner has offered existing Cloudflare DNS access for subdomains. Subdomain
 provisioning uses an already-owned domain and does not replace domain resale.
+
+
+### NameSilo account access verified, September 25
+
+The owner supplied a local API credential. It is private (0600) and excluded
+from Git through the local exclude file; no credential value is recorded here.
+A read-only getPrices call through the VPS returned success code 300 and
+registration-price fields for com/net/org. NameSilo reported the source IP as
+159.195.146.26, confirming the configured IP restriction works.
+
+This verified the production read API only. No domain was registered, renewed,
+transferred or paid for, and no account funds were added. Sandbox credentials
+and registration/renewal outcome contracts remain unverified. A usable
+availability quote still requires explicit premium classification and fresh
+availability, not just a TLD price list.
