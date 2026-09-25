@@ -150,7 +150,7 @@ func TestNodeRuntimeDispatchMigrationFencesLegacyRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 46 {
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 47 {
 		t.Fatal(version, err)
 	}
 }

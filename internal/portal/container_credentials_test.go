@@ -108,7 +108,7 @@ func TestContainerCredentialsMigrationPreservesProjectData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.db.Exec("DROP TABLE container_credentials; PRAGMA user_version=44"); err != nil {
+	if _, err = s.db.Exec("DROP TABLE github_link_states; DROP TABLE container_credentials; PRAGMA user_version=44"); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.Close(); err != nil {
@@ -124,7 +124,7 @@ func TestContainerCredentialsMigrationPreservesProjectData(t *testing.T) {
 		t.Fatalf("project after credential migration: %#v %v", got, err)
 	}
 	var version int
-	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 46 {
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 47 {
 		t.Fatalf("schema version: %d %v", version, err)
 	}
 }

@@ -99,7 +99,7 @@ func TestContainerEnvironmentsAllowEmptyAndMigrateToSchema46(t *testing.T) {
 	if err != nil || len(resolved) != 0 {
 		t.Fatalf("empty environment: %#v %v", resolved, err)
 	}
-	if _, err = s.db.Exec("DROP TABLE container_environments; PRAGMA user_version=45"); err != nil {
+	if _, err = s.db.Exec("DROP TABLE github_link_states; DROP TABLE container_environments; PRAGMA user_version=45"); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.Close(); err != nil {
@@ -115,7 +115,7 @@ func TestContainerEnvironmentsAllowEmptyAndMigrateToSchema46(t *testing.T) {
 		t.Fatalf("project after migration: %#v %v", got, err)
 	}
 	var version int
-	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 46 {
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 47 {
 		t.Fatalf("schema version: %d %v", version, err)
 	}
 }

@@ -1,7 +1,7 @@
 # GitHub deployment
 
 Status: implementation started September 25. Repository archive preparation, push signature validation and GitHub App
-authentication are source components, not a connected customer
+authentication, repository access checks and session-bound link state are source components, not a connected customer
 feature. No GitHub webhook endpoint, installation callback or deployment worker
 is enabled in production yet. Do not advertise deploy-on-push as available.
 
@@ -47,6 +47,15 @@ project deletion or disconnect must prevent new imports/publications.
 ## Implemented source components
 
 `internal/githubdeploy` includes:
+
+- Provider-side verification of the GitHub user, matching App installation and
+  readable repository. It resolves the numeric app ID through an app-authenticated `/app` request,
+  then checks installation app identity, suspension and pull permission;
+  a callback-supplied installation ID alone is insufficient. Requests stay on
+  fixed GitHub API endpoints and use bounded pagination/responses without
+  retaining the user token. Listings stop at 1,000 items and report an explicit
+  limit error when the selection cannot be verified within that bound. This component still needs OAuth exchange and portal
+  connection handlers before it is customer-accessible.
 
 - GitHub App RSA key validation and short-lived RS256 app assertions, plus a
   fixed-endpoint installation-token client. Every token request explicitly selects
@@ -112,3 +121,26 @@ request scope, response scope/expiry rejection, redirect refusal and credential
 redaction. These checks used generated keys and mock provider responses. No real
 GitHub App has been registered/configured through this code, and no customer
 repository access or deployment has been attempted.
+
+
+## Local linking state (schema 47, not deployed)
+
+The portal now supports beginning and consuming a GitHub link request for a
+static/Node project. Both operations require current verified owner/session
+access, a non-deleting project and hosting entitlement. State is random, hashed
+at rest, expires after ten minutes, and is bound to the initiating session,
+actor and project. One pending attempt per project is retained; a replacement
+invalidates the old one and attempts are limited to one every ten seconds while
+an attempt is pending. Consumption uses a conditional transactional delete, so
+only one callback succeeds. Provider failure after consumption requires starting
+a new link request. The raw state/session token is never stored or audited.
+
+This is not a completed account connection. HTTP CSRF checks, OAuth code exchange,
+provider access verification and a final recheck of portal ownership before saving
+the connection must be wired together. Provider checks follow the
+[GitHub user installation/repository APIs](https://docs.github.com/en/rest/apps/installations).
+
+Migration and focused checks preserved existing project/session data and covered
+state persistence across reopen, replay, cross-user/session/project attempts,
+expiry, role revocation and project deletion. Production remains schema 46;
+all portal database consumers will need the next coordinated upgrade together.
