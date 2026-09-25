@@ -1,8 +1,8 @@
 # Live website sales activation
 
 Source implementation does not establish Stripe account readiness or activate
-production. Production last recorded admin `417691c`, portal schema 55, test
-payments. Live merchant activation is independent of hosting subscriptions.
+production. Production runs admin `fa4eda4`, portal schema 56, test hosting
+payments and disabled merchant sales. Live merchant activation is independent of hosting subscriptions.
 
 ## Configuration contract
 

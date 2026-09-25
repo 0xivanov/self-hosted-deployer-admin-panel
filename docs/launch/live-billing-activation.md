@@ -29,7 +29,7 @@ Authenticated provider clients declare their mode and mismatches are rejected
 before provider calls or work leasing.
 
 Runtime mode is immutable for each opened store. Existing `Open` callers and
-legacy test flags retain test behavior. Production runs admin `417691c`, schema 55,
+legacy test flags retain test behavior. Production runs admin `fa4eda4`, schema 56,
 with test billing. The coordinated rollout verified all eight installed consumer
 binaries and preserved every original billing row in test mode. The root-private
 rollback snapshot is `/var/backups/launchstead-portal-billing55-20260925`. Restore
@@ -93,7 +93,8 @@ live payment entitlement. Existing websites keep running when changes are held.
    webhook routing and mode-aware customer UI are now wired locally. See
    [live merchant activation](live-merchant-activation.md) for coordinated setup.
    Hosting and merchant payment scopes remain distinct. Production remains
-   schema 55 until an explicit rollout with a matching database/binary backup.
+   schema 56 following the coordinated rollout recorded in
+   [production upgrades](production-upgrade-20260925.md).
 2. Activate provider configuration only after the owner has live account access,
    agreed prices/limits and customer-facing business and service details. Verify
    webhook routing and recovery without charging a customer. Any real purchase

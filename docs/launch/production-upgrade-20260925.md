@@ -223,3 +223,34 @@ without exposing values: the supplied `stipe.txt` contains a test key and no liv
 key. GitHub and Docker flags remain disabled pending their documented provider
 requirements. Neither this upgrade nor the local simulated live workflow proves
 real payment collection, merchant live readiness or paid pilot completion.
+
+
+## Merchant mode support: admin fa4eda4, schema 56
+
+All eight installed portal database consumers now run `fa4eda4`. Portal migrated
+55 to 56; core remains `1a00d2e` / schema 12. Pi agent binaries and existing
+application deployments were not replaced. Startup settings and feature flags
+were preserved. The separate merchant-worker command is implemented in source
+but is not installed or activated as a service in this rollout.
+
+The rollout stopped database writers/controllers and took consistent snapshots
+plus matching binaries/configurations. Every original merchant row was compared
+by all original columns after migration; history remains in test mode and no
+live merchant rows were introduced.
+
+Rollback snapshot: `/var/backups/launchstead-portal-merchant56-20260925`.
+Restore its matching schema-55 database, binaries and settings together after
+stopping writers and accounting for subsequent writes. This root-private backup
+is on the VPS; this rollout did not separately export it offsite.
+
+Postflight at `2026-09-25T13:37:06.059281+00:00` verified all eight artifact
+hashes, both database integrity/foreign-key checks, unchanged core/portal counts,
+empty deployment/GitHub queues, three Ready nodes and eight healthy application
+deployments. No sampled service was failed. Portal and the existing custom
+domain returned HTTPS 200; served portal JavaScript matched the release exactly.
+
+The public configuration reports hosting billing in test mode, merchant sales
+disabled with an empty merchant mode, and GitHub/Docker disabled. This installs
+live merchant support but does not activate real payments or establish provider
+readiness. No financial transactions or authenticated browser click-through were
+performed. Live activation follows [the merchant runbook](live-merchant-activation.md).

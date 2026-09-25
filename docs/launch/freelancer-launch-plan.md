@@ -191,3 +191,12 @@ production is still `417691c` / schema 55 and no real merchant transaction has
 been performed. See [live merchant activation](live-merchant-activation.md).
 Live Stripe account readiness and credentials are still required before rollout
 activation, followed by independently authorized real payment verification.
+
+
+September 25 merchant rollout: admin `fa4eda4` is installed in all eight existing
+portal database consumer binaries; schema 56 is live. Migration preserved
+merchant history exactly. Postflight at 13:37 UTC verified unchanged records,
+healthy databases, three nodes, eight app deployments, empty queues and HTTPS
+responses. Hosting remains test-mode, merchant sales disabled, GitHub/Docker
+disabled. This is deployment of implementation support, not live provider
+activation or paid pilot completion. See the production upgrade record.

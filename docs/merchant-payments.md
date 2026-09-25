@@ -521,7 +521,7 @@ customer-facing labels. Follow the [activation runbook](launch/live-merchant-act
 for coordinated portal/worker configuration and provider readiness.
 
 Verification includes merchant integration checks, the full portal integration
-suite, provider tests, static analysis and command builds. No production files
-or merchant settings changed for this work. Production remains schema 55.
+suite, provider tests, static analysis and command builds. Production now runs schema 56 and admin `fa4eda4` after a coordinated rollout.
+Merchant settings remain disabled; hosting billing remains in test mode.
 Qualify live Connect configuration and account/checkout/refund behavior before
 activation. Real financial transactions still require authorization.
