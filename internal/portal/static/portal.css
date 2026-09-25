@@ -298,4 +298,14 @@ input::file-selector-button{background:var(--surface);color:var(--ink);border-co
 .client-invitations{margin:0 0 1rem}
 .shared-website{padding:1.5rem;margin:1rem 0;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
 .shared-website h3{margin-top:0}.shared-website a{overflow-wrap:anywhere}
+.project-github{scroll-margin-top:20px}
+.github-content{display:grid;gap:10px}
+.github-content>strong{font-size:14px}
+.github-repository{font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere;margin:0;color:var(--ink)}
+.github-content .github-note{margin:2px 0 4px;padding:10px 12px;border-left:3px solid var(--accent);background:var(--surface-soft);font-size:12px;line-height:1.5}
+.github-content .github-pending{margin:0;color:var(--muted);font-size:12px}
+.github-chooser form{display:grid;gap:10px}
+.github-chooser label{display:grid;gap:5px}
+.github-chooser select,.github-chooser input{width:100%}
+.github-status{min-height:1.2em}
 @media(max-width:600px){.client-access-row{align-items:flex-start;flex-direction:column}}

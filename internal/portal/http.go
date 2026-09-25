@@ -26,6 +26,8 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
+	GitHubApp                 GitHubAccessProvider
+	GitHubOAuth               GitHubOAuthProvider
 	ContainerEnvironments     *ContainerEnvironments
 	ContainerCredentials      *ContainerCredentials
 	ContainerRegistryResolver ContainerRegistryResolver
@@ -58,6 +60,9 @@ type attemptWindow struct {
 	count int
 }
 type HTTP struct {
+	githubApp                 GitHubAccessProvider
+	githubOAuth               GitHubOAuthProvider
+	githubFlows               githubBrowserFlows
 	containerEnvironments     *ContainerEnvironments
 	containerCredentials      *ContainerCredentials
 	containerRegistryResolver ContainerRegistryResolver
@@ -92,6 +97,9 @@ type HTTP struct {
 }
 
 func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
+	if (opts.GitHubApp == nil) != (opts.GitHubOAuth == nil) || (opts.GitHubApp != nil && opts.Development) {
+		return nil, errors.New("GitHub requires both App and OAuth configuration and HTTPS")
+	}
 	if opts.ContainerEnvironments != nil && (!opts.ContainerHosting || opts.ContainerEnvironments.store != store) {
 		return nil, errors.New("container environments require container hosting and the same portal store")
 	}
@@ -183,7 +191,7 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if resolverImage == nil {
 		resolverImage = publicContainerResolver
 	}
-	return &HTTP{containerEnvironments: opts.ContainerEnvironments, containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{githubApp: opts.GitHubApp, githubOAuth: opts.GitHubOAuth, githubFlows: githubBrowserFlows{starts: map[string]githubBrowserFlow{}, selections: map[string]githubBrowserFlow{}}, containerEnvironments: opts.ContainerEnvironments, containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 
 func (h *HTTP) nodeProjectSnapshot() map[string]NodeProjectConfig {
@@ -320,7 +328,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		name, kind := "", ""
 		switch r.URL.Path {
-		case "/", "/billing/success", "/billing/cancel", "/merchant/return", "/merchant/refresh":
+		case "/", "/github/callback", "/billing/success", "/billing/cancel", "/merchant/return", "/merchant/refresh":
 			name = "index.html"
 			kind = "text/html; charset=utf-8"
 		case "/shop", "/merchant/sales/success", "/merchant/sales/cancel":
@@ -361,7 +369,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/config" && r.Method == "GET" {
-		httpJSON(w, map[string]any{"container_hosting": h.containerHosting, "client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
+		httpJSON(w, map[string]any{"github_connections": h.githubApp != nil, "container_hosting": h.containerHosting, "client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
 		return
 	}
 	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/verification/resend" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {
@@ -417,6 +425,10 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "POST" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(csrfFor(cookie.Value))) != 1 {
 		httpError(w, 403, "Reload the page and retry")
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/github/") {
+		h.githubHTTP(w, r, cookie.Value)
 		return
 	}
 	if r.URL.Path == "/api/client-invitations" || r.URL.Path == "/api/client-invitations/revoke" || r.URL.Path == "/api/client-invitations/accept" {

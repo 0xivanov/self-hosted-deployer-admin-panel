@@ -167,3 +167,29 @@ func (s *Store) DisconnectGitHub(ctx context.Context, session, project string) e
 	}
 	return tx.Commit()
 }
+
+// githubCompletionCurrent keeps a late OAuth response from replacing a newer
+// browser selection. SaveGitHubConnection still repeats authorization at commit.
+func (s *Store) githubCompletionCurrent(ctx context.Context, session string, attempt GitHubLinkAttempt) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	p, actor, err := s.projectClientOwner(ctx, tx, session, attempt.ProjectID)
+	if err != nil {
+		return err
+	}
+	if actor != attempt.ActorID || p.WorkspaceID != attempt.WorkspaceID {
+		return ErrDenied
+	}
+	var count int
+	err = tx.QueryRowContext(ctx, `SELECT count(*) FROM github_link_completions WHERE project_id=? AND proof_hash=? AND actor_id=? AND session_hash=? AND expires_at>?`, p.ID, digest(attempt.completion), actor, digest(session), s.now().Unix()).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return ErrGitHubLink
+	}
+	return nil
+}

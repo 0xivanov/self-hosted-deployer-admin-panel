@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/fleetlogs"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/githubdeploy"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/hostingbilling"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/merchantbilling"
 	"io"
@@ -58,9 +59,39 @@ func run() error {
 	projectCapacity := flag.Int("hosting-project-capacity", 0, "total fleet project slots, including queued and deleting projects; 0 disables admission cap")
 	nodeCapacity := flag.Int("hosting-node-capacity", 0, "Node project slots within total fleet capacity")
 	runtimeLogs := flag.String("runtime-log-socket", "", "private fleet log bridge Unix socket")
+	githubConfig := flag.String("github-config", "", "private JSON GitHub App settings with client_id, private_key_pem and client_secret")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return errors.New("unexpected arguments")
+	}
+	var githubApp *githubdeploy.App
+	var githubOAuth *githubdeploy.OAuth
+	if *githubConfig != "" {
+		if *demo {
+			return errors.New("GitHub setup is unavailable in demo mode")
+		}
+		raw, e := privateFile(*githubConfig)
+		if e != nil {
+			return errors.New("GitHub configuration unavailable")
+		}
+		var cfg struct {
+			ClientID      string `json:"client_id"`
+			PrivateKeyPEM string `json:"private_key_pem"`
+			ClientSecret  string `json:"client_secret"`
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&cfg) != nil || decoder.Decode(new(any)) != io.EOF {
+			return errors.New("invalid GitHub configuration")
+		}
+		githubApp, e = githubdeploy.NewApp(cfg.ClientID, []byte(cfg.PrivateKeyPEM))
+		if e != nil {
+			return errors.New("invalid GitHub App configuration")
+		}
+		githubOAuth, e = githubdeploy.NewOAuth(githubApp, cfg.ClientSecret, *origin+"/github/callback")
+		if e != nil {
+			return errors.New("invalid GitHub OAuth configuration")
+		}
 	}
 	var merchantWebhookSecret string
 	if *merchantWebhookFile != "" {
@@ -270,6 +301,10 @@ func run() error {
 		signupAllowed = portal.SignupAllowlist(*signupAllowlist)
 	}
 	opts := portal.HTTPOptions{TestMerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
+	if githubApp != nil {
+		opts.GitHubApp = githubApp
+		opts.GitHubOAuth = githubOAuth
+	}
 	opts.ContainerHosting = *containerHosting
 	if *containerCredentialKey != "" {
 		if !*containerHosting {

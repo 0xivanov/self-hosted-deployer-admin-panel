@@ -2,7 +2,7 @@
 
 Status: implementation started September 25. Repository archive preparation, push signature validation and GitHub App
 authentication, OAuth exchange, repository access checks and session-bound connection persistence are source components, not a connected customer
-feature. No GitHub webhook endpoint, installation callback or deployment worker
+feature. Customer connection routes and controls are now implemented locally. No GitHub webhook endpoint, connection flow or deployment worker
 is enabled in production yet. Do not advertise deploy-on-push as available.
 
 ## Customer experience
@@ -54,8 +54,7 @@ project deletion or disconnect must prevent new imports/publications.
   a callback-supplied installation ID alone is insufficient. Requests stay on
   fixed GitHub API endpoints and use bounded pagination/responses without
   retaining the user token. Listings stop at 1,000 items and report an explicit
-  limit error when the selection cannot be verified within that bound. This component still needs portal
-  connection handlers before it is customer-accessible.
+  limit error when the selection cannot be verified within that bound. Customer connection handlers now use these checks, but remain off in production.
 
 - GitHub App RSA key validation and short-lived RS256 app assertions, plus a
   fixed-endpoint installation-token client. Every token request explicitly selects
@@ -82,8 +81,7 @@ only through a verified installation and an exact commit resolved through GitHub
 
 ## Next implementation slices
 
-1. GitHub App configuration, identity/link flow, project-bound installation and
-   repository selection, connection CRUD and visible disconnect controls.
+1. Register/configure the real GitHub App and complete the installation-access journey. Local private configuration, OAuth/link routes, repository selection, saved connections and disconnect controls are implemented; real provider use remains unverified.
 2. Durable connection and import records. Authenticated webhook intake stores
    the signed payload hash, installation/repository identity, exact ref/commit
    and connection revision transactionally. Changed or replayed delivery headers
@@ -162,9 +160,46 @@ access and hosting entitlement inside the transaction that consumes the receipt.
 
 The OAuth helper follows [GitHub App user-token authorization](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app), creates authorization URLs with PKCE S256 and exchanges codes
 through the fixed GitHub token endpoint. It bounds responses and time, refuses
-redirects and does not retain returned credentials. HTTP routes, private operator
-configuration, repository selection UI and an actual GitHub App remain outstanding.
+redirects and does not retain returned credentials. HTTP routes, private operator configuration and repository selection UI are now implemented locally. An actual registered GitHub App and provider qualification remain outstanding.
 
 Focused checks cover connection lifecycle/revision, callback replay, disconnect
 and replacement races, role/session changes, expiry, database reopen and schema
 47-to-48 migration. No production migration or feature enablement was performed.
+
+
+## Customer connection flow (local, not deployed)
+
+`customer-portal --github-config` accepts a private JSON file (at most 16 KiB)
+with `client_id`, `private_key_pem` and `client_secret`. Configuration is rejected
+in demo mode. The exact GitHub OAuth callback is the configured HTTPS portal
+origin plus `/github/callback`. Do not enable this option in production until
+repository import and publication are connected and verified.
+
+When configured, static/Node project owners can authorize GitHub, choose an
+accessible repository/branch/folder, view the saved connection, and disconnect.
+Repository discovery is scoped to the configured App and current user. Connect
+rechecks provider access before saving. Automatic deployment remains false;
+the UI explicitly says GitHub publishing is not enabled and ZIP uploads still work.
+The App must already have been installed for the selected repository; the guided
+installation/access-management journey remains to be completed.
+
+The callback landing page removes OAuth parameters from browser history, then
+uses the authenticated same-origin CSRF-protected POST flow. This preserves the
+portal's Strict session cookie. PKCE verifiers are derived from the session and
+random state with HMAC; neither verifier nor raw session is persisted. Temporary
+GitHub user tokens are held in a bounded in-memory selection flow for at most the
+flow's ten-minute authorization window, are inaccessible after expiry, and are
+removed on successful connection/disconnect or later cleanup. A portal restart requires reconnecting.
+Refreshing or revisiting a callback cannot exchange its code twice. A late token
+exchange cannot restore a disconnected or superseded selection.
+
+Focused HTTP checks cover CSRF, session binding, replay, late-response rejection,
+repository selection, disconnect and the no-cache callback page. These use fake
+provider responses, not a real GitHub installation. Production remains schema 46.
+
+
+The customer UI regression checks exercise pending repository selection, numeric
+repository IDs, disconnected state, restart controls, callback workspace switching
+and callback single use. Invalid branch/folder input preserves the temporary
+selection so the owner can correct it without repeating OAuth. These are focused
+DOM and HTTP checks; the full browser/provider journey remains unverified.
