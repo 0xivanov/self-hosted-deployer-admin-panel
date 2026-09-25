@@ -135,6 +135,9 @@ func (s *Store) PrepareContainerRelease(ctx context.Context, token, project, key
 	if _, _, err = s.containerAccess(ctx, tx, token, project); err != nil {
 		return zero, err
 	}
+	if err = validateContainerCredentialReference(ctx, tx, project, in.CredentialID, in.Reference); err != nil {
+		return zero, err
+	}
 	if err = validateContainerEnvironmentReference(ctx, tx, project, in.EnvironmentID); err != nil {
 		return zero, err
 	}
@@ -170,6 +173,9 @@ func (s *Store) PrepareContainerRelease(ctx context.Context, token, project, key
 	defer tx.Rollback()
 	p, actor, err := s.containerAccess(ctx, tx, token, project)
 	if err != nil {
+		return zero, err
+	}
+	if err = validateContainerCredentialReference(ctx, tx, project, in.CredentialID, in.Reference); err != nil {
 		return zero, err
 	}
 	if err = validateContainerEnvironmentReference(ctx, tx, project, in.EnvironmentID); err != nil {

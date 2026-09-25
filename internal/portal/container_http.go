@@ -135,6 +135,19 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 	}
 	var result any = map[string]bool{"ok": true}
 	switch r.URL.Path {
+	case "/api/container/credentials/delete":
+		if h.containerCredentials == nil {
+			httpError(w, 409, "Private registry access is not enabled.")
+			return
+		}
+		err = h.containerCredentials.Delete(r.Context(), token, input.Project, input.ID)
+	case "/api/container/environments/delete":
+		if h.containerEnvironments == nil {
+			httpError(w, 409, "Environment settings are not enabled.")
+			return
+		}
+		err = h.containerEnvironments.Delete(r.Context(), token, input.Project, input.ID)
+
 	case "/api/container/environments":
 		if h.containerEnvironments == nil {
 			httpError(w, 409, "Environment settings are not enabled.")
@@ -148,7 +161,7 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 		}
 		result, err = h.containerCredentials.Create(r.Context(), token, input.Project, input.Key, input.Label, input.Registry, registryimage.Credentials{Username: input.Username, Password: input.Password})
 		if errors.Is(err, ErrContainerCredentialLimit) {
-			httpError(w, 409, "This website has reached the limit of 20 saved registry credentials. Contact support before adding another.")
+			httpError(w, 409, "This website has reached the limit of 20 saved registry credentials. Delete unused saved settings before adding another.")
 			return
 		}
 	case "/api/container/releases":
@@ -191,8 +204,10 @@ func (h *HTTP) containerHTTP(w http.ResponseWriter, r *http.Request, token strin
 	}
 	if err != nil {
 		switch {
+		case errors.Is(err, ErrContainerSettingsInUse):
+			httpError(w, 409, "These settings are required by a saved release and cannot be deleted.")
 		case errors.Is(err, ErrContainerEnvironmentLimit):
-			httpError(w, 409, "This website has reached the limit of 50 saved environment versions. Contact support before adding another.")
+			httpError(w, 409, "This website has reached the limit of 50 saved environment versions. Delete unused saved settings before adding another.")
 		case errors.Is(err, ErrContainerEnvironmentInvalid):
 			httpError(w, 400, "Use a label and up to 64 valid variable names. Each value may contain up to 8192 bytes; all names and values together may contain up to 32 KiB.")
 		case errors.Is(err, ErrContainerCredentialInvalid):

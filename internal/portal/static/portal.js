@@ -469,6 +469,14 @@ async function pollContainerStatus(state){
  state.inFlight=true;state.controller=new AbortController();
  try{for(const [id,entry] of [...containerStatusCards]){if(state.stopped||state!==containerStatusState)break;const card=projectCard(entry.project);if(!card?.isConnected||card.dataset.deleting==='true'){containerStatusCards.delete(id);continue;}try{const data=await api('/api/container?project='+encodeURIComponent(id),undefined,state.controller.signal);if(state.stopped||state!==containerStatusState)break;if(containerStatusCards.get(id)!==entry)continue;if(containerSnapshot(data)!==entry.snapshot)await refreshProject(entry.project,entry.role,entry.version);}catch(e){if(e.status===401){signedOut();return;}if(e.status===403||e.status===404)containerStatusCards.delete(id);}}}finally{state.inFlight=false;state.controller=null;if(state===containerStatusState&&!state.stopped){if(containerStatusCards.size)state.timer=setTimeout(()=>pollContainerStatus(state),5000);else containerStatusState=null;}}
 }
+function renderContainerSavedList(panel,items,type,project,role,version){
+ if(!panel||role==='viewer')return;
+ let list=panel.querySelector('.saved-container-list');if(!list){list=document.createElement('div');list.className='saved-container-list';panel.append(list);}
+ list.replaceChildren();const values=Array.isArray(items)?items:[];
+ if(!values.length){const empty=document.createElement('p');empty.className='muted';empty.textContent=type==='credential'?'No saved registry access versions.':'No saved environment versions.';list.append(empty);return;}
+ const title=document.createElement('p');title.className='muted saved-container-list-title';title.textContent=type==='credential'?'Saved registry access versions':'Saved environment versions';const hint=document.createElement('p');hint.className='muted';hint.textContent='Delete removes this unused stored version only. It does not revoke a registry token or change the live website.';list.append(title,hint);
+ for(const item of values){const row=document.createElement('div');row.className='saved-container-row';const copy=document.createElement('div');const name=document.createElement('strong');name.textContent=item.label||'Unnamed version';const detail=document.createElement('small');detail.textContent=type==='credential'?(item.registry||'Registry access'):(Array.isArray(item.names)?item.names.length+' variables':'Environment variables');copy.append(name,detail);const remove=document.createElement('button');remove.type='button';remove.textContent='Delete unused';if(item.deletable!==true){remove.disabled=true;const retained=document.createElement('small');retained.className='saved-container-retained';retained.textContent='Retained by a release and cannot be deleted.';copy.append(retained);remove.setAttribute('aria-label','Delete unused '+(item.label||'saved version')+' unavailable because a release retains it');}else{remove.addEventListener('click',async()=>{if(remove.disabled||version!==generation)return;remove.disabled=true;try{await api(type==='credential'?'/api/container/credentials/delete':'/api/container/environments/delete',{project:project.id,id:item.id});if(version===generation)await refreshProject(project,role,version);}catch(e){if(version===generation){remove.disabled=false;const note=document.createElement('p');note.className='workflow-error';note.textContent=e.message;row.append(note);}}});}row.append(copy,remove);list.append(row);}
+}
 function renderContainerLive(entry,data){
  const {live,project,role,version}=entry;
  const oldForm=live.querySelector('.container-release-form');
@@ -561,7 +569,7 @@ function renderContainerLive(entry,data){
     });
     access.append(credentialForm);
    }
-   live.append(access);
+   renderContainerSavedList(access,data.credentials,'credential',project,role,version);live.append(access);
   }
   if(data.environment_settings){
    const environments=oldEnvironments||disclosure('Environment variables','container-environments');
@@ -621,7 +629,7 @@ function renderContainerLive(entry,data){
     });
     addRow();envForm.append(rows,add,save,feedback);environments.append(envForm);
    }
-   live.append(environments);
+   renderContainerSavedList(environments,data.environments,'environment',project,role,version);live.append(environments);
   }
  }
  const history=disclosure('Saved releases and deployment history','project-history container-history');history.open=releases.length>0;live.append(history);

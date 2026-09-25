@@ -223,3 +223,26 @@ source-only and requires core 68df8a4 (schema 12) plus the updated CLI and fleet
 worker. Focused worker/client tests and portal reconciliation integration checks
 passed. Actual cluster qualification and the coordinated production rollout
 remain outstanding.
+
+
+### Removing unused saved settings
+
+Docker settings now include lists of saved registry access and environment
+versions. Owners and developers can choose **Delete unused** when no retained
+release references the version. Referenced versions remain visible with a
+retention explanation, protecting both running deployments and rollback choices.
+Deletion removes encrypted data from the active portal database; it does not
+revoke a provider token, erase older backups or change a running workload.
+
+Authorization, reference checks, deletion and audit recording share one
+transaction. Invalid release history prevents deletion. Release preparation
+rechecks credential and environment references after the external registry call,
+so deleting an unused version during that call cannot create a dangling release.
+Cleanup is available after hosting entitlement expiry, subject to the existing
+Docker feature setting and project permissions. Already absent versions can be
+deleted again safely. A subsequent create with a deleted version's request key
+creates a new version; deletion does not preserve a creation tombstone.
+
+This does not retire saved releases or free settings referenced by them. The
+50-release limit and further retained-history cleanup remain separate work. No
+new schema or production feature activation is included in this change.

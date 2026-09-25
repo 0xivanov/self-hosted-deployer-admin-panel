@@ -22,6 +22,7 @@ var (
 const maxContainerCredentials = 20
 
 type ContainerCredential struct {
+	Deletable bool   `json:"deletable"`
 	ID        string `json:"id"`
 	ProjectID string `json:"project_id"`
 	Label     string `json:"label"`
@@ -125,6 +126,10 @@ func (c *ContainerCredentials) List(ctx context.Context, token, project string) 
 	if _, err = c.store.authorize(ctx, tx, token, p.WorkspaceID, true); err != nil {
 		return nil, err
 	}
+	references, _, err := containerSettingsReferences(ctx, tx, project)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT id,project_id,label,registry,created_at FROM container_credentials WHERE project_id=? ORDER BY created_at,id`, project)
 	if err != nil {
 		return nil, err
@@ -136,6 +141,7 @@ func (c *ContainerCredentials) List(ctx context.Context, token, project string) 
 		if err = rows.Scan(&credential.ID, &credential.ProjectID, &credential.Label, &credential.Registry, &credential.CreatedAt); err != nil {
 			return nil, err
 		}
+		credential.Deletable = !p.Deleting && !references[credential.ID]
 		out = append(out, credential)
 	}
 	if err = rows.Err(); err != nil {

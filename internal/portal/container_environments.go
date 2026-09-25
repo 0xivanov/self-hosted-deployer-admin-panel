@@ -22,6 +22,7 @@ var (
 const maxContainerEnvironments = 50
 
 type ContainerEnvironment struct {
+	Deletable bool     `json:"deletable"`
 	ID        string   `json:"id"`
 	ProjectID string   `json:"project_id"`
 	Label     string   `json:"label"`
@@ -131,6 +132,10 @@ func (e *ContainerEnvironments) List(ctx context.Context, token, project string)
 	if _, err = e.store.authorize(ctx, tx, token, p.WorkspaceID, true); err != nil {
 		return nil, err
 	}
+	_, references, err := containerSettingsReferences(ctx, tx, project)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT id,project_id,label,names,created_at FROM container_environments WHERE project_id=? ORDER BY created_at,id`, project)
 	if err != nil {
 		return nil, err
@@ -146,6 +151,7 @@ func (e *ContainerEnvironments) List(ctx context.Context, token, project string)
 		if err = json.Unmarshal([]byte(rawNames), &item.Names); err != nil {
 			return nil, err
 		}
+		item.Deletable = !p.Deleting && !references[item.ID]
 		out = append(out, item)
 	}
 	if err = rows.Err(); err != nil {
