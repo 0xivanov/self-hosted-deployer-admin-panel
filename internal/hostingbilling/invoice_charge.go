@@ -30,15 +30,15 @@ func (c *Client) DiscoverInvoiceCharge(ctx context.Context, invoice, customer, s
 		return "", nil
 	}
 	payment := list.Data()[0]
-	if payment == nil || payment.Livemode || payment.Object != "invoice_payment" || payment.Status != "paid" || payment.Invoice == nil || payment.Payment == nil || payment.Payment.Type != "payment_intent" || payment.Payment.PaymentIntent == nil {
+	if payment == nil || payment.Livemode != c.live || payment.Object != "invoice_payment" || payment.Status != "paid" || payment.Invoice == nil || payment.Payment == nil || payment.Payment.Type != "payment_intent" || payment.Payment.PaymentIntent == nil {
 		return "", invalid
 	}
 	inv := payment.Invoice
 	intent := payment.Payment.PaymentIntent
-	if inv.ID != invoice || inv.Object != "invoice" || inv.Livemode || inv.Customer == nil || inv.Customer.ID != customer || inv.CustomerAccount != "" || inv.Parent == nil || inv.Parent.Type != "subscription_details" || inv.Parent.SubscriptionDetails == nil || inv.Parent.SubscriptionDetails.Subscription == nil || inv.Parent.SubscriptionDetails.Subscription.ID != subscription {
+	if inv.ID != invoice || inv.Object != "invoice" || inv.Livemode != c.live || inv.Customer == nil || inv.Customer.ID != customer || inv.CustomerAccount != "" || inv.Parent == nil || inv.Parent.Type != "subscription_details" || inv.Parent.SubscriptionDetails == nil || inv.Parent.SubscriptionDetails.Subscription == nil || inv.Parent.SubscriptionDetails.Subscription.ID != subscription {
 		return "", invalid
 	}
-	if !providerID(intent.ID, "pi_") || intent.Object != "payment_intent" || intent.Livemode || intent.Customer == nil || intent.Customer.ID != customer || intent.CustomerAccount != "" || intent.Status != "succeeded" || intent.LatestCharge == nil || !providerID(intent.LatestCharge.ID, "ch_") || payment.AmountPaid <= 0 || payment.AmountPaid != intent.AmountReceived || payment.Currency != intent.Currency || payment.Currency != inv.Currency {
+	if !providerID(intent.ID, "pi_") || intent.Object != "payment_intent" || intent.Livemode != c.live || intent.Customer == nil || intent.Customer.ID != customer || intent.CustomerAccount != "" || intent.Status != "succeeded" || intent.LatestCharge == nil || !providerID(intent.LatestCharge.ID, "ch_") || payment.AmountPaid <= 0 || payment.AmountPaid != intent.AmountReceived || payment.Currency != intent.Currency || payment.Currency != inv.Currency {
 		return "", invalid
 	}
 	return intent.LatestCharge.ID, nil

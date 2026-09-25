@@ -15,7 +15,7 @@ type Management struct {
 
 func NewManagement(client *Client, configuration string) (*Management, error) {
 	if client == nil || !providerID(configuration, "bpc_") {
-		return nil, errors.New("a test portal configuration is required")
+		return nil, errors.New("a portal configuration is required")
 	}
 	return &Management{client: client, configuration: configuration}, nil
 }
@@ -27,7 +27,7 @@ func (m *Management) CreateManagementSession(ctx context.Context, customer strin
 		return "", errors.New("invalid billing customer")
 	}
 	config, err := m.client.stripe.V1BillingPortalConfigurations.Retrieve(ctx, m.configuration, &stripe.BillingPortalConfigurationRetrieveParams{})
-	if err != nil || !supportedManagementConfiguration(config, m.configuration) {
+	if err != nil || !supportedManagementConfigurationForMode(config, m.configuration, m.client.live) {
 		return "", errors.New("billing management configuration is unsupported")
 	}
 	params := &stripe.BillingPortalSessionCreateParams{Customer: stripe.String(customer), Configuration: stripe.String(m.configuration), ReturnURL: stripe.String(m.client.success)}
@@ -36,7 +36,7 @@ func (m *Management) CreateManagementSession(ctx context.Context, customer strin
 	if err != nil {
 		return "", errors.New("billing management unavailable")
 	}
-	if session == nil || session.Livemode || session.Customer != customer || session.CustomerAccount != "" || session.OnBehalfOf != "" || !supportedManagementConfiguration(session.Configuration, m.configuration) || session.ReturnURL != m.client.success {
+	if session == nil || session.Livemode != m.client.live || session.Customer != customer || session.CustomerAccount != "" || session.OnBehalfOf != "" || !supportedManagementConfigurationForMode(session.Configuration, m.configuration, m.client.live) || session.ReturnURL != m.client.success {
 		return "", errors.New("billing management identity mismatch")
 	}
 	u, err := url.Parse(session.URL)
@@ -50,7 +50,10 @@ func (m *Management) CreateManagementSession(ctx context.Context, customer strin
 // end of the paid period. Public login and subscription edits bypass assumptions
 // of the current workspace billing flow and must remain disabled.
 func supportedManagementConfiguration(c *stripe.BillingPortalConfiguration, id string) bool {
-	if c == nil || c.ID != id || !c.Active || c.Livemode || c.Application != nil || c.Features == nil || c.LoginPage == nil || c.LoginPage.Enabled {
+	return supportedManagementConfigurationForMode(c, id, false)
+}
+func supportedManagementConfigurationForMode(c *stripe.BillingPortalConfiguration, id string, live bool) bool {
+	if c == nil || c.ID != id || !c.Active || c.Livemode != live || c.Application != nil || c.Features == nil || c.LoginPage == nil || c.LoginPage.Enabled {
 		return false
 	}
 	f := c.Features

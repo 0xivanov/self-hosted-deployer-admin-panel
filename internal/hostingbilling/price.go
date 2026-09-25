@@ -37,11 +37,14 @@ func (c *Client) RetrievePlanPrice(ctx context.Context, plan, expectedPrice stri
 	if err != nil {
 		return PlanPrice{}, errors.New("hosting price unavailable")
 	}
-	return normalizePlanPrice(p, plan, price, observed)
+	return normalizePlanPriceForMode(p, plan, price, observed, c.live)
 }
 func normalizePlanPrice(p *stripe.Price, plan, price string, observed int64) (PlanPrice, error) {
+	return normalizePlanPriceForMode(p, plan, price, observed, false)
+}
+func normalizePlanPriceForMode(p *stripe.Price, plan, price string, observed int64, live bool) (PlanPrice, error) {
 	invalid := errors.New("unsupported hosting price")
-	if p == nil || p.ID != price || p.Object != "price" || p.Deleted || p.Livemode || !p.Active || p.Type != "recurring" || p.BillingScheme != "per_unit" || p.CustomUnitAmount != nil || p.TransformQuantity != nil || len(p.Tiers) != 0 || p.TiersMode != "" || p.Recurring == nil || p.Recurring.UsageType != "licensed" || p.Recurring.Meter != "" || p.UnitAmount < 0 || p.UnitAmount > 99999999 || p.UnitAmountDecimal != float64(p.UnitAmount) {
+	if p == nil || p.ID != price || p.Object != "price" || p.Deleted || p.Livemode != live || !p.Active || p.Type != "recurring" || p.BillingScheme != "per_unit" || p.CustomUnitAmount != nil || p.TransformQuantity != nil || len(p.Tiers) != 0 || p.TiersMode != "" || p.Recurring == nil || p.Recurring.UsageType != "licensed" || p.Recurring.Meter != "" || p.UnitAmount < 0 || p.UnitAmount > 99999999 || p.UnitAmountDecimal != float64(p.UnitAmount) {
 		return PlanPrice{}, invalid
 	}
 	for currency, option := range p.CurrencyOptions {

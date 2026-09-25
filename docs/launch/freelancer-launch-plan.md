@@ -46,7 +46,7 @@ Acceptance: a client sees only the intended website; cross-project APIs deny acc
 - Dockerfile builds later, with resource limits and isolation. Define storage/database support explicitly; do not market all MVP workloads as supported.
 
 ### 5. Paid private launch
-- Activate actual hosting subscriptions only after business/provider setup, pricing and customer terms are ready.
+- Hosting billing is still test-only end to end. Explicit live-mode provider support is implemented locally, but persistence/entitlement isolation, worker/HTTP configuration and UI mode handling remain before activation. See [live billing implementation](live-billing-activation.md). Activate only after business/provider setup, pricing and customer terms are ready.
 - Account for compute, storage, backups, payment fees and support time when setting plans. Never invent prices in marketing before choosing limits and margins.
 - Domain resale and merchant website sales stay on the original roadmap, separately gated by provider activation and lifecycle support.
 - Recruit five real customers with assisted onboarding: two freelancers, two indie developers, one business with an existing site.

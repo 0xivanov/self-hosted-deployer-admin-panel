@@ -19,6 +19,7 @@ const MaxWebhookBytes = 1 << 20
 var ErrWebhook = errors.New("invalid hosting billing webhook")
 
 type Event struct {
+	Live    bool
 	ID      string
 	Type    string
 	Created int64
@@ -31,6 +32,15 @@ type Event struct {
 // before any hosting entitlement is changed. Signature validation alone grants
 // no workspace authority, and a Checkout redirect never proves payment.
 func VerifyTestEvent(body []byte, signature, secret string) (Event, error) {
+	return verifyEvent(body, signature, secret, false)
+}
+
+// VerifyLiveEvent rejects sandbox events even when signed with the supplied secret.
+// Callers must also persist and enforce the selected mode at every billing boundary.
+func VerifyLiveEvent(body []byte, signature, secret string) (Event, error) {
+	return verifyEvent(body, signature, secret, true)
+}
+func verifyEvent(body []byte, signature, secret string, live bool) (Event, error) {
 	if len(body) == 0 || len(body) > MaxWebhookBytes || len(signature) > 8192 || !strings.HasPrefix(secret, "whsec_") || len(secret) < 16 {
 		return Event{}, ErrWebhook
 	}
@@ -56,14 +66,14 @@ func VerifyTestEvent(body []byte, signature, secret string) (Event, error) {
 	if err != nil {
 		return Event{}, ErrWebhook
 	}
-	// Require an explicit test-mode envelope. A missing boolean must not be
+	// Require an explicit matching-mode envelope. A missing boolean must not be
 	// mistaken for false, and connected-account events must never enter hosting.
 	var envelope struct {
 		Livemode *bool  `json:"livemode"`
 		Account  string `json:"account"`
 		Context  string `json:"context"`
 	}
-	if json.Unmarshal(body, &envelope) != nil || envelope.Livemode == nil || *envelope.Livemode || envelope.Account != "" || envelope.Context != "" || event.ID == "" || event.Type == "" || event.Created <= 0 || event.Data == nil || len(event.Data.Raw) == 0 {
+	if json.Unmarshal(body, &envelope) != nil || envelope.Livemode == nil || *envelope.Livemode != live || envelope.Account != "" || envelope.Context != "" || event.ID == "" || event.Type == "" || event.Created <= 0 || event.Data == nil || len(event.Data.Raw) == 0 {
 		return Event{}, ErrWebhook
 	}
 	raw := strings.TrimSpace(string(event.Data.Raw))
@@ -71,5 +81,5 @@ func VerifyTestEvent(body []byte, signature, secret string) (Event, error) {
 		return Event{}, ErrWebhook
 	}
 	sum := sha256.Sum256(body)
-	return Event{ID: event.ID, Type: string(event.Type), Created: event.Created, SHA256: hex.EncodeToString(sum[:]), Object: append(json.RawMessage(nil), event.Data.Raw...)}, nil
+	return Event{Live: live, ID: event.ID, Type: string(event.Type), Created: event.Created, SHA256: hex.EncodeToString(sum[:]), Object: append(json.RawMessage(nil), event.Data.Raw...)}, nil
 }

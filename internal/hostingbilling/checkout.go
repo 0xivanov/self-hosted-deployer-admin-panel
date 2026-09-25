@@ -12,6 +12,7 @@ import (
 )
 
 type Client struct {
+	live            bool
 	stripe          *stripe.Client
 	http            *http.Client
 	success, cancel string
@@ -25,9 +26,22 @@ type Checkout struct {
 func NewTestClient(key, success, cancel string, plans map[string]string) (*Client, error) {
 	return newTestClient(key, success, cancel, plans, "")
 }
+
+// NewLiveClient explicitly selects real-money provider mode. Callers must keep
+// live customer, checkout and entitlement records separate from sandbox data.
+func NewLiveClient(key, success, cancel string, plans map[string]string) (*Client, error) {
+	return newClient(key, success, cancel, plans, "", true)
+}
 func newTestClient(key, success, cancel string, plans map[string]string, endpoint string) (*Client, error) {
-	if !strings.HasPrefix(key, "sk_test_") || len(key) < 16 {
-		return nil, errors.New("a Stripe test secret key is required")
+	return newClient(key, success, cancel, plans, endpoint, false)
+}
+func newClient(key, success, cancel string, plans map[string]string, endpoint string, live bool) (*Client, error) {
+	prefix := "sk_test_"
+	if live {
+		prefix = "sk_live_"
+	}
+	if !strings.HasPrefix(key, prefix) || len(key) < 16 || strings.ContainsAny(key, " \r\n\t") {
+		return nil, errors.New("a Stripe secret key matching the selected mode is required")
 	}
 	good := func(raw string) *url.URL {
 		u, e := url.Parse(raw)
@@ -58,7 +72,7 @@ func newTestClient(key, success, cancel string, plans map[string]string, endpoin
 		cfg.URL = stripe.String(endpoint)
 	}
 	sdk := stripe.NewClient(key, stripe.WithBackends(stripe.NewBackendsWithConfig(cfg)))
-	return &Client{stripe: sdk, http: hc, success: success, cancel: cancel, plans: configured}, nil
+	return &Client{live: live, stripe: sdk, http: hc, success: success, cancel: cancel, plans: configured}, nil
 }
 func (c *Client) Close() { c.http.CloseIdleConnections() }
 
@@ -77,15 +91,22 @@ func (c *Client) CreateCheckout(ctx context.Context, customer, plan, requestID s
 	if err != nil {
 		return Checkout{}, errors.New("checkout outcome unavailable; retain request for reconciliation")
 	}
+	if session == nil {
+		return Checkout{}, errors.New("checkout response unavailable")
+	}
 	u, err := url.Parse(session.URL)
-	if session.Livemode || !strings.HasPrefix(session.ID, "cs_test_") || err != nil || u.Scheme != "https" || u.Host != "checkout.stripe.com" || u.User != nil {
-		return Checkout{}, errors.New("invalid test checkout response")
+	prefix := "cs_test_"
+	if c.live {
+		prefix = "cs_live_"
+	}
+	if session.Livemode != c.live || !strings.HasPrefix(session.ID, prefix) || err != nil || u.Scheme != "https" || u.Host != "checkout.stripe.com" || u.User != nil {
+		return Checkout{}, errors.New("invalid checkout mode or identity")
 	}
 	return Checkout{ID: session.ID, URL: session.URL}, nil
 }
 
 // CreateCustomer is called only with a persisted request/email snapshot. It
-// creates a Stripe test customer, not a subscription or hosting entitlement.
+// creates a Stripe customer in the selected mode, not a subscription or hosting entitlement.
 func (c *Client) CreateCustomer(ctx context.Context, email, requestID string) (string, error) {
 	if len(email) > 254 || !strings.Contains(email, "@") || strings.ContainsAny(email, "\r\n") || len(requestID) < 16 || len(requestID) > 128 {
 		return "", errors.New("invalid customer request")
@@ -96,8 +117,8 @@ func (c *Client) CreateCustomer(ctx context.Context, email, requestID string) (s
 	if err != nil {
 		return "", errors.New("customer creation outcome unavailable; retain request for reconciliation")
 	}
-	if customer.Livemode || !strings.HasPrefix(customer.ID, "cus_") {
-		return "", errors.New("invalid test customer response")
+	if customer == nil || customer.Livemode != c.live || !strings.HasPrefix(customer.ID, "cus_") {
+		return "", errors.New("invalid customer mode or identity")
 	}
 	return customer.ID, nil
 }

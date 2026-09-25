@@ -36,7 +36,7 @@ func providerID(id, prefix string) bool {
 	return true
 }
 
-// RetrieveSubscription reads current test-provider state with the latest invoice
+// RetrieveSubscription reads current provider state in the configured mode with the latest invoice
 // expanded. It checks the persisted customer/price mapping and supported single
 // quantity-one hosting item before returning a snapshot. This is not a hosting
 // entitlement decision: refunds, disputes, grace periods and freshness policy
@@ -52,15 +52,18 @@ func (c *Client) RetrieveSubscription(ctx context.Context, id, customer, price s
 	if err != nil {
 		return SubscriptionSnapshot{}, errors.New("subscription state unavailable; retry reconciliation")
 	}
-	return normalizeSubscription(subscription, id, customer, price, observed)
+	return normalizeSubscriptionForMode(subscription, id, customer, price, observed, c.live)
 }
 func normalizeSubscription(s *stripe.Subscription, id, customer, price string, observed int64) (SubscriptionSnapshot, error) {
+	return normalizeSubscriptionForMode(s, id, customer, price, observed, false)
+}
+func normalizeSubscriptionForMode(s *stripe.Subscription, id, customer, price string, observed int64, live bool) (SubscriptionSnapshot, error) {
 	invalid := errors.New("subscription state does not match hosting billing identity")
-	if s == nil || s.Livemode || s.ID != id || s.Customer == nil || s.Customer.ID != customer || s.CustomerAccount != "" || s.Items == nil || s.Items.HasMore || len(s.Items.Data) != 1 {
+	if s == nil || s.Livemode != live || s.ID != id || s.Customer == nil || s.Customer.ID != customer || s.CustomerAccount != "" || s.Items == nil || s.Items.HasMore || len(s.Items.Data) != 1 {
 		return SubscriptionSnapshot{}, invalid
 	}
 	item := s.Items.Data[0]
-	if item == nil || item.Price == nil || item.Price.ID != price || item.Price.Livemode || item.Quantity != 1 || item.CurrentPeriodStart <= 0 || item.CurrentPeriodEnd <= item.CurrentPeriodStart {
+	if item == nil || item.Price == nil || item.Price.ID != price || item.Price.Livemode != live || item.Quantity != 1 || item.CurrentPeriodStart <= 0 || item.CurrentPeriodEnd <= item.CurrentPeriodStart {
 		return SubscriptionSnapshot{}, invalid
 	}
 	switch s.Status {
@@ -70,7 +73,7 @@ func normalizeSubscription(s *stripe.Subscription, id, customer, price string, o
 	}
 	result := SubscriptionSnapshot{ID: id, CustomerID: customer, PriceID: price, Status: string(s.Status), PeriodStart: item.CurrentPeriodStart, PeriodEnd: item.CurrentPeriodEnd, CancelAtPeriodEnd: s.CancelAtPeriodEnd, CollectionPaused: s.PauseCollection != nil, ObservedAt: observed}
 	if invoice := s.LatestInvoice; invoice != nil {
-		if !providerID(invoice.ID, "in_") || invoice.Livemode || invoice.Customer == nil || invoice.Customer.ID != customer || invoice.Parent == nil || invoice.Parent.Type != "subscription_details" || invoice.Parent.SubscriptionDetails == nil || invoice.Parent.SubscriptionDetails.Subscription == nil || invoice.Parent.SubscriptionDetails.Subscription.ID != id {
+		if !providerID(invoice.ID, "in_") || invoice.Livemode != live || invoice.Customer == nil || invoice.Customer.ID != customer || invoice.Parent == nil || invoice.Parent.Type != "subscription_details" || invoice.Parent.SubscriptionDetails == nil || invoice.Parent.SubscriptionDetails.Subscription == nil || invoice.Parent.SubscriptionDetails.Subscription.ID != id {
 			return SubscriptionSnapshot{}, invalid
 		}
 		switch invoice.Status {
