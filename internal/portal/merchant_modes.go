@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// merchantModeValue is independent of hosting billing. Runtime activation stays
-// test-only until merchant HTTP, worker and customer flows are wired together.
+// merchantModeValue is independent of hosting billing; zero-value stores retain
+// sandbox behavior for compatibility. Public openers validate explicit modes.
 func (s *Store) merchantModeValue() string {
 	if s.merchantMode == "live" {
 		return "live"

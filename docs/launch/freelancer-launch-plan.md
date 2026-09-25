@@ -179,3 +179,15 @@ This checkpoint is committed source only. Production remains admin `417691c` /
 schema 55. Merchant runtime configuration and live-facing UI are next, followed
 by provider setup and a coordinated deployment. Live credentials, GitHub App
 setup, private registry qualification and registrar integration remain open.
+
+
+September 25 merchant runtime follow-up: explicit live/test merchant settings
+now connect portal startup, merchant maintenance, provider selection and separate
+webhook routes to schema 56. Hosting and merchant selections remain independent.
+The buyer shop and merchant controls display selected-mode payment/refund copy;
+buyer browser state is separated by mode. Legacy test settings remain compatible,
+while conflicting or incomplete live settings are rejected. Source-only status:
+production is still `417691c` / schema 55 and no real merchant transaction has
+been performed. See [live merchant activation](live-merchant-activation.md).
+Live Stripe account readiness and credentials are still required before rollout
+activation, followed by independently authorized real payment verification.

@@ -515,9 +515,10 @@ partition. Buyer cookies also differ between live and test modes.
 
 Provider guards require the provider to match the selected merchant partition.
 Legacy provider doubles are accepted only in test mode. Hosting billing remains
-independent. Public configuration still selects test merchant behavior: an
-explicit merchant mode must next be wired through startup, workers, webhooks and
-customer-facing UI before live activation.
+independent. Public configuration defaults to test merchant behavior. Explicit live merchant
+settings now select the matching provider, store partition, webhook route and
+customer-facing labels. Follow the [activation runbook](launch/live-merchant-activation.md)
+for coordinated portal/worker configuration and provider readiness.
 
 Verification includes merchant integration checks, the full portal integration
 suite, provider tests, static analysis and command builds. No production files

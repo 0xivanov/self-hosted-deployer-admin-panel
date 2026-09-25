@@ -89,8 +89,9 @@ live payment entitlement. Existing websites keep running when changes are held.
 1. Merchant live provider constructors, signed event verification and schema 56
    persistence separation are implemented locally. Accounts, products, orders,
    events, refunds, buyer sessions and recovery records are isolated by mode.
-   Existing records migrate to test mode. Runtime activation and truthful
-   live merchant UI still need wiring; public configuration remains test-only.
+   Existing records migrate to test mode. Explicit merchant runtime settings,
+   webhook routing and mode-aware customer UI are now wired locally. See
+   [live merchant activation](live-merchant-activation.md) for coordinated setup.
    Hosting and merchant payment scopes remain distinct. Production remains
    schema 55 until an explicit rollout with a matching database/binary backup.
 2. Activate provider configuration only after the owner has live account access,

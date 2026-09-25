@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let csrf='',workspaces=[],generation=0,flow='',billingEnabled=false,billingMode='test',billingManagement=false,inviteOnly=false,clientInvitations=false,githubConnections=false,githubImports=false,githubInstallation=false,githubAutoDeploy=false,billingGeneration=0,merchantEnabled=false,merchantCountries=[],merchantGeneration=0,productGeneration=0,merchantOrdersGeneration=0,domainQuotes=false,domainOrderGeneration=0,domainExpiryTimer;
+let csrf='',workspaces=[],generation=0,flow='',billingEnabled=false,billingMode='test',billingManagement=false,inviteOnly=false,clientInvitations=false,githubConnections=false,githubImports=false,githubInstallation=false,githubAutoDeploy=false,billingGeneration=0,merchantEnabled=false,merchantMode='test',merchantCountries=[],merchantGeneration=0,productGeneration=0,merchantOrdersGeneration=0,domainQuotes=false,domainOrderGeneration=0,domainExpiryTimer;
 let nodeStatusCards=new Map(),nodeStatusState=null;
 let containerStatusCards=new Map(),containerStatusState=null;
 let staticStatusCards=new Map(),staticStatusState=null;
@@ -93,7 +93,7 @@ $('account-form').addEventListener('submit',event=>{event.preventDefault();submi
  });});
 async function initialize(){
  containerHosting=(await api('/api/config')).container_hosting===true;$('container-kind').hidden=!containerHosting;$('container-filter').hidden=!containerHosting;
- const config=await api('/api/config');domainQuotes=config.domain_quotes===true;billingEnabled=config.billing_enabled===true||config.test_billing===true;billingMode=config.billing_mode==='live'||config.billing_mode==='test'?config.billing_mode:'test';billingManagement=config.billing_management===true;inviteOnly=config.invite_only===true;clientInvitations=config.client_invitations===true;githubConnections=config.github_connections===true;githubImports=config.github_imports===true;githubInstallation=config.github_installation===true;githubAutoDeploy=config.github_auto_deploy===true;merchantEnabled=config.merchant===true;merchantCountries=Array.isArray(config.merchant_countries)?config.merchant_countries.filter(country=>typeof country==='string'):[];$('preview-billing-status').textContent=!billingEnabled?'Hosting billing is disabled.':billingMode==='live'?'Hosting billing is live.':'Hosting billing is in test mode.';$('billing-notice').textContent=!billingEnabled?'Hosting billing is disabled.':billingMode==='live'?'Live billing is enabled for hosting.':'Test payments only. No real payment is collected.';$('open-signup').hidden=!config.signup;$('open-forgot').hidden=!config.account_mail;$('open-resend').hidden=!config.account_mail;$('registration-note').textContent=config.signup?(inviteOnly?'Registration is by invitation.':'Verify your email before signing in.'):'Registration is closed.';
+ const config=await api('/api/config');domainQuotes=config.domain_quotes===true;billingEnabled=config.billing_enabled===true||config.test_billing===true;billingMode=config.billing_mode==='live'||config.billing_mode==='test'?config.billing_mode:'test';billingManagement=config.billing_management===true;inviteOnly=config.invite_only===true;clientInvitations=config.client_invitations===true;githubConnections=config.github_connections===true;githubImports=config.github_imports===true;githubInstallation=config.github_installation===true;githubAutoDeploy=config.github_auto_deploy===true;merchantEnabled=config.merchant===true;merchantMode=config.merchant_mode==='live'?'live':config.merchant_mode==='test'?'test':'';const merchantModeNotice=$('merchant-mode-notice');if(merchantModeNotice)merchantModeNotice.textContent=merchantMode==='live'?'Live merchant payments are enabled. Payment status is confirmed by Stripe before fulfillment.':merchantMode==='test'?'Test merchant accounts only. No real payments are processed.':'Merchant payment mode is unavailable. Contact the operator.';const merchantProductNote=$('merchant-product-note');if(merchantProductNote)merchantProductNote.textContent=merchantMode==='live'?'Share a product purchase link to offer a live payment through checkout.':merchantMode==='test'?'Share a product purchase link to try website checkout with test payments.':'Product checkout is unavailable until a payment mode is configured.';merchantCountries=Array.isArray(config.merchant_countries)?config.merchant_countries.filter(country=>typeof country==='string'):[];$('preview-billing-status').textContent=!billingEnabled?'Hosting billing is disabled.':billingMode==='live'?'Hosting billing is live.':'Hosting billing is in test mode.';$('billing-notice').textContent=!billingEnabled?'Hosting billing is disabled.':billingMode==='live'?'Live billing is enabled for hosting.':'Test payments only. No real payment is collected.';$('open-signup').hidden=!config.signup;$('open-forgot').hidden=!config.account_mail;$('open-resend').hidden=!config.account_mail;$('registration-note').textContent=config.signup?(inviteOnly?'Registration is by invitation.':'Verify your email before signing in.'):'Registration is closed.';
  if(initialFlow==='invite'||initialFlow==='client-invite'){try{await loadSession();}catch(e){signedOut();if(e.status===401){$('login-copy').textContent=initialFlow==='client-invite'?'Sign in with the invited email to accept read-only client access. New users must register and verify their email first.':'Sign in with the invited email to accept. New users must register and verify their email first.';if(initialFlow==='client-invite'&&config.signup)$('open-signup').hidden=false;}else throw e;}return;}
  if(initialFlow){if(!config.account_mail)throw new Error('Account recovery is unavailable. Contact the operator.');showFlow(initialFlow);return;}
  try{await loadSession();}catch(e){signedOut();if(e.status!==401)throw e;return;}
@@ -984,7 +984,7 @@ function renderMerchantProducts(workspace,version,request,products){
   const button=document.createElement('button');button.type='submit';button.textContent=creating?'Create product':'Save changes';
   const message=document.createElement('p');message.setAttribute('role','status');
   form.append(label('Product name',name),label('Currency',currency),label('Price',price),label('Active in catalog',active),button,message);
-  const purchase=document.createElement('a');purchase.textContent='Open test purchase page';purchase.target='_blank';purchase.rel='noopener noreferrer';
+  const purchase=document.createElement('a');purchase.textContent=merchantMode==='live'?'Open purchase page':merchantMode==='test'?'Open test purchase page':'Checkout unavailable';purchase.target='_blank';purchase.rel='noopener noreferrer';
   const updatePurchase=()=>{purchase.hidden=!product?.active;if(product)purchase.href='/shop?product='+encodeURIComponent(product.id);};updatePurchase();if(!creating)form.append(purchase);
   form.addEventListener('submit',async event=>{
    event.preventDefault();if(busy||!current())return;message.textContent='';
@@ -1030,10 +1030,10 @@ function renderMerchantOrders(orders,refunds=[],enabled=false){
   const fulfilledAt=Number(order.fulfilled_at)||0;
   note(fulfilledAt?'Marked fulfilled '+billingDateTime(fulfilledAt):'Not marked fulfilled');
   if(enabled && (refund||order.payment_status==='paid')){
-   const button=document.createElement('button');button.type='button';button.textContent=refund?'Refresh refund':'Refund full test payment';let busy=false;
+   const button=document.createElement('button');button.type='button';button.textContent=refund?'Refresh refund':'Refund full '+merchantMode+' payment';let busy=false;
    button.addEventListener('click',async()=>{
     if(busy||!current())return;
-    if(!refund&&!confirm('Refund the full '+billingAmount(order.amount_minor,order.currency)+' test payment for '+order.name+'?'))return;
+    if(!refund&&!confirm('Refund the full '+billingAmount(order.amount_minor,order.currency)+ ' '+merchantMode+' payment for '+order.name+'?'))return;
     busy=true;button.disabled=true;
     try{await api(refund?'/api/merchant/refunds/refresh':'/api/merchant/refunds',refund?{workspace,id:refund.id}:{workspace,order:order.id});}
     catch(e){if(current())error(e);}
@@ -1082,7 +1082,7 @@ function renderMerchantAccount(workspace,version,request,account){
   if(!merchantCountries.length){note('No merchant countries are configured.');return;}
   const form=document.createElement('form'),label=document.createElement('label'),select=document.createElement('select');label.textContent='Business country';
   for(const country of merchantCountries){const option=document.createElement('option');option.value=country;option.textContent=country;select.append(option);}label.append(select);
-  const button=document.createElement('button');button.textContent='Create test merchant account';form.append(label,button);content.append(form);
+  const button=document.createElement('button');button.textContent=merchantMode==='live'?'Create merchant account':merchantMode==='test'?'Create test merchant account':'Merchant payments unavailable';button.disabled=!merchantMode;form.append(label,button);content.append(form);
   form.addEventListener('submit',event=>{event.preventDefault();action(button,()=>create(select.value))();});
  }else if(account.state==='requested'){
   const button=document.createElement('button');button.type='button';button.textContent='Continue account creation';button.addEventListener('click',action(button,()=>create(account.country)));content.append(button);

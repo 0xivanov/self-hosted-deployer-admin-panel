@@ -51,3 +51,31 @@ func TestResolveBillingSettings(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveMerchantSettings(t *testing.T) {
+	tests := []struct {
+		name, mode, legacyConfig, legacyWebhook, config, webhook string
+		development                                              bool
+		wantMode, wantConfig, wantWebhook                        string
+		wantErr                                                  bool
+	}{
+		{name: "defaults to test", wantMode: "test"},
+		{name: "live requires both", mode: "live", config: "merchant.json", webhook: "secret", wantMode: "live", wantConfig: "merchant.json", wantWebhook: "secret"},
+		{name: "legacy test aliases", legacyConfig: "test.json", legacyWebhook: "test.secret", wantMode: "test", wantConfig: "test.json", wantWebhook: "test.secret"},
+		{name: "live missing webhook", mode: "live", config: "merchant.json", wantErr: true},
+		{name: "live demo", mode: "live", config: "merchant.json", webhook: "secret", development: true, wantErr: true},
+		{name: "legacy conflicts live", mode: "live", legacyConfig: "test.json", wantErr: true},
+		{name: "webhook without config", webhook: "secret", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mode, config, webhook, err := resolveMerchantSettings(tt.mode, tt.legacyConfig, tt.legacyWebhook, tt.config, tt.webhook, tt.development)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error=%v", err)
+			}
+			if !tt.wantErr && (mode != tt.wantMode || config != tt.wantConfig || webhook != tt.wantWebhook) {
+				t.Fatalf("got %q %q %q", mode, config, webhook)
+			}
+		})
+	}
+}

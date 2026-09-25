@@ -44,8 +44,11 @@ func run() error {
 	smtpFile := flag.String("smtp-config", "", "private JSON SMTP settings")
 	mailKeyFile := flag.String("mail-key-file", "", "private file containing 32-byte hex mail encryption key")
 	merchantFile := flag.String("test-merchant-config", "", "private Stripe test Connect settings with secret_key and countries")
+	merchantConfig := flag.String("merchant-config", "", "private Stripe Connect settings for the selected merchant mode")
 	managementFile := flag.String("test-billing-management-config", "", "private Stripe test customer portal settings")
 	merchantWebhookFile := flag.String("test-merchant-webhook-secret-file", "", "Private Stripe Connect test webhook signing secret")
+	merchantMode := flag.String("merchant-mode", "", "merchant payments: test or live")
+	merchantWebhookSecretFile := flag.String("merchant-webhook-secret-file", "", "private merchant webhook signing secret for the selected mode")
 	webhookFile := flag.String("test-webhook-secret-file", "", "private Stripe test webhook signing secret file")
 	billingMode := flag.String("billing-mode", "", "hosting payments: disabled (empty), test or live")
 	genericWebhookFile := flag.String("billing-webhook-secret-file", "", "private webhook signing secret for the selected hosting payment mode")
@@ -74,6 +77,12 @@ func run() error {
 	}
 	*webhookFile = selectedWebhookFile
 	*managementFile = selectedManagementFile
+	selectedMerchantMode, selectedMerchantConfig, selectedMerchantWebhookFile, err := resolveMerchantSettings(*merchantMode, *merchantFile, *merchantWebhookFile, *merchantConfig, *merchantWebhookSecretFile, *demo)
+	if err != nil {
+		return err
+	}
+	*merchantFile = selectedMerchantConfig
+	*merchantWebhookFile = selectedMerchantWebhookFile
 	var githubWebhookSecret string
 	var githubApp *githubdeploy.App
 	var githubOAuth *githubdeploy.OAuth
@@ -160,7 +169,7 @@ func run() error {
 	if storeBillingMode == "" {
 		storeBillingMode = "test"
 	}
-	store, err := portal.OpenWithBillingMode(*database, storeBillingMode)
+	store, err := portal.OpenWithPaymentModes(*database, storeBillingMode, selectedMerchantMode)
 	if err != nil {
 		return err
 	}
@@ -309,7 +318,11 @@ func run() error {
 		if decoder.Decode(&cfg) != nil || decoder.Decode(new(any)) != io.EOF {
 			return errors.New("invalid merchant configuration")
 		}
-		client, e := merchantbilling.NewTestClient(cfg.SecretKey, *origin+"/merchant/return", *origin+"/merchant/refresh", cfg.Countries)
+		constructor := merchantbilling.NewTestClient
+		if selectedMerchantMode == "live" {
+			constructor = merchantbilling.NewLiveClient
+		}
+		client, e := constructor(cfg.SecretKey, *origin+"/merchant/return", *origin+"/merchant/refresh", cfg.Countries)
 		if e != nil {
 			return e
 		}
@@ -324,7 +337,7 @@ func run() error {
 		}
 		signupAllowed = portal.SignupAllowlist(*signupAllowlist)
 	}
-	opts := portal.HTTPOptions{TestMerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, BillingWebhookSecret: webhookSecret, BillingMode: selectedBillingMode, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
+	opts := portal.HTTPOptions{MerchantMode: selectedMerchantMode, MerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, BillingWebhookSecret: webhookSecret, BillingMode: selectedBillingMode, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
 	if githubApp != nil {
 		opts.GitHubApp = githubApp
 		opts.GitHubOAuth = githubOAuth

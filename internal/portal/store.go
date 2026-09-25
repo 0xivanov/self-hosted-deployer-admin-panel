@@ -69,6 +69,16 @@ func Open(path string) (*Store, error) {
 // store. Operators must configure every worker with the same mode. Selection
 // never rewrites sandbox history or grants a live subscription.
 func OpenWithBillingMode(path, mode string) (*Store, error) {
+	return OpenWithPaymentModes(path, mode, "test")
+}
+
+// OpenWithPaymentModes selects independent hosting and merchant partitions for
+// the lifetime of this store. Every participating process must match its scope.
+// Selection never converts test history into real payment evidence.
+func OpenWithPaymentModes(path, mode, merchantMode string) (*Store, error) {
+	if merchantMode != "test" && merchantMode != "live" {
+		return nil, errors.New("merchant mode must be test or live")
+	}
 	if mode != "test" && mode != "live" {
 		return nil, errors.New("billing mode must be test or live")
 	}
@@ -113,7 +123,7 @@ func OpenWithBillingMode(path, mode string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{billingMode: mode, db: db, now: time.Now, hashes: make(chan struct{}, 2)}
+	s := &Store{billingMode: mode, merchantMode: merchantMode, db: db, now: time.Now, hashes: make(chan struct{}, 2)}
 	if err = s.migrate(); err == nil {
 		err = s.migrateContainers()
 	}

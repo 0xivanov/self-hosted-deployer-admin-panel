@@ -19,6 +19,7 @@ func (h *HTTP) merchantBuyerCookieName() string {
 }
 
 type shopProduct struct {
+	Mode        string `json:"mode"`
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Currency    string `json:"currency"`
@@ -34,6 +35,7 @@ type shopRefund struct {
 }
 
 type shopOrder struct {
+	Mode          string      `json:"mode"`
 	FulfilledAt   int64       `json:"fulfilled_at"`
 	Refund        *shopRefund `json:"refund,omitempty"`
 	ID            string      `json:"id"`
@@ -85,6 +87,7 @@ func (h *HTTP) shopProduct(r *http.Request) (shopProduct, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return shopProduct{}, ErrDenied
 	}
+	product.Mode = h.store.merchantModeValue()
 	return product, err
 }
 
@@ -183,7 +186,7 @@ func (h *HTTP) shopHTTP(w http.ResponseWriter, r *http.Request) {
 			token = session.Token
 			http.SetCookie(w, &http.Cookie{Name: h.merchantBuyerCookieName(), Value: token, Path: "/", MaxAge: 30 * 24 * 60 * 60, Expires: session.ExpiresAt, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 		}
-		httpJSON(w, map[string]string{"csrf": csrfFor(token)})
+		httpJSON(w, map[string]string{"csrf": csrfFor(token), "merchant_mode": h.store.merchantModeValue()})
 		return
 	case "/api/shop/logout":
 		if r.Method != "POST" {
@@ -451,6 +454,7 @@ func (h *HTTP) writeShopOrder(w http.ResponseWriter, r *http.Request, order Merc
 	mode := h.store.merchantModeValue()
 	err = h.store.db.QueryRowContext(r.Context(), `SELECT f.state,f.currency,f.amount_minor,f.observed_at FROM merchant_refunds f JOIN merchant_orders o ON o.mode=f.mode AND o.id=f.order_id WHERE f.mode=? AND o.id=? AND (o.buyer_hash=? OR EXISTS (SELECT 1 FROM merchant_order_recovery_grants g JOIN merchant_buyer_sessions bs ON bs.mode=g.mode AND bs.token_hash=g.session_hash WHERE g.mode=? AND g.order_id=o.id AND g.session_hash=? AND bs.expires_at>?))`, mode, order.ID, digest(token), mode, digest(token), h.store.now().Unix()).Scan(&refund.State, &refund.Currency, &refund.AmountMinor, &refund.ObservedAt)
 	view := shopOrderView(order)
+	view.Mode = h.store.merchantModeValue()
 	if err == nil {
 		view.Refund = &refund
 	} else if !errors.Is(err, sql.ErrNoRows) {

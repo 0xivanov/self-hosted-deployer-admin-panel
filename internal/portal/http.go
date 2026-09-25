@@ -39,6 +39,8 @@ type HTTPOptions struct {
 	ContainerResolver         ContainerImageResolver
 	RuntimeLogs               func(context.Context, string) (string, error)
 	CustomDomainResolver      DNSResolver
+	MerchantMode              string
+	MerchantWebhookSecret     string
 	TestMerchantWebhookSecret string
 	Merchant                  MerchantProvider
 	MerchantCountries         []string
@@ -79,6 +81,7 @@ type HTTP struct {
 	runtimeLogs               func(context.Context, string) (string, error)
 	customDomainResolver      DNSResolver
 	merchantWebhook           http.Handler
+	merchantMode              string
 	merchant                  MerchantProvider
 	merchantCountries         []string
 	shopAttempts              map[string]attemptWindow
@@ -114,8 +117,36 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 		return nil, errors.New("container credentials require container hosting and the same portal store")
 	}
 
+	merchantMode := opts.MerchantMode
+	if merchantMode != "" && merchantMode != "test" && merchantMode != "live" {
+		return nil, errors.New("unknown merchant mode")
+	}
+	if opts.MerchantWebhookSecret != "" && opts.TestMerchantWebhookSecret != "" {
+		return nil, errors.New("merchant webhook secrets conflict")
+	}
+	merchantSecret := opts.MerchantWebhookSecret
+	if merchantSecret == "" {
+		merchantSecret = opts.TestMerchantWebhookSecret
+	}
+	if merchantMode == "live" && opts.TestMerchantWebhookSecret != "" {
+		return nil, errors.New("live merchant mode conflicts with legacy test webhook settings")
+	}
+	if merchantMode == "" && (opts.Merchant != nil || merchantSecret != "") {
+		merchantMode = "test"
+	}
+	if merchantMode != "" && store.merchantModeValue() != merchantMode {
+		return nil, errors.New("merchant mode does not match store mode")
+	}
 	if opts.Merchant != nil && (opts.Development || len(opts.MerchantCountries) == 0) {
 		return nil, errors.New("merchant integration requires HTTPS and configured countries")
+	}
+	if merchantMode == "live" && (opts.Development || opts.Merchant == nil || merchantSecret == "") {
+		return nil, errors.New("live merchant mode requires provider and webhook configuration")
+	}
+	if opts.Merchant != nil {
+		if err := store.validateMerchantProviderMode(opts.Merchant); err != nil {
+			return nil, errors.New("merchant provider mode does not match store mode")
+		}
 	}
 	for _, country := range opts.MerchantCountries {
 		if !validMerchantCountry(country) {
@@ -206,14 +237,14 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 		}
 	}
 	var merchantWebhook http.Handler
-	if opts.TestMerchantWebhookSecret != "" {
+	if merchantSecret != "" {
 		if opts.Development || opts.Merchant == nil {
 			return nil, errors.New("merchant webhook requires HTTPS and merchant configuration")
 		}
 		if _, ok := opts.Merchant.(MerchantCheckoutProvider); !ok {
 			return nil, errors.New("merchant checkout provider required")
 		}
-		merchantWebhook, err = MerchantWebhookHandler(store, u.Host, opts.TestMerchantWebhookSecret)
+		merchantWebhook, err = MerchantWebhookHandler(store, u.Host, merchantSecret)
 		if err != nil {
 			return nil, err
 		}
@@ -247,7 +278,11 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if resolverImage == nil {
 		resolverImage = publicContainerResolver
 	}
-	return &HTTP{githubAutoDeploy: opts.GitHubAutoDeploy, githubWebhook: githubWebhook, githubApp: opts.GitHubApp, githubOAuth: opts.GitHubOAuth, githubFlows: githubBrowserFlows{starts: map[string]githubBrowserFlow{}, selections: map[string]githubBrowserFlow{}}, containerEnvironments: opts.ContainerEnvironments, containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, billingEnabled: billingEnabled, billingMode: billingMode, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	httpMerchantMode := merchantMode
+	if opts.Merchant == nil {
+		httpMerchantMode = ""
+	}
+	return &HTTP{githubAutoDeploy: opts.GitHubAutoDeploy, githubWebhook: githubWebhook, githubApp: opts.GitHubApp, githubOAuth: opts.GitHubOAuth, githubFlows: githubBrowserFlows{starts: map[string]githubBrowserFlow{}, selections: map[string]githubBrowserFlow{}}, containerEnvironments: opts.ContainerEnvironments, containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, merchantMode: httpMerchantMode, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, billingEnabled: billingEnabled, billingMode: billingMode, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 
 func (h *HTTP) nodeProjectSnapshot() map[string]NodeProjectConfig {
@@ -337,8 +372,9 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.githubWebhook.ServeHTTP(w, r)
 		return
 	}
-	if r.URL.Path == "/webhooks/stripe-merchant-test" {
-		if h.merchantWebhook == nil || r.URL.EscapedPath() != "/webhooks/stripe-merchant-test" || r.URL.RawQuery != "" || r.URL.ForceQuery {
+	merchantWebhookPath := "/webhooks/stripe-merchant-" + h.merchantMode
+	if r.URL.Path == "/webhooks/stripe-merchant-test" || r.URL.Path == "/webhooks/stripe-merchant-live" {
+		if h.merchantWebhook == nil || h.merchantMode == "" || r.URL.EscapedPath() != merchantWebhookPath || r.URL.RawQuery != "" || r.URL.ForceQuery {
 			httpError(w, 404, "Not found")
 			return
 		}
@@ -436,7 +472,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/api/config" && r.Method == "GET" {
 		_, githubImports := h.githubApp.(GitHubSourceProvider)
 		_, githubInstallation := h.githubApp.(GitHubInstallationProvider)
-		httpJSON(w, map[string]any{"github_auto_deploy": h.githubAutoDeploy, "github_installation": githubInstallation, "github_imports": githubImports, "github_connections": h.githubApp != nil, "container_hosting": h.containerHosting, "client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "billing_enabled": h.billingEnabled, "billing_mode": h.billingMode, "test_billing": h.billingEnabled && h.billingMode == "test", "billing_management": h.billingManagement != nil})
+		httpJSON(w, map[string]any{"github_auto_deploy": h.githubAutoDeploy, "github_installation": githubInstallation, "github_imports": githubImports, "github_connections": h.githubApp != nil, "container_hosting": h.containerHosting, "client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_mode": h.merchantMode, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "billing_enabled": h.billingEnabled, "billing_mode": h.billingMode, "test_billing": h.billingEnabled && h.billingMode == "test", "billing_management": h.billingManagement != nil})
 		return
 	}
 	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/verification/resend" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {
