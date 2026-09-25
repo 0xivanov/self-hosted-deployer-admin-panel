@@ -155,3 +155,15 @@ At 11:56 UTC all three nodes and eight application deployments were healthy;
 existing record counts were preserved and both databases passed integrity and
 foreign-key checks. Public portal and the existing custom domain returned HTTPS
 200. See the updated [production upgrade record](production-upgrade-20260925.md).
+
+
+September 25 marketing follow-up: landing-page `f064701` is deployed to the
+production Cloudflare Pages project and `launchstead.0xivanov.dev`. The product
+page and FAQ now describe live project-scoped read-only client invitations and
+searchable internal client labels, distinguishing both from workspace-wide Team
+access. The marketing kit and assisted onboarding checklist reflect shipped
+access history and revocation. Public content retains private access, no live
+payments/domain purchasing, and operator approval for new client accounts.
+The production custom domain and Pages URLs returned HTTP 200 with the new
+client FAQ using a browser user agent; the first Python-default-agent request
+received HTTP 403. No security settings were changed. No outreach was sent.
