@@ -308,4 +308,7 @@ input::file-selector-button{background:var(--surface);color:var(--ink);border-co
 .github-chooser label{display:grid;gap:5px}
 .github-chooser select,.github-chooser input{width:100%}
 .github-status{min-height:1.2em}
+.github-imports{display:grid;gap:8px;border-top:1px solid var(--line);padding-top:14px;margin-top:5px}
+.github-imports>strong{font-size:13px}
+.github-import-status{margin:0;font-size:12px}
 @media(max-width:600px){.client-access-row{align-items:flex-start;flex-direction:column}}

@@ -17,7 +17,7 @@ func (s *Store) migrateContainerDeployments() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version == 44 || version == 45 || version == 46 || version == 47 || version == 48 {
+	if version >= 44 {
 		return nil
 	}
 	if version != 43 {
@@ -49,7 +49,7 @@ func (s *Store) migrateContainerCredentials() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version == 45 || version == 46 || version == 47 || version == 48 {
+	if version >= 45 {
 		return nil
 	}
 	if version != 44 {
@@ -78,7 +78,7 @@ func (s *Store) migrateContainerEnvironments() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version == 46 || version == 47 || version == 48 {
+	if version >= 46 {
 		return nil
 	}
 	if version != 45 {

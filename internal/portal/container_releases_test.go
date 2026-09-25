@@ -184,7 +184,7 @@ func TestContainerMigrationPreservesStaticUploadAndForeignKeys(t *testing.T) {
 	if err = s.db.QueryRow("PRAGMA foreign_keys").Scan(&foreignKeys); err != nil || foreignKeys != 1 {
 		t.Fatalf("foreign keys after migration: %d %v", foreignKeys, err)
 	}
-	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 48 {
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 49 {
 		t.Fatalf("schema version after migration: %d %v", version, err)
 	}
 	if _, err = s.db.Exec("DELETE FROM projects WHERE id=?", p.ID); err == nil {

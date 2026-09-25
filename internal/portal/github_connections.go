@@ -37,7 +37,7 @@ func (s *Store) migrateGitHubConnections() error {
 	if err = tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version == 48 {
+	if version >= 48 {
 		return nil
 	}
 	if version != 47 {

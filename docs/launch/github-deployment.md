@@ -203,3 +203,41 @@ repository IDs, disconnected state, restart controls, callback workspace switchi
 and callback single use. Invalid branch/folder input preserves the temporary
 selection so the owner can correct it without repeating OAuth. These are focused
 DOM and HTTP checks; the full browser/provider journey remains unverified.
+
+
+## Manual repository imports (local schema 49, not deployed)
+
+The portal now has a durable project import queue and a background source
+worker. A manual import resolves the selected branch once, persists its full
+commit, downloads only that commit and normalizes the selected repository folder
+through the existing archive validator. Prepared bytes become an ordinary immutable
+upload. The customer then uses the existing Build/Publish workflow; importing alone
+does not change the live website.
+
+Import jobs bind the connection revision and authorizing user, use expiring worker
+leases, and recheck current owner/hosting access and upload limits before saving.
+Restart recovery retains the same pinned commit, with at most five worker claims
+per job. Disconnect/reconnect or removed access prevents a stale worker from saving
+its upload. Both the requesting owner and the connection authorizer must retain
+verified owner access. Job errors use fixed safe reason codes, never raw provider
+responses or signed download URLs.
+
+This does not complete deploy-on-push: durable webhook intake, event deduplication,
+branch ordering and automatic queue/publication integration remain outstanding.
+Production is unchanged and no real GitHub App import has been attempted.
+
+
+Focused backend checks passed for manual request deduplication, cross-user denial,
+validated immutable upload creation, pinned-commit recovery and disconnect during
+fetch. Import alone creates no publication. Migration checks preserve earlier
+portal data. No customer source is executed by this worker; Node builds still use
+the existing isolated worker path. All database consumers must be upgraded together
+to schema 49 before production activation.
+
+
+Archive fetching follows [GitHub's repository archive endpoint](https://docs.github.com/en/rest/repos/contents#download-a-repository-archive-zip).
+Each fetch gets a repository-scoped installation token, verifies the numeric
+repository identity, and requests a full commit SHA. A single redirect is allowed
+only to the matching repository/commit path on HTTPS `codeload.github.com`; the
+API authorization header is not forwarded. Signed redirect queries are bounded
+and excluded from diagnostics. Downloads are limited to 10 MiB and timed out.

@@ -356,6 +356,25 @@ func run() error {
 	server := &http.Server{Handler: handler, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if githubApp != nil {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			timer := time.NewTicker(2 * time.Second)
+			defer timer.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-timer.C:
+					if _, err := store.WorkGitHubImport(ctx, githubApp); err != nil && ctx.Err() == nil {
+						fmt.Fprintln(os.Stderr, "GitHub import could not advance; inspect import status")
+					}
+				}
+			}
+		}()
+		defer func() { stop(); <-done }()
+	}
 	if accountMail != nil {
 		done := make(chan struct{})
 		go func() {

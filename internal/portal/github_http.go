@@ -61,6 +61,10 @@ func githubVerifier(session, state string) string {
 func githubSelectionKey(session, project string) string { return digest(session) + ":" + project }
 func (h *HTTP) githubError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrGitHubImportLimit):
+		httpError(w, 409, "GitHub import history is full. Contact support to archive old imports.")
+	case errors.Is(err, ErrConflict):
+		httpError(w, 409, "An import is already pending or this request belongs to an earlier connection. Refresh import status before retrying.")
 	case errors.Is(err, ErrGitHubLink):
 		httpError(w, 409, "GitHub connection expired or changed. Connect GitHub again.")
 	case errors.Is(err, ErrGitHubLinkRate):
@@ -79,6 +83,35 @@ func (h *HTTP) githubHTTP(w http.ResponseWriter, r *http.Request, session string
 		return
 	}
 	ctx := r.Context()
+	if r.URL.Path == "/api/github/imports" {
+		if _, ok := h.githubApp.(GitHubSourceProvider); !ok {
+			httpError(w, 404, "GitHub imports are not enabled")
+			return
+		}
+		if r.Method == "GET" {
+			jobs, err := h.store.GitHubImports(ctx, session, r.URL.Query().Get("project"))
+			if err != nil {
+				h.githubError(w, err)
+				return
+			}
+			httpJSON(w, map[string]any{"imports": jobs})
+			return
+		}
+		var input struct {
+			Project    string `json:"project"`
+			RequestKey string `json:"request_key"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		job, err := h.store.RequestGitHubImport(ctx, session, input.Project, input.RequestKey)
+		if err != nil {
+			h.githubError(w, err)
+			return
+		}
+		httpJSON(w, map[string]any{"import": job})
+		return
+	}
 	if r.Method == "GET" {
 		project := r.URL.Query().Get("project")
 		connection, err := h.store.ProjectGitHubConnection(ctx, session, project)
