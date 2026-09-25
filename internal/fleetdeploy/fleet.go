@@ -34,6 +34,7 @@ type Config struct {
 	ContainerCredentialKeyFile string             `json:"container_credential_key_file,omitempty"`
 	EnableContainerDeployments bool               `json:"enable_container_deployments,omitempty"`
 	Database                   string             `json:"database"`
+	BillingMode                string             `json:"billing_mode,omitempty"`
 	DeployerBinary             string             `json:"deployer_binary"`
 	DeployerConfig             string             `json:"deployer_config"`
 	StateDirectory             string             `json:"state_directory"`
@@ -85,6 +86,12 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if c.Database == "" || c.DeployerBinary == "" || c.DeployerConfig == "" || c.StateDirectory == "" || c.ImageBuilder == "" {
 		return c, errors.New("required fleet config field missing")
+	}
+	if c.BillingMode == "" {
+		c.BillingMode = "test"
+	}
+	if c.BillingMode != "test" && c.BillingMode != "live" {
+		return c, errors.New("billing_mode must be test or live")
 	}
 	if c.EnableCandidateOperations && !c.EnableContainerDeployments {
 		return c, errors.New("candidate operations require container deployments to be enabled")

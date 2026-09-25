@@ -274,6 +274,7 @@ func run() error {
 		return errors.New("local Node builds require macOS arm64")
 	}
 	database := flag.String("database", "", "Private customer portal database")
+	billingMode := flag.String("billing-mode", "test", "Billing entitlement mode: test or live")
 	project := flag.String("project", "", "Node project ID")
 	toolchain := flag.String("toolchain", "", "Pinned toolchain digest")
 	configPath := flag.String("pipeline-config", "", "Private pipeline configuration JSON")
@@ -319,7 +320,7 @@ func run() error {
 		return errors.New("another local Node build watcher owns the execution directory")
 	}
 	defer func() { _ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); _ = lock.Close() }()
-	store, err := portal.Open(*database)
+	store, err := portal.OpenWithBillingMode(*database, *billingMode)
 	if err != nil {
 		return errors.New("portal database unavailable")
 	}

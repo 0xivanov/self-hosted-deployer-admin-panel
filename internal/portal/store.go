@@ -61,6 +61,17 @@ type Project struct {
 // Open requires a private directory because SQLite can create journal files.
 // The schema version is checked before any migration; newer schemas fail closed.
 func Open(path string) (*Store, error) {
+	return OpenWithBillingMode(path, "test")
+}
+
+// OpenWithBillingMode selects hosting payment evidence for the lifetime of this
+// store. Operators must configure every worker with the same mode. Selection
+// never rewrites sandbox history or grants a live subscription.
+func OpenWithBillingMode(path, mode string) (*Store, error) {
+	if mode != "test" && mode != "live" {
+		return nil, errors.New("billing mode must be test or live")
+	}
+
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
@@ -101,7 +112,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db, now: time.Now, hashes: make(chan struct{}, 2)}
+	s := &Store{billingMode: mode, db: db, now: time.Now, hashes: make(chan struct{}, 2)}
 	if err = s.migrate(); err == nil {
 		err = s.migrateContainers()
 	}
@@ -497,6 +508,13 @@ func (s *Store) register(ctx context.Context, email, password, workspace string,
 		{"INSERT INTO account_tokens VALUES(?,?,'verify',?)", []any{digest(token), a.ID, now + 86400}},
 	} {
 		if _, err = tx.ExecContext(ctx, statement.sql, statement.args...); err != nil {
+			return Account{}, "", err
+		}
+	}
+	// New live-mode workspaces require a paid hosting entitlement. Keep legacy
+	// workspaces unchanged; operators can explicitly grant exemptions.
+	if s.billingModeValue() == "live" {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO hosting_workspace_policies(workspace_id,require_test_subscription) VALUES(?,1)", a.WorkspaceID); err != nil {
 			return Account{}, "", err
 		}
 	}

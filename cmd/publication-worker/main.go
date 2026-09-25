@@ -25,6 +25,7 @@ func main() {
 }
 func run() error {
 	database := flag.String("database", "", "Private customer portal database")
+	billingMode := flag.String("billing-mode", "test", "Billing entitlement mode: test or live")
 	config := flag.String("assignment", "", "Private runtime assignment JSON")
 	flag.Parse()
 	if *database == "" || *config == "" {
@@ -66,7 +67,7 @@ func run() error {
 		return err
 	}
 	defer client.Close()
-	store, err := portal.Open(*database)
+	store, err := portal.OpenWithBillingMode(*database, *billingMode)
 	if err != nil {
 		return errors.New("portal database unavailable")
 	}

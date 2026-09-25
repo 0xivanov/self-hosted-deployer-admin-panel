@@ -23,7 +23,7 @@ func main() {
 }
 func run() error {
 	database := flag.String("database", "", "Private customer portal database")
-	config := flag.String("config", "", "Private Stripe test configuration JSON")
+	config := flag.String("config", "", "Private Stripe configuration JSON; mode defaults to test")
 	flag.Parse()
 	if *database == "" || *config == "" {
 		return errors.New("database and config are required")
@@ -38,6 +38,7 @@ func run() error {
 	}
 	defer file.Close()
 	var cfg struct {
+		Mode       string            `json:"mode"`
 		SecretKey  string            `json:"secret_key"`
 		SuccessURL string            `json:"success_url"`
 		CancelURL  string            `json:"cancel_url"`
@@ -48,12 +49,21 @@ func run() error {
 	if decoder.Decode(&cfg) != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		return errors.New("invalid billing configuration JSON")
 	}
-	client, err := hostingbilling.NewTestClient(cfg.SecretKey, cfg.SuccessURL, cfg.CancelURL, cfg.Plans)
+	mode, err := billingWorkerMode(cfg.Mode)
+	if err != nil {
+		return err
+	}
+	var client *hostingbilling.Client
+	if mode == "live" {
+		client, err = hostingbilling.NewLiveClient(cfg.SecretKey, cfg.SuccessURL, cfg.CancelURL, cfg.Plans)
+	} else {
+		client, err = hostingbilling.NewTestClient(cfg.SecretKey, cfg.SuccessURL, cfg.CancelURL, cfg.Plans)
+	}
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-	store, err := portal.Open(*database)
+	store, err := portal.OpenWithBillingMode(*database, mode)
 	if err != nil {
 		return errors.New("portal database unavailable")
 	}
@@ -66,4 +76,14 @@ func run() error {
 		fmt.Fprintln(os.Stderr, "Billing work needs retry or reconciliation; inspect private billing records.")
 	})
 	return nil
+}
+
+func billingWorkerMode(mode string) (string, error) {
+	if mode == "" {
+		return "test", nil
+	}
+	if mode != "test" && mode != "live" {
+		return "", errors.New("billing configuration mode must be test or live")
+	}
+	return mode, nil
 }

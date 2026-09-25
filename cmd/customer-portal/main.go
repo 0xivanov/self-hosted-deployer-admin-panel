@@ -47,6 +47,9 @@ func run() error {
 	managementFile := flag.String("test-billing-management-config", "", "private Stripe test customer portal settings")
 	merchantWebhookFile := flag.String("test-merchant-webhook-secret-file", "", "Private Stripe Connect test webhook signing secret")
 	webhookFile := flag.String("test-webhook-secret-file", "", "private Stripe test webhook signing secret file")
+	billingMode := flag.String("billing-mode", "", "hosting payments: disabled (empty), test or live")
+	genericWebhookFile := flag.String("billing-webhook-secret-file", "", "private webhook signing secret for the selected hosting payment mode")
+	genericManagementFile := flag.String("billing-management-config", "", "private customer billing portal settings for the selected mode")
 	testBilling := flag.Bool("test-billing", false, "enable owner billing request API for a separately configured Stripe test worker")
 	containerCredentialKey := flag.String("container-credential-key-file", "", "owner-private 32-byte hex key shared with the fleet worker for encrypted registry access and environment settings")
 	containerHosting := flag.Bool("container-hosting", false, "enable experimental registry image hosting after fleet qualification")
@@ -65,6 +68,12 @@ func run() error {
 	if flag.NArg() != 0 {
 		return errors.New("unexpected arguments")
 	}
+	selectedBillingMode, selectedWebhookFile, selectedManagementFile, err := resolveBillingSettings(*billingMode, *testBilling, *webhookFile, *managementFile, *genericWebhookFile, *genericManagementFile, *demo)
+	if err != nil {
+		return err
+	}
+	*webhookFile = selectedWebhookFile
+	*managementFile = selectedManagementFile
 	var githubWebhookSecret string
 	var githubApp *githubdeploy.App
 	var githubOAuth *githubdeploy.OAuth
@@ -113,14 +122,17 @@ func run() error {
 	}
 	var webhookSecret string
 	if *webhookFile != "" {
-		if !*testBilling || *demo {
-			return errors.New("test webhook requires --test-billing and non-demo HTTPS mode")
+		if selectedBillingMode == "" || *demo {
+			return errors.New("billing webhook requires billing and non-demo HTTPS mode")
 		}
 		raw, e := privateFile(*webhookFile)
 		if e != nil {
-			return errors.New("test webhook signing secret unavailable")
+			return errors.New("billing webhook signing secret unavailable")
 		}
 		webhookSecret = strings.TrimSpace(string(raw))
+		if webhookSecret == "" {
+			return errors.New("billing webhook signing secret is empty")
+		}
 	}
 	var demoMailDirectory string
 	if *demo {
@@ -144,7 +156,11 @@ func run() error {
 	} else if *database == "" || *cert == "" || *key == "" {
 		return errors.New("non-demo mode requires --database, --origin with HTTPS, --tls-cert and --tls-key")
 	}
-	store, err := portal.Open(*database)
+	storeBillingMode := selectedBillingMode
+	if storeBillingMode == "" {
+		storeBillingMode = "test"
+	}
+	store, err := portal.OpenWithBillingMode(*database, storeBillingMode)
 	if err != nil {
 		return err
 	}
@@ -234,8 +250,8 @@ func run() error {
 	}
 	var management *hostingbilling.Management
 	if *managementFile != "" {
-		if !*testBilling || *demo {
-			return errors.New("billing management requires non-demo test billing")
+		if selectedBillingMode == "" || *demo {
+			return errors.New("billing management requires non-demo billing")
 		}
 		raw, e := privateFile(*managementFile)
 		if e != nil {
@@ -256,7 +272,11 @@ func run() error {
 		if cfg.Success != *origin+"/billing/success" {
 			return errors.New("billing management return URL must match the portal")
 		}
-		client, e := hostingbilling.NewTestClient(cfg.Secret, cfg.Success, cfg.Cancel, cfg.Plans)
+		constructor := hostingbilling.NewTestClient
+		if selectedBillingMode == "live" {
+			constructor = hostingbilling.NewLiveClient
+		}
+		client, e := constructor(cfg.Secret, cfg.Success, cfg.Cancel, cfg.Plans)
 		if e != nil {
 			return e
 		}
@@ -304,7 +324,7 @@ func run() error {
 		}
 		signupAllowed = portal.SignupAllowlist(*signupAllowlist)
 	}
-	opts := portal.HTTPOptions{TestMerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, TestWebhookSecret: webhookSecret, TestBilling: *testBilling, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
+	opts := portal.HTTPOptions{TestMerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, BillingWebhookSecret: webhookSecret, BillingMode: selectedBillingMode, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
 	if githubApp != nil {
 		opts.GitHubApp = githubApp
 		opts.GitHubOAuth = githubOAuth

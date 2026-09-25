@@ -24,7 +24,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	store, err := portal.Open(cfg.Database)
+	store, err := portal.OpenWithBillingMode(cfg.Database, cfg.BillingMode)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

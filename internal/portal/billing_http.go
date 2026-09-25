@@ -6,10 +6,10 @@ import (
 )
 
 // billingHTTP is reached only after TLS/host, session, origin and CSRF checks.
-// This is an opt-in test interface. Provider acknowledgements and webhook intake
+// This is an opt-in hosting billing interface. Provider acknowledgements and webhook intake
 // are deliberately absent from the browser API.
 func (h *HTTP) billingHTTP(w http.ResponseWriter, r *http.Request, token string) {
-	if !h.testBilling {
+	if !h.billingEnabled {
 		httpError(w, 404, "Billing is not enabled")
 		return
 	}
@@ -70,14 +70,14 @@ func (h *HTTP) billingHTTP(w http.ResponseWriter, r *http.Request, token string)
 			fail(err)
 			return
 		}
-		httpJSON(w, map[string]any{"test_mode": true, "offers": offers})
+		httpJSON(w, map[string]any{"test_mode": h.billingMode == "test", "mode": h.billingMode, "offers": offers})
 	case r.URL.Path == "/api/billing/plans" && r.Method == "GET":
 		plans, err := h.store.AvailableBillingPlans(r.Context(), token, r.URL.Query().Get("workspace"))
 		if err != nil {
 			fail(err)
 			return
 		}
-		httpJSON(w, map[string]any{"test_mode": true, "plans": plans})
+		httpJSON(w, map[string]any{"test_mode": h.billingMode == "test", "mode": h.billingMode, "plans": plans})
 	case r.URL.Path == "/api/billing/customer" && r.Method == "POST":
 		var input struct {
 			Workspace string `json:"workspace"`
@@ -125,7 +125,7 @@ func (h *HTTP) billingHTTP(w http.ResponseWriter, r *http.Request, token string)
 			fail(err)
 			return
 		}
-		httpJSON(w, map[string]any{"test_mode": true, "observation": snapshot})
+		httpJSON(w, map[string]any{"test_mode": h.billingMode == "test", "mode": h.billingMode, "observation": snapshot})
 	default:
 		httpError(w, 404, "Not found")
 	}

@@ -28,6 +28,38 @@ func TestLoadConfigRejectsUnsafeAssignments(t *testing.T) {
 		t.Fatal("expected invalid domain")
 	}
 }
+
+func TestLoadConfigBillingModeDefaultsToTestAndAcceptsLive(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fleet.json")
+	base := `{"database":"db","deployer_binary":"deployer","deployer_config":"cfg","state_directory":"state","image_builder":"builder","projects":{}}`
+	if err := os.WriteFile(path, []byte(base), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(path)
+	if err != nil || cfg.BillingMode != "test" {
+		t.Fatalf("default mode=%q err=%v", cfg.BillingMode, err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Replace(base, `"projects":{}`, `"billing_mode":"live","projects":{}`, 1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = LoadConfig(path)
+	if err != nil || cfg.BillingMode != "live" {
+		t.Fatalf("live mode=%q err=%v", cfg.BillingMode, err)
+	}
+}
+
+func TestLoadConfigRejectsUnknownBillingMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fleet.json")
+	raw := `{"database":"db","deployer_binary":"deployer","deployer_config":"cfg","state_directory":"state","image_builder":"builder","billing_mode":"production","projects":{}}`
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(path); err == nil {
+		t.Fatal("accepted unknown billing mode")
+	}
+}
 func TestImmutableImageAndRenderContract(t *testing.T) {
 	id := strings.Repeat("a", 64)
 	if !validImage("registry.example/app@sha256:" + id) {

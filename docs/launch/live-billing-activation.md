@@ -11,7 +11,7 @@ behavior. Keys must match the selected mode. Checkout/customer responses,
 prices, subscriptions and nested invoice/price objects, charge and dispute
 observations, invoice payment discovery and billing-management configurations
 are checked against that mode. Persistent request keys and fixed return URLs
-remain mandatory. No runtime caller has been switched to the live entry points.
+remain mandatory. Runtime callers can now select the live entry points explicitly; production configuration has not changed.
 
 Focused integration checks cover matching/mismatched keys and checkout responses,
 signed event mode isolation, mixed-mode nested subscription objects, and the
@@ -28,8 +28,8 @@ use the selected mode. Existing sandbox evidence cannot authorize live hosting.
 Authenticated provider clients declare their mode and mismatches are rejected
 before provider calls or work leasing.
 
-Runtime selection remains test-only: there is no public store mode setter or
-operator flag wired yet. Production remains schema 54 with test billing.
+Runtime mode is immutable for each opened store. Existing `Open` callers and
+legacy test flags retain test behavior. Production remains schema 54 with test billing.
 This persistence change has not been deployed. A coordinated upgrade of all
 portal database consumers and a consistent rollback snapshot are required before
 schema 55 deployment. Old binaries must not run against the upgraded database.
@@ -40,19 +40,54 @@ queue isolation and legacy payment history preservation. The provider integratio
 suite, Go vet for the affected packages and all command builds also passed.
 Provider responses are fixtures; no live transaction was performed.
 
+Runtime checks also cover a simulated live customer/checkout/webhook/subscription
+flow, the live webhook route rejecting sandbox events, CLI flag conflicts,
+legacy test configuration, new live registrations requiring payment and existing
+workspace policy preservation. Existing portal browser-unit checks pass. These
+checks do not establish live Stripe account readiness or paid pilot completion.
+
+## Runtime configuration implemented locally
+
+The hosting portal, billing worker, billing-plan and hosting-limit commands,
+fleet worker, Node build/deployment workers and static publication worker support
+explicit test/live selection. Provider secrets must match that selection. The
+portal rejects mixed legacy test flags and live settings. Its billing screen
+uses the selected mode; merchant sales still display test-payment disclosures.
+
+For a coordinated live activation:
+
+- Portal: `--billing-mode=live`, `--billing-webhook-secret-file` and
+  `--billing-management-config`. Both private files are required for live startup.
+  Remove the legacy `--test-billing`, `--test-webhook-secret-file` and
+  `--test-billing-management-config` flags. Existing test configurations still work.
+- Hosting billing worker: add `"mode":"live"` to its private JSON alongside a
+  live secret key, live plan prices and the fixed HTTPS return URLs.
+- Fleet worker: set `"billing_mode":"live"` in its private JSON.
+- Node build/deployment, publication and local Node build commands: set
+  `--billing-mode=live` so entitlement checks use the same payment evidence.
+- Plan/limit commands: set `--billing-mode=live`; create the live plan mapping
+  and limits explicitly. Test plan rows are not promoted to live rows.
+- Hosting policy: use `--billing-mode=live --require-subscription=true` for
+  workspaces that require payment. Existing exemptions remain exemptions;
+  selecting live mode does not enroll or charge customers automatically. New
+  workspaces registered through a live-mode portal require a paid hosting
+  subscription by default. Existing workspaces retain their saved policies.
+- Stripe hosting webhook: configure the live signing secret for
+  `https://portal.0xivanov.dev/webhooks/stripe-live`. The existing test route is
+  `/webhooks/stripe-test`. A process accepts only its selected route and mode.
+
+All participating processes must be restarted with matching mode configuration.
+The database can retain both modes; it does not coordinate configuration across
+processes. Do not activate just the portal while workers still use test mode.
+Plan an explicit transition for existing sandbox subscribers, who do not have
+live payment entitlement. Existing websites keep running when changes are held.
+
 ## Required next implementation
 
-1. Bind the billing worker, portal checkout/management clients and webhook
-   verification to one explicit operator-selected mode. Fail startup on mixed
-   secrets or conflicting test/live flags. Recheck mode on nested event objects
-   and reconciliation paths. Browser input must never select billing mode.
-2. Make account billing screens describe the actual selected mode. Preserve
-   test payment disclosures until the complete live path is configured. Existing
-   sandbox subscriptions must never be represented as real paid subscriptions.
-3. Apply the same separation to merchant Connect accounts, products, orders,
+1. Apply the same separation to merchant Connect accounts, products, orders,
    refunds, disputes and buyer recovery. Hosting and merchant payment scopes
    remain distinct; completing one does not activate the other.
-4. Activate provider configuration only after the owner has live account access,
+2. Activate provider configuration only after the owner has live account access,
    agreed prices/limits and customer-facing business and service details. Verify
    webhook routing and recovery without charging a customer. Any real purchase
    or charge still requires its own authorization.

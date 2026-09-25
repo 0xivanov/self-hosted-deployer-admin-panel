@@ -22,20 +22,25 @@ func run(args []string, out io.Writer) error {
 	flags.SetOutput(io.Discard)
 	database := flags.String("database", "", "Private customer portal database")
 	plan := flags.String("plan", "", "Hosting plan identifier")
-	price := flags.String("price", "", "Matching test Stripe Price ID")
+	price := flags.String("price", "", "Stripe Price ID for the selected mode")
 	enabled := flags.String("enabled", "", "Explicit true or false")
+	mode := flags.String("billing-mode", "test", "Billing mode: test or live")
 	if err := flags.Parse(args); err != nil {
 		return errors.New("invalid billing plan arguments")
 	}
 	if flags.NArg() != 0 || *database == "" || *plan == "" || *price == "" || (*enabled != "true" && *enabled != "false") {
 		return errors.New("database, plan, price and enabled=true|false are required")
 	}
+	selectedMode, err := validBillingPlanMode(*mode)
+	if err != nil {
+		return err
+	}
 	// Refuse accidental creation of a new database from a mistyped path.
 	info, err := os.Lstat(*database)
 	if err != nil || !info.Mode().IsRegular() {
 		return errors.New("an existing private portal database is required")
 	}
-	store, err := portal.Open(*database)
+	store, err := portal.OpenWithBillingMode(*database, selectedMode)
 	if err != nil {
 		return errors.New("portal database unavailable")
 	}
@@ -45,4 +50,11 @@ func run(args []string, out io.Writer) error {
 	}
 	_, err = fmt.Fprintln(out, "Billing plan configuration saved. Existing checkout prices were retained.")
 	return err
+}
+
+func validBillingPlanMode(mode string) (string, error) {
+	if mode != "test" && mode != "live" {
+		return "", errors.New("billing mode must be test or live")
+	}
+	return mode, nil
 }

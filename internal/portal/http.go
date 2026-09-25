@@ -47,6 +47,8 @@ type HTTPOptions struct {
 	DomainQuotes              DomainQuoteReader
 	DomainMarkupMinor         int64
 	BillingManagement         BillingManagement
+	BillingWebhookSecret      string
+	BillingMode               string
 	TestWebhookSecret         string
 	TestBilling               bool
 	Origin                    string
@@ -87,7 +89,8 @@ type HTTP struct {
 	domainAttempts            map[string]attemptWindow
 	billingManagement         BillingManagement
 	billingWebhook            http.Handler
-	testBilling               bool
+	billingEnabled            bool
+	billingMode               string
 	mail                      *AccountMail
 	publicationSites          func() map[string]string
 	signup                    bool
@@ -123,8 +126,34 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if opts.DomainMarkupMinor < 0 {
 		return nil, errors.New("domain markup cannot be negative")
 	}
-	if opts.BillingManagement != nil && (!opts.TestBilling || opts.Development) {
-		return nil, errors.New("billing management requires HTTPS test billing")
+	billingMode := opts.BillingMode
+	if billingMode != "" && billingMode != "test" && billingMode != "live" {
+		return nil, errors.New("unknown billing mode")
+	}
+	legacyBilling := opts.TestBilling || opts.TestWebhookSecret != ""
+	if billingMode == "" && opts.TestBilling {
+		billingMode = "test"
+	}
+	if billingMode == "" && opts.TestWebhookSecret != "" {
+		return nil, errors.New("billing webhook requires test billing or an explicit mode")
+	}
+	if billingMode == "live" && legacyBilling {
+		return nil, errors.New("live billing conflicts with legacy test billing settings")
+	}
+	billingEnabled := billingMode != ""
+	if billingEnabled && store.billingModeValue() != billingMode {
+		return nil, errors.New("billing mode does not match store mode")
+	}
+	if billingMode == "live" && opts.Development {
+		return nil, errors.New("live billing is unavailable in development")
+	}
+	if opts.BillingManagement != nil && (!billingEnabled || opts.Development) {
+		return nil, errors.New("billing management requires enabled HTTPS billing")
+	}
+	if opts.BillingManagement != nil {
+		if err := store.validateBillingProviderMode(opts.BillingManagement); err != nil {
+			return nil, errors.New("billing management provider mode does not match store mode")
+		}
 	}
 	u, err := url.Parse(opts.Origin)
 	if err != nil || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
@@ -160,11 +189,18 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 		lookup = func() map[string]string { return sites }
 	}
 	var webhook http.Handler
-	if opts.TestWebhookSecret != "" {
-		if !opts.TestBilling || opts.Development {
-			return nil, errors.New("billing webhook requires test billing and HTTPS mode")
+	webhookSecret := opts.BillingWebhookSecret
+	if webhookSecret != "" && opts.TestWebhookSecret != "" {
+		return nil, errors.New("billing webhook secrets conflict")
+	}
+	if webhookSecret == "" {
+		webhookSecret = opts.TestWebhookSecret
+	}
+	if webhookSecret != "" {
+		if !billingEnabled || opts.Development {
+			return nil, errors.New("billing webhook requires enabled HTTPS billing")
 		}
-		webhook, err = BillingWebhookHandler(store, u.Host, opts.TestWebhookSecret)
+		webhook, err = BillingWebhookHandler(store, u.Host, webhookSecret)
 		if err != nil {
 			return nil, err
 		}
@@ -211,7 +247,7 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if resolverImage == nil {
 		resolverImage = publicContainerResolver
 	}
-	return &HTTP{githubAutoDeploy: opts.GitHubAutoDeploy, githubWebhook: githubWebhook, githubApp: opts.GitHubApp, githubOAuth: opts.GitHubOAuth, githubFlows: githubBrowserFlows{starts: map[string]githubBrowserFlow{}, selections: map[string]githubBrowserFlow{}}, containerEnvironments: opts.ContainerEnvironments, containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{githubAutoDeploy: opts.GitHubAutoDeploy, githubWebhook: githubWebhook, githubApp: opts.GitHubApp, githubOAuth: opts.GitHubOAuth, githubFlows: githubBrowserFlows{starts: map[string]githubBrowserFlow{}, selections: map[string]githubBrowserFlow{}}, containerEnvironments: opts.ContainerEnvironments, containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, billingEnabled: billingEnabled, billingMode: billingMode, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 
 func (h *HTTP) nodeProjectSnapshot() map[string]NodeProjectConfig {
@@ -310,8 +346,9 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.URL.Path == "/webhooks/stripe-test" {
-		if h.billingWebhook == nil || r.URL.EscapedPath() != "/webhooks/stripe-test" || r.URL.RawQuery != "" || r.URL.ForceQuery {
+	stripeWebhookPath := "/webhooks/stripe-" + h.billingMode
+	if r.URL.Path == "/webhooks/stripe-test" || r.URL.Path == "/webhooks/stripe-live" {
+		if !h.billingEnabled || r.URL.Path != stripeWebhookPath || h.billingWebhook == nil || r.URL.EscapedPath() != stripeWebhookPath || r.URL.RawQuery != "" || r.URL.ForceQuery {
 			httpError(w, 404, "Not found")
 			return
 		}
@@ -399,7 +436,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/api/config" && r.Method == "GET" {
 		_, githubImports := h.githubApp.(GitHubSourceProvider)
 		_, githubInstallation := h.githubApp.(GitHubInstallationProvider)
-		httpJSON(w, map[string]any{"github_auto_deploy": h.githubAutoDeploy, "github_installation": githubInstallation, "github_imports": githubImports, "github_connections": h.githubApp != nil, "container_hosting": h.containerHosting, "client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "test_billing": h.testBilling, "billing_management": h.billingManagement != nil})
+		httpJSON(w, map[string]any{"github_auto_deploy": h.githubAutoDeploy, "github_installation": githubInstallation, "github_imports": githubImports, "github_connections": h.githubApp != nil, "container_hosting": h.containerHosting, "client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "billing_enabled": h.billingEnabled, "billing_mode": h.billingMode, "test_billing": h.billingEnabled && h.billingMode == "test", "billing_management": h.billingManagement != nil})
 		return
 	}
 	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/verification/resend" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {

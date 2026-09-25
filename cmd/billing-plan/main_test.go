@@ -60,3 +60,23 @@ func TestConfigurePlanCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestBillingPlanMode(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		ok    bool
+	}{
+		{"test", true},
+		{"live", true},
+		{"", false},
+		{"staging", false},
+	} {
+		_, err := validBillingPlanMode(tc.input)
+		if tc.ok && err != nil {
+			t.Fatalf("mode %q rejected: %v", tc.input, err)
+		}
+		if !tc.ok && err == nil {
+			t.Fatalf("mode %q accepted", tc.input)
+		}
+	}
+}

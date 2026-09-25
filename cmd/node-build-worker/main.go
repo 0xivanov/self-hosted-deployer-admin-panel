@@ -36,6 +36,7 @@ func main() {
 }
 func run() error {
 	database := flag.String("database", "", "Private customer portal database")
+	billingMode := flag.String("billing-mode", "test", "Billing entitlement mode: test or live")
 	config := flag.String("assignment", "", "Private build executor assignment JSON")
 	flag.Parse()
 	if *database == "" || *config == "" {
@@ -81,7 +82,7 @@ func run() error {
 		return errors.New("dependency storage unavailable")
 	}
 	defer jobs.Close()
-	s, err := portal.Open(*database)
+	s, err := portal.OpenWithBillingMode(*database, *billingMode)
 	if err != nil {
 		return errors.New("portal database unavailable")
 	}

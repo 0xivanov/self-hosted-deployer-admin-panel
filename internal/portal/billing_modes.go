@@ -7,7 +7,7 @@ import (
 )
 
 // billingModeValue is operator-owned state. No request may choose its mode.
-// Runtime selection stays test-only until the worker/HTTP activation is wired.
+// The mode is fixed when the store opens, before it serves requests.
 func (s *Store) billingModeValue() string {
 	if s.billingMode == "live" {
 		return "live"

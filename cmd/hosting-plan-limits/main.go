@@ -20,6 +20,7 @@ func run(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("hosting-plan-limits", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	database := flags.String("database", "", "Existing private portal database")
+	billingMode := flags.String("billing-mode", "test", "Billing entitlement mode: test or live")
 	plan := flags.String("plan", "", "Configured hosting plan")
 	projects := flags.Int64("projects", 0, "Maximum projects, 1 to 100")
 	uploads := flags.Int64("uploads", 0, "Maximum retained source ZIPs, 1 to 20")
@@ -35,7 +36,7 @@ func run(args []string, out io.Writer) error {
 	if err != nil || !info.Mode().IsRegular() {
 		return errors.New("an existing private portal database is required")
 	}
-	store, err := portal.Open(*database)
+	store, err := portal.OpenWithBillingMode(*database, *billingMode)
 	if err != nil {
 		return errors.New("portal database unavailable")
 	}

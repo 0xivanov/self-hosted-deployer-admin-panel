@@ -103,7 +103,7 @@ func TestBillingPaymentHistoryPagesAndIsolation(t *testing.T) {
 	if w := portalRequest(h, "GET", path, "", "", "", nil); w.Code != 401 {
 		t.Fatal(w.Code)
 	}
-	h.testBilling = false
+	h.billingEnabled = false
 	if w := portalRequest(h, "GET", path, "", "", "", cookie); w.Code != 404 {
 		t.Fatal(w.Code)
 	}
