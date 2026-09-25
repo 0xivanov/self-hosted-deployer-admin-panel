@@ -190,3 +190,36 @@ release. Focused summary sanitization, settings deletion and existing status
 polling checks passed. GitHub/Docker activation and provider checks remain
 unfulfilled. Browser visual inspection was unavailable because macOS computer
 capture failed; no authenticated production click-through is claimed.
+
+
+## Hosting billing separation: admin 417691c, schema 55
+
+All eight installed portal database consumers run `417691c`. Portal migrated
+from schema 54 to 55; core remains `1a00d2e` / schema 12. Existing feature flags,
+signup restrictions, hosting policies and Stripe test configuration are unchanged.
+The updated portal reports `billing_mode=test`, `billing_enabled=true` and
+`test_billing=true`; billing management remains enabled.
+
+The coordinated upgrade stopped database writers and controllers, saved matching
+binaries/settings and consistent SQLite snapshots, then verified every original
+billing customer, plan, checkout, subscription, charge, event, worker task and
+plan limit was retained in test mode with identical original column values.
+No live billing records were introduced.
+
+Rollback snapshot: `/var/backups/launchstead-portal-billing55-20260925`.
+Restore the matching schema-54 database, binaries and settings together after
+stopping all writers and accounting for subsequent writes. This root-private
+snapshot remains on the VPS and has not been separately exported offsite.
+
+Postflight at `2026-09-25T12:59:58.688095+00:00` verified all eight binary hashes,
+preserved portal/core record counts, both database integrity/foreign-key checks,
+idle deployment/GitHub queues, all three nodes Ready and all eight application
+Deployments healthy. No sampled systemd units were failed. Portal and
+`testdomain.0xivanov.dev` returned HTTPS 200. Served portal JavaScript matches the
+release exactly. No authenticated browser click-through is claimed.
+
+Live payment activation is still pending. Saved Stripe credentials were checked
+without exposing values: the supplied `stipe.txt` contains a test key and no live
+key. GitHub and Docker flags remain disabled pending their documented provider
+requirements. Neither this upgrade nor the local simulated live workflow proves
+real payment collection, merchant live readiness or paid pilot completion.

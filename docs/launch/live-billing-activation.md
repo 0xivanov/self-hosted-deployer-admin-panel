@@ -18,7 +18,7 @@ signed event mode isolation, mixed-mode nested subscription objects, and the
 existing provider suite. All network responses in these checks are synthetic;
 no real customer, checkout or charge was created.
 
-## Hosting persistence implemented locally
+## Hosting persistence deployed
 
 Schema 55 separates customers, plans, checkouts, subscriptions, charges, events,
 worker tasks and plan limits by billing mode. Existing schema-54 records migrate
@@ -29,10 +29,12 @@ Authenticated provider clients declare their mode and mismatches are rejected
 before provider calls or work leasing.
 
 Runtime mode is immutable for each opened store. Existing `Open` callers and
-legacy test flags retain test behavior. Production remains schema 54 with test billing.
-This persistence change has not been deployed. A coordinated upgrade of all
-portal database consumers and a consistent rollback snapshot are required before
-schema 55 deployment. Old binaries must not run against the upgraded database.
+legacy test flags retain test behavior. Production runs admin `417691c`, schema 55,
+with test billing. The coordinated rollout verified all eight installed consumer
+binaries and preserved every original billing row in test mode. The root-private
+rollback snapshot is `/var/backups/launchstead-portal-billing55-20260925`. Restore
+matching databases, binaries and settings together; old binaries must not run
+against the upgraded database. See [production upgrade](production-upgrade-20260925.md).
 
 Verification passed for billing, hosting and historical database migrations,
 including same-ID event isolation, wrong-mode signed webhook rejection, sandbox
@@ -46,7 +48,7 @@ legacy test configuration, new live registrations requiring payment and existing
 workspace policy preservation. Existing portal browser-unit checks pass. These
 checks do not establish live Stripe account readiness or paid pilot completion.
 
-## Runtime configuration implemented locally
+## Runtime configuration and activation
 
 The hosting portal, billing worker, billing-plan and hosting-limit commands,
 fleet worker, Node build/deployment workers and static publication worker support
