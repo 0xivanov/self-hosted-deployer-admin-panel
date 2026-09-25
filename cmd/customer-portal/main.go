@@ -366,6 +366,7 @@ func run() error {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
+			var nextGitHubCleanup time.Time
 			timer := time.NewTicker(2 * time.Second)
 			defer timer.Stop()
 			for {
@@ -373,6 +374,12 @@ func run() error {
 				case <-ctx.Done():
 					return
 				case <-timer.C:
+					if time.Now().After(nextGitHubCleanup) {
+						if _, err := store.PruneGitHubHistory(ctx); err != nil && ctx.Err() == nil {
+							fmt.Fprintln(os.Stderr, "GitHub history cleanup could not complete")
+						}
+						nextGitHubCleanup = time.Now().Add(time.Hour)
+					}
 					if opts.GitHubWebhookSecret != "" {
 						if _, err := store.WorkGitHubPush(ctx, githubApp); err != nil && ctx.Err() == nil {
 							fmt.Fprintln(os.Stderr, "GitHub push could not advance; inspect push status")

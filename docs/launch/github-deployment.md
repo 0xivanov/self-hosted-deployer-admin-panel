@@ -281,7 +281,7 @@ only after its database transaction commits.
 Receipt history and per-project event history are capped at 10,000. Capacity
 failures return a retryable error and roll back the entire intake, including its
 receipt. A repeated already-retained payload still succeeds at capacity. One
-request matches at most 1,000 project bindings. Retention will be added before enabling this endpoint in production.
+request matches at most 1,000 project bindings. The bounded retention worker described below runs before processing on startup and hourly thereafter.
 
 Checks cover multiple matching projects, replay with changed unsigned headers,
 wrong bindings, disconnect, provider ping, endpoint restrictions, capacity rollback,
@@ -355,8 +355,8 @@ The activity panel shows waiting, building, publishing and terminal results with
 commit/time, bounded polling and safe failure text. Failed work can use the normal
 upload/build/publication controls for recovery. Dedicated automatic-pipeline retry
 is not implemented. All portal database consumers must upgrade together to schema
-52. Provider setup, delivery against a real App and history retention still require
-completion before production enablement.
+52. Provider setup and delivery against a real App still require completion before
+production enablement. History retention is implemented below.
 
 Validation: focused integration checks passed for the GitHub flow, existing manual
 publication/Node workflows and schema migrations. A local static flow used real
@@ -380,5 +380,37 @@ transaction, preserves child processing/pipeline rows, checks all foreign keys
 before commit, and restores foreign-key enforcement. All portal database consumers
 must be upgraded together to schema 53. Focused checks passed for branch return,
 exact redelivery, multiple projects and migration preserving publication references.
-Production remains unchanged. History retention is still unfinished; receipt and
-event caps remain 10,000 and return explicit retryable capacity errors.
+Production remains unchanged. Receipt and event caps remain 10,000 and return explicit retryable capacity
+errors if retained work fills them. Retention is implemented below.
+
+
+## Bounded activity retention
+
+The portal's GitHub worker runs metadata cleanup on its first processing tick and
+hourly thereafter. One transaction removes at most 250 eligible events, 250 imports
+and 250 unreferenced receipts, with a ten-second deadline. No schema change is
+required beyond schema 53.
+
+Completed activity is eligible after 30 days, with at least the latest 20 events
+and 20 imports retained per project. Pending/unconsumed work, active pipelines,
+queued/running runtime jobs and provenance for current static/Node publications
+are preserved. Removing an event also removes its processing and pipeline metadata.
+Import records are removed only after event/pipeline references are gone. This
+cleanup never removes uploads, build artifacts, runtime jobs or live publication
+pointers. Existing upload/build storage limits remain separate and unchanged.
+
+Exact signed-payload receipts remain for at least 90 days and longer while a
+retained event references them. Once an unreferenced receipt expires, a delivery
+of that old payload can be considered new; current connection and branch-head
+checks still apply. Completed import request keys have the same lifetime as their
+retained import rows, so callers should use new request keys for new imports and
+not depend on indefinite idempotency of archived requests.
+
+The 100-import history cap and 10,000-event/receipt caps still apply. Cleanup does
+not bypass capacity controls or discard recent/active history merely to accept
+more work. A workload that fills a cap inside its retention window requires an
+explicit capacity/retention change, rather than silent deletion.
+
+Focused checks passed for recent/pending preservation, expired receipt cleanup,
+replay suppression after event cleanup, and retention of queued/live publication
+provenance and source uploads. Production remains unchanged.
