@@ -40,7 +40,7 @@ func (s *Store) migrateGitHubPushEvents() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version == 50 {
+	if version >= 50 {
 		return nil
 	}
 	if version != 49 {
@@ -81,7 +81,7 @@ func validGitHubPushHash(v string) bool {
 	return err == nil && len(b) == 32 && strings.ToLower(v) == v
 }
 
-const githubPushColumns = "id,project_id,connection_revision,actor_id,installation_id,repository_id,repository,ref,before_sha,after_sha,deleted,state,created_at"
+const githubPushColumns = "e.id,e.project_id,e.connection_revision,e.actor_id,e.installation_id,e.repository_id,e.repository,e.ref,e.before_sha,e.after_sha,e.deleted,e.state,e.created_at"
 
 func scanGitHubPushEvent(row interface{ Scan(...any) error }) (GitHubPushEvent, error) {
 	var e GitHubPushEvent

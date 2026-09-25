@@ -371,6 +371,11 @@ func run() error {
 				case <-ctx.Done():
 					return
 				case <-timer.C:
+					if opts.GitHubWebhookSecret != "" {
+						if _, err := store.WorkGitHubPush(ctx, githubApp); err != nil && ctx.Err() == nil {
+							fmt.Fprintln(os.Stderr, "GitHub push could not advance; inspect push status")
+						}
+					}
 					if _, err := store.WorkGitHubImport(ctx, githubApp); err != nil && ctx.Err() == nil {
 						fmt.Fprintln(os.Stderr, "GitHub import could not advance; inspect import status")
 					}

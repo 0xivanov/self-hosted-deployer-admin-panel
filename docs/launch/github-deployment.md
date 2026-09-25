@@ -281,18 +281,50 @@ only after its database transaction commits.
 Receipt history and per-project event history are capped at 10,000. Capacity
 failures return a retryable error and roll back the entire intake, including its
 receipt. A repeated already-retained payload still succeeds at capacity. One
-request matches at most 1,000 project bindings. Retention and processing will be
-added before enabling this endpoint in production.
+request matches at most 1,000 project bindings. Retention will be added before enabling this endpoint in production.
 
 Checks cover multiple matching projects, replay with changed unsigned headers,
 wrong bindings, disconnect, provider ping, endpoint restrictions, capacity rollback,
-and migration/reopen preservation. Push events currently remain pending; there is
-no event processor or automatic publication yet, and the customer toggle stays
-unavailable. Existing manual GitHub imports and ZIP deployment behavior are unchanged.
+and migration/reopen preservation. Push events feed the processor described below. There is no automatic publication
+yet, and the customer toggle stays unavailable. Existing manual GitHub imports and ZIP deployment behavior are unchanged.
 
-Next, a push processor must compare the event commit with the repository's actual
-branch head, retain a stable import/pipeline identity, and recheck the connection
-and head before entering publication. Node pipelines must repeat that check after
+Before automatic publication, the pipeline must recheck the connection and branch
+head before entering publication. Node pipelines must repeat that check after
 the build, since a newer commit can arrive while code is being built. Existing
 runtime publication revisions and recovery remain authoritative. No browser session
 or operator personal token should be manufactured for background deployment work.
+
+
+## Push processing (local schema 51, not deployed)
+
+When webhook configuration is present, the portal processes retained pushes before
+its normal import pass. Processing has a two-minute lease and at most five claim
+attempts. Provider errors and shutdown leave the lease for recovery; provider
+error details are not persisted or exposed. The processor resolves the actual
+branch head, skips superseded events and branch deletions, and atomically enqueues
+one existing import job pinned to the verified commit. Each event has a stable
+request key, so recovery cannot enqueue a second import for that event.
+
+Claim and completion recheck the connected repository revision, branch, authorizing
+owner, project lifecycle and hosting access. Existing queued/running imports and
+history limits still apply. Import completion continues to validate source through
+the existing archive path. A push import currently creates an upload only; it does
+not build or publish. The customer deploy-on-push toggle remains unavailable until
+the full pipeline and its visible progress/recovery are integrated.
+
+Schema 51 adds processing records without rebuilding the schema 50 inbox. Upgrade
+all portal database consumers together before activation. Production is still
+schema 46 and has no GitHub App configuration. Actual GitHub installation and
+provider delivery are not yet verified.
+
+Before enabling deploy-on-push, revise permanent semantic tuple deduplication to
+allow legitimate force-push cycles that revisit the same before/after pair while
+still rejecting repeated deliveries. Retention must not permanently suppress such
+future updates. Automatic publication must also serialize with manual publication
+and recheck branch head after a Node build.
+
+Focused integration checks passed for push-to-upload, provider-failure recovery,
+stale leases, retry exhaustion, superseded/deleted branches, manual-import
+contention, reconnect/disconnect fencing and schema migration with retained inbox
+events. Portal and customer-portal static analysis passed. These are local checks,
+not evidence of a real GitHub delivery or production publication.
