@@ -15,6 +15,7 @@ import (
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/githubdeploy"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/hostingbilling"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/merchantbilling"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/namesilo"
 	"io"
 	"net"
 	"net/http"
@@ -43,6 +44,7 @@ func run() error {
 	key := flag.String("tls-key", "", "HTTPS private key")
 	smtpFile := flag.String("smtp-config", "", "private JSON SMTP settings")
 	mailKeyFile := flag.String("mail-key-file", "", "private file containing 32-byte hex mail encryption key")
+	sandboxDomainFile := flag.String("sandbox-domain-config", "", "private NameSilo OTE JSON: secret_key and markup_minor; no real registrations")
 	merchantFile := flag.String("test-merchant-config", "", "private Stripe test Connect settings with secret_key and countries")
 	merchantConfig := flag.String("merchant-config", "", "private Stripe Connect settings for the selected merchant mode")
 	managementFile := flag.String("test-billing-management-config", "", "private Stripe test customer portal settings")
@@ -299,6 +301,30 @@ func run() error {
 	if management != nil {
 		managementProvider = management
 	}
+	var domainReader portal.DomainQuoteReader
+	var domainMarkup int64
+	if *sandboxDomainFile != "" {
+		raw, e := privateFile(*sandboxDomainFile)
+		if e != nil {
+			return errors.New("sandbox domain configuration unavailable")
+		}
+		var cfg struct {
+			Secret string `json:"secret_key"`
+			Markup int64  `json:"markup_minor"`
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&cfg) != nil || decoder.Decode(new(any)) != io.EOF || cfg.Markup < 0 {
+			return errors.New("invalid sandbox domain configuration")
+		}
+		client, e := namesilo.NewSandboxClient(cfg.Secret)
+		if e != nil {
+			return e
+		}
+		defer client.Close()
+		domainReader = client
+		domainMarkup = cfg.Markup
+	}
 	var merchantProvider portal.MerchantProvider
 	var merchantCountries []string
 	if *merchantFile != "" {
@@ -337,7 +363,7 @@ func run() error {
 		}
 		signupAllowed = portal.SignupAllowlist(*signupAllowlist)
 	}
-	opts := portal.HTTPOptions{MerchantMode: selectedMerchantMode, MerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, BillingWebhookSecret: webhookSecret, BillingMode: selectedBillingMode, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
+	opts := portal.HTTPOptions{DomainQuotes: domainReader, DomainMarkupMinor: domainMarkup, MerchantMode: selectedMerchantMode, MerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, BillingWebhookSecret: webhookSecret, BillingMode: selectedBillingMode, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
 	if githubApp != nil {
 		opts.GitHubApp = githubApp
 		opts.GitHubOAuth = githubOAuth

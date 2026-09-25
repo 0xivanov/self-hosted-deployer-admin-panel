@@ -472,7 +472,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/api/config" && r.Method == "GET" {
 		_, githubImports := h.githubApp.(GitHubSourceProvider)
 		_, githubInstallation := h.githubApp.(GitHubInstallationProvider)
-		httpJSON(w, map[string]any{"github_auto_deploy": h.githubAutoDeploy, "github_installation": githubInstallation, "github_imports": githubImports, "github_connections": h.githubApp != nil, "container_hosting": h.containerHosting, "client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_mode": h.merchantMode, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "billing_enabled": h.billingEnabled, "billing_mode": h.billingMode, "test_billing": h.billingEnabled && h.billingMode == "test", "billing_management": h.billingManagement != nil})
+		httpJSON(w, map[string]any{"github_auto_deploy": h.githubAutoDeploy, "github_installation": githubInstallation, "github_imports": githubImports, "github_connections": h.githubApp != nil, "container_hosting": h.containerHosting, "client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_mode": h.merchantMode, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "domain_environment": domainEnvironment(h.domainQuotes), "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "billing_enabled": h.billingEnabled, "billing_mode": h.billingMode, "test_billing": h.billingEnabled && h.billingMode == "test", "billing_management": h.billingManagement != nil})
 		return
 	}
 	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/verification/resend" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {
@@ -1123,4 +1123,12 @@ func (h *HTTP) accountAction(w http.ResponseWriter, r *http.Request) {
 		}
 		httpJSON(w, map[string]string{"message": "Password changed. Sign in with your new password."})
 	}
+}
+
+// domainEnvironment exposes provider capability without its credentials.
+func domainEnvironment(p DomainQuoteReader) string {
+	if provider, ok := p.(interface{ Environment() string }); ok {
+		return provider.Environment()
+	}
+	return ""
 }

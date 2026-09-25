@@ -11,6 +11,7 @@ var ErrQuote = errors.New("a fresh standard-price registration and renewal quote
 // RegistrarQuote is normalized provider evidence, never browser-supplied prices.
 // Integer minor units avoid rounding money through floating-point conversions.
 type RegistrarQuote struct {
+	Environment                     string
 	Domain                          string
 	Available                       bool
 	Premium                         bool
@@ -20,6 +21,7 @@ type RegistrarQuote struct {
 	CheckedAt                       time.Time
 }
 type Offer struct {
+	Environment       string    `json:"environment,omitempty"`
 	Domain            string    `json:"domain"`
 	Currency          string    `json:"currency"`
 	RegistrationMinor int64     `json:"registration_minor"`
@@ -36,7 +38,7 @@ func OfferFor(q RegistrarQuote, requested string, markupMinor int64, now time.Ti
 	if err != nil {
 		return Offer{}, err
 	}
-	if q.Domain != name || !q.Available || q.Premium || !q.PremiumChecked || q.RegistrationMinor <= 0 || q.RenewalMinor <= 0 || markupMinor < 0 || q.CheckedAt.After(now) || !q.CheckedAt.Add(5*time.Minute).After(now) {
+	if (q.Environment != "" && q.Environment != "sandbox") || q.Domain != name || !q.Available || q.Premium || !q.PremiumChecked || q.RegistrationMinor <= 0 || q.RenewalMinor <= 0 || markupMinor < 0 || q.CheckedAt.After(now) || !q.CheckedAt.Add(5*time.Minute).After(now) {
 		return Offer{}, ErrQuote
 	}
 	// Launch currencies are intentionally limited to currencies with two decimals.
@@ -46,5 +48,5 @@ func OfferFor(q RegistrarQuote, requested string, markupMinor int64, now time.Ti
 	if q.RegistrationMinor > math.MaxInt64-markupMinor || q.RenewalMinor > math.MaxInt64-markupMinor {
 		return Offer{}, ErrQuote
 	}
-	return Offer{Domain: name, Currency: q.Currency, RegistrationMinor: q.RegistrationMinor + markupMinor, RenewalMinor: q.RenewalMinor + markupMinor, Years: 1, ExpiresAt: q.CheckedAt.Add(5 * time.Minute)}, nil
+	return Offer{Environment: q.Environment, Domain: name, Currency: q.Currency, RegistrationMinor: q.RegistrationMinor + markupMinor, RenewalMinor: q.RenewalMinor + markupMinor, Years: 1, ExpiresAt: q.CheckedAt.Add(5 * time.Minute)}, nil
 }

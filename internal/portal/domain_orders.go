@@ -42,7 +42,7 @@ func domainOrderQuote(rawEvidence, rawOffer []byte, now time.Time) (domains.Offe
 		return domains.Offer{}, domains.RegistrarQuote{}, 0, ErrDomainOrderConflict
 	}
 	name, err := domains.PurchaseName(offer.Domain)
-	if err != nil || name != offer.Domain || evidence.Domain != offer.Domain || offer.Currency != evidence.Currency || offer.Years != 1 || offer.RegistrationMinor <= 0 || offer.RenewalMinor <= 0 || evidence.RegistrationMinor <= 0 || evidence.RenewalMinor <= 0 || !evidence.Available || evidence.Premium || !evidence.PremiumChecked || !offer.ExpiresAt.After(now) || !evidence.CheckedAt.After(now.Add(-5*time.Minute)) || evidence.CheckedAt.After(now) {
+	if err != nil || offer.Environment != evidence.Environment || (offer.Environment != "" && offer.Environment != "sandbox") || name != offer.Domain || evidence.Domain != offer.Domain || offer.Currency != evidence.Currency || offer.Years != 1 || offer.RegistrationMinor <= 0 || offer.RenewalMinor <= 0 || evidence.RegistrationMinor <= 0 || evidence.RenewalMinor <= 0 || !evidence.Available || evidence.Premium || !evidence.PremiumChecked || !offer.ExpiresAt.After(now) || !evidence.CheckedAt.After(now.Add(-5*time.Minute)) || evidence.CheckedAt.After(now) {
 		return domains.Offer{}, domains.RegistrarQuote{}, 0, ErrDomainOrderConflict
 	}
 	markup := offer.RegistrationMinor - evidence.RegistrationMinor
@@ -94,7 +94,7 @@ func (s *Store) RequestDomainOrder(ctx context.Context, p DomainQuoteReader, tok
 		return DomainOrder{}, ErrDomainOrderConflict
 	}
 	newOffer, err := domains.OfferFor(refreshed, offer.Domain, markup, s.now())
-	if err != nil || refreshed.CheckedAt.Before(started) || newOffer.Currency != offer.Currency || newOffer.RegistrationMinor != offer.RegistrationMinor || newOffer.RenewalMinor != offer.RenewalMinor {
+	if err != nil || newOffer.Environment != offer.Environment || refreshed.CheckedAt.Before(started) || newOffer.Currency != offer.Currency || newOffer.RegistrationMinor != offer.RegistrationMinor || newOffer.RenewalMinor != offer.RenewalMinor {
 		return DomainOrder{}, ErrDomainOrderConflict
 	}
 	tx, err = s.db.BeginTx(ctx, nil)
@@ -110,7 +110,7 @@ func (s *Store) RequestDomainOrder(ctx context.Context, p DomainQuoteReader, tok
 		return DomainOrder{}, ErrDomainOrderConflict
 	}
 	var original domains.Offer
-	if json.Unmarshal(rawOffer, &original) != nil || !original.ExpiresAt.After(s.now()) || original.Domain != offer.Domain || original.Currency != offer.Currency || original.RegistrationMinor != offer.RegistrationMinor || original.RenewalMinor != offer.RenewalMinor || original.Years != offer.Years || !original.ExpiresAt.Equal(offer.ExpiresAt) {
+	if json.Unmarshal(rawOffer, &original) != nil || !original.ExpiresAt.After(s.now()) || original.Environment != offer.Environment || original.Domain != offer.Domain || original.Currency != offer.Currency || original.RegistrationMinor != offer.RegistrationMinor || original.RenewalMinor != offer.RenewalMinor || original.Years != offer.Years || !original.ExpiresAt.Equal(offer.ExpiresAt) {
 		return DomainOrder{}, ErrDomainOrderConflict
 	}
 	if err = tx.QueryRowContext(ctx, "SELECT id,quote_id,workspace_id,actor_id,offer,state,created_at FROM domain_orders WHERE quote_id=? AND workspace_id=?", quoteID, workspace).Scan(&existing.ID, &existing.QuoteID, &existing.WorkspaceID, &existing.ActorID, &rawOffer, &existing.State, &existing.CreatedAt); err == nil {

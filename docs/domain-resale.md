@@ -179,5 +179,47 @@ does not establish public registration availability.
 The getPrices response included com/net registration entries, and the request
 reported source IP 159.195.146.26. These calls did not register domains, renew,
 change nameservers, add funds or charge anything. Registration and renewal
-response/reconciliation contracts are still to be exercised in OTE. The quote
-adapter, payment linkage and persistent domain lifecycle remain unfinished.
+response/reconciliation contracts are still to be exercised in OTE. At that checkpoint the quote adapter was unfinished. The section below records
+its implementation; payment linkage and persistent domain lifecycle remain unfinished.
+
+
+### Sandbox quote adapter and portal wiring
+
+A sandbox-only NameSilo adapter now reads checkRegisterAvailability from the fixed
+OTE endpoint. It accepts .com/.net names and requires one exact available result
+with explicit standard-price classification, one-year duration and valid decimal
+registration/renewal amounts. It does not contain registration, renewal or
+production endpoints. HTTP redirects and ambient proxies are disabled; provider
+errors do not expose credentials or response bodies.
+
+Customer portal startup accepts --sandbox-domain-config pointing to a private
+JSON file with secret_key and a nonnegative markup_minor. This enables the
+existing owner-only domain search and prepared-order paths using sandbox evidence.
+Do not pass the production key. Search results, stored offers and prepared orders
+retain environment="sandbox"; the UI labels test availability and prices.
+Order preparation rejects a provider refresh that changes the saved environment.
+No real-domain quote adapter or registration action is enabled by this flag.
+
+Example private configuration, with placeholder credentials only:
+
+```json
+{"secret_key":"SANDBOX_KEY","markup_minor":0}
+```
+
+No database schema change is required; environment is retained in existing JSON
+evidence and offers. Legacy fixtures without environment remain compatible.
+Before introducing real-domain transactions, partition domain persistence and
+require matching live provider evidence throughout payment and fulfillment.
+Never treat the legacy empty environment as proof of a real-domain quote.
+Production has not been configured with the sandbox flag at this checkpoint.
+
+The sandbox adapter displays USD amounts. NameSilo documents USD account funding
+for API purchases in its [account funds documentation](https://www.namesilo.com/support/v2/articles/account-options/account-funds-manager).
+The observed OTE availability response has no currency field, so this is a
+provider denomination assumption, not response evidence. Confirm the live pricing
+contract before enabling real-money checkout.
+
+Review verification: focused NameSilo, quote and customer-portal tests; domain
+integration tests including persisted sandbox evidence and environment mismatch;
+portal JavaScript tests; Go vet and customer-portal build. This checkpoint is
+source-only. Production domain search remains disabled.

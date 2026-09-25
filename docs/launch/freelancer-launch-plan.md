@@ -230,3 +230,10 @@ The marketing kit links the guide and uses the current portfolio workflow.
 Public content was checked after deployment propagation; both the guide and
 homepage returned HTTPS 200 with the new copy. No outreach was sent and no pilot
 customers or paid outcomes were fabricated.
+
+
+September 25 NameSilo follow-up: implemented a fixed-OTE sandbox quote reader,
+private startup configuration, sandbox labels and stored environment checks in
+prepared domain orders. No schema migration. Source reviewed with focused domain
+integration checks; not deployed or configured in production. Registration,
+renewal, payment fulfillment and live-provider activation remain outstanding.
