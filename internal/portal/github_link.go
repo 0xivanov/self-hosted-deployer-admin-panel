@@ -22,7 +22,11 @@ type GitHubLinkAttempt struct {
 	ProjectID   string
 	WorkspaceID string
 	ActorID     string
+	completion  string
 }
+
+func (GitHubLinkAttempt) String() string   { return "[GitHub link completion redacted]" }
+func (GitHubLinkAttempt) GoString() string { return "[GitHub link completion redacted]" }
 
 func (s *Store) migrateGitHubLinks() error {
 	tx, err := s.db.BeginTx(context.Background(), nil)
@@ -34,7 +38,7 @@ func (s *Store) migrateGitHubLinks() error {
 	if err = tx.QueryRowContext(context.Background(), "PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version == 47 {
+	if version >= 47 {
 		return nil
 	}
 	if version != 46 {
@@ -81,6 +85,9 @@ func (s *Store) BeginGitHubLink(ctx context.Context, session, project string) (G
 	}
 	if err == nil && created > now-10 {
 		return GitHubLinkState{}, ErrGitHubLinkRate
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM github_link_completions WHERE project_id=?", project); err != nil {
+		return GitHubLinkState{}, err
 	}
 	result := GitHubLinkState{State: randomToken(), ExpiresAt: now + int64(10*time.Minute/time.Second)}
 	_, err = tx.ExecContext(ctx, `INSERT INTO github_link_states(project_id,state_hash,actor_id,session_hash,expires_at,created_at) VALUES(?,?,?,?,?,?)
@@ -133,8 +140,13 @@ func (s *Store) ConsumeGitHubLink(ctx context.Context, session, project, state s
 	if count != 1 {
 		return empty, ErrGitHubLink
 	}
+	completion := randomToken()
+	_, err = tx.ExecContext(ctx, `INSERT INTO github_link_completions(project_id,proof_hash,actor_id,session_hash,expires_at) VALUES(?,?,?,?,?) ON CONFLICT(project_id) DO UPDATE SET proof_hash=excluded.proof_hash,actor_id=excluded.actor_id,session_hash=excluded.session_hash,expires_at=excluded.expires_at`, project, digest(completion), actor, digest(session), s.now().Unix()+600)
+	if err != nil {
+		return empty, err
+	}
 	if err = tx.Commit(); err != nil {
 		return empty, err
 	}
-	return GitHubLinkAttempt{ProjectID: project, WorkspaceID: p.WorkspaceID, ActorID: actor}, nil
+	return GitHubLinkAttempt{ProjectID: project, WorkspaceID: p.WorkspaceID, ActorID: actor, completion: completion}, nil
 }

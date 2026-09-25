@@ -1,7 +1,7 @@
 # GitHub deployment
 
 Status: implementation started September 25. Repository archive preparation, push signature validation and GitHub App
-authentication, repository access checks and session-bound link state are source components, not a connected customer
+authentication, OAuth exchange, repository access checks and session-bound connection persistence are source components, not a connected customer
 feature. No GitHub webhook endpoint, installation callback or deployment worker
 is enabled in production yet. Do not advertise deploy-on-push as available.
 
@@ -54,7 +54,7 @@ project deletion or disconnect must prevent new imports/publications.
   a callback-supplied installation ID alone is insufficient. Requests stay on
   fixed GitHub API endpoints and use bounded pagination/responses without
   retaining the user token. Listings stop at 1,000 items and report an explicit
-  limit error when the selection cannot be verified within that bound. This component still needs OAuth exchange and portal
+  limit error when the selection cannot be verified within that bound. This component still needs portal
   connection handlers before it is customer-accessible.
 
 - GitHub App RSA key validation and short-lived RS256 app assertions, plus a
@@ -135,12 +135,36 @@ an attempt is pending. Consumption uses a conditional transactional delete, so
 only one callback succeeds. Provider failure after consumption requires starting
 a new link request. The raw state/session token is never stored or audited.
 
-This is not a completed account connection. HTTP CSRF checks, OAuth code exchange,
-provider access verification and a final recheck of portal ownership before saving
-the connection must be wired together. Provider checks follow the
+This is not a completed account connection. HTTP CSRF checks, OAuth code exchange and provider access verification
+must be wired to customer-facing handlers. Connection persistence now rechecks
+portal ownership and entitlement before saving. Provider checks follow the
 [GitHub user installation/repository APIs](https://docs.github.com/en/rest/apps/installations).
 
 Migration and focused checks preserved existing project/session data and covered
 state persistence across reopen, replay, cross-user/session/project attempts,
 expiry, role revocation and project deletion. Production remains schema 46;
 all portal database consumers will need the next coordinated upgrade together.
+
+
+## Connection persistence and OAuth (schema 48, not deployed)
+
+Project connections retain the authorizing actor, GitHub user, installation and
+repository IDs, repository name, branch, optional folder and explicit deploy-on-push
+setting. They never retain reusable GitHub or portal tokens. Replacing or
+disconnecting a connection advances its revision; future import workers must
+check that revision before acting. Disconnect preserves the current published site.
+
+After consuming callback state, the store issues a second short-lived single-use
+completion receipt bound to the same session, actor and project. Only its hash is
+stored. Starting a new link or disconnecting revokes unfinished receipts, so a
+late provider response cannot reconnect a project. Saving rechecks current owner
+access and hosting entitlement inside the transaction that consumes the receipt.
+
+The OAuth helper follows [GitHub App user-token authorization](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app), creates authorization URLs with PKCE S256 and exchanges codes
+through the fixed GitHub token endpoint. It bounds responses and time, refuses
+redirects and does not retain returned credentials. HTTP routes, private operator
+configuration, repository selection UI and an actual GitHub App remain outstanding.
+
+Focused checks cover connection lifecycle/revision, callback replay, disconnect
+and replacement races, role/session changes, expiry, database reopen and schema
+47-to-48 migration. No production migration or feature enablement was performed.
