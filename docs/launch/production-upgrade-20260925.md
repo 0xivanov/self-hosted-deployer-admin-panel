@@ -141,3 +141,28 @@ fixture covered those boundaries. The read-only production run at 12:02 UTC
 reported no inventory errors and zero unfinished jobs in all these categories.
 Future maintenance must stop GitHub intake and its worker along with the other
 writers before relying on the drain observation or taking consistent backups.
+
+
+## Client labels follow-up: admin aca110e, schema 54
+
+All eight portal database consumer binaries now run `aca110e`; core remains
+`1a00d2e` / schema 12. Portal migrated from 53 to 54, adding project-scoped client
+label metadata. No feature flags or application workloads changed.
+
+Rollback snapshot: `/var/backups/launchstead-portal-client-labels-20260925`.
+As above, restore matching binaries, databases and configuration together only
+after accounting for subsequent writes. This snapshot is root-private on the
+VPS and has not been separately exported offsite.
+
+The coordinated upgrade preserved prior records and passed database integrity
+and foreign-key checks. Postflight at 2026-09-25T12:11:07.200339+00:00 verified all
+eight installed portal hashes, all three nodes Ready, all eight existing app
+Deployments healthy and all deployment/GitHub queues empty. Portal and the
+existing custom-domain website returned HTTPS 200; served JavaScript matched
+the release. GitHub and container feature flags remain disabled.
+
+Focused verification covered migration with an existing project/session,
+owner/developer edits, viewer/client/outsider denial, workspace reads, client
+summary non-disclosure, label removal, rename preservation and CSRF. Existing
+migration tests, vet, editor DOM checks and 27 upload/status/workflow/invitation
+checks passed. Production customer data was not changed to exercise the editor.
