@@ -11,6 +11,13 @@ import (
 
 const merchantBuyerCookie = "__Host-merchant-buyer"
 
+func (h *HTTP) merchantBuyerCookieName() string {
+	if h.store.merchantModeValue() == "live" {
+		return merchantBuyerCookie + "-live"
+	}
+	return merchantBuyerCookie
+}
+
 type shopProduct struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -74,7 +81,7 @@ func (h *HTTP) shopProduct(r *http.Request) (shopProduct, error) {
 		return shopProduct{}, ErrInvalid
 	}
 	var product shopProduct
-	err := h.store.db.QueryRowContext(r.Context(), "SELECT id,name,currency,amount_minor,revision FROM merchant_products WHERE id=? AND active=1", id).Scan(&product.ID, &product.Name, &product.Currency, &product.AmountMinor, &product.Revision)
+	err := h.store.db.QueryRowContext(r.Context(), "SELECT id,name,currency,amount_minor,revision FROM merchant_products WHERE mode=? AND id=? AND active=1", h.store.merchantModeValue(), id).Scan(&product.ID, &product.Name, &product.Currency, &product.AmountMinor, &product.Revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return shopProduct{}, ErrDenied
 	}
@@ -90,7 +97,7 @@ func shopOrderView(order MerchantOrder) shopOrder {
 }
 
 func (h *HTTP) shopBuyer(r *http.Request) (string, error) {
-	cookie, err := r.Cookie(merchantBuyerCookie)
+	cookie, err := r.Cookie(h.merchantBuyerCookieName())
 	if err != nil || !validMerchantOrderToken(cookie.Value) {
 		return "", ErrDenied
 	}
@@ -174,7 +181,7 @@ func (h *HTTP) shopHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			token = session.Token
-			http.SetCookie(w, &http.Cookie{Name: merchantBuyerCookie, Value: token, Path: "/", MaxAge: 30 * 24 * 60 * 60, Expires: session.ExpiresAt, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+			http.SetCookie(w, &http.Cookie{Name: h.merchantBuyerCookieName(), Value: token, Path: "/", MaxAge: 30 * 24 * 60 * 60, Expires: session.ExpiresAt, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 		}
 		httpJSON(w, map[string]string{"csrf": csrfFor(token)})
 		return
@@ -196,7 +203,7 @@ func (h *HTTP) shopHTTP(w http.ResponseWriter, r *http.Request) {
 			httpError(w, 503, "Shop session unavailable")
 			return
 		}
-		http.SetCookie(w, &http.Cookie{Name: merchantBuyerCookie, Value: "", Path: "/", MaxAge: -1, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		http.SetCookie(w, &http.Cookie{Name: h.merchantBuyerCookieName(), Value: "", Path: "/", MaxAge: -1, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 		w.WriteHeader(204)
 		return
 	case "/api/shop/orders":
@@ -441,7 +448,8 @@ func (h *HTTP) writeShopOrder(w http.ResponseWriter, r *http.Request, order Merc
 		return
 	}
 	var refund shopRefund
-	err = h.store.db.QueryRowContext(r.Context(), `SELECT f.state,f.currency,f.amount_minor,f.observed_at FROM merchant_refunds f JOIN merchant_orders o ON o.id=f.order_id WHERE o.id=? AND (o.buyer_hash=? OR EXISTS (SELECT 1 FROM merchant_order_recovery_grants g JOIN merchant_buyer_sessions bs ON bs.token_hash=g.session_hash WHERE g.order_id=o.id AND g.session_hash=? AND bs.expires_at>?))`, order.ID, digest(token), digest(token), h.store.now().Unix()).Scan(&refund.State, &refund.Currency, &refund.AmountMinor, &refund.ObservedAt)
+	mode := h.store.merchantModeValue()
+	err = h.store.db.QueryRowContext(r.Context(), `SELECT f.state,f.currency,f.amount_minor,f.observed_at FROM merchant_refunds f JOIN merchant_orders o ON o.mode=f.mode AND o.id=f.order_id WHERE f.mode=? AND o.id=? AND (o.buyer_hash=? OR EXISTS (SELECT 1 FROM merchant_order_recovery_grants g JOIN merchant_buyer_sessions bs ON bs.mode=g.mode AND bs.token_hash=g.session_hash WHERE g.mode=? AND g.order_id=o.id AND g.session_hash=? AND bs.expires_at>?))`, mode, order.ID, digest(token), mode, digest(token), h.store.now().Unix()).Scan(&refund.State, &refund.Currency, &refund.AmountMinor, &refund.ObservedAt)
 	view := shopOrderView(order)
 	if err == nil {
 		view.Refund = &refund

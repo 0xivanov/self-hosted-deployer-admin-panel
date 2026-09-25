@@ -15,7 +15,7 @@ type MerchantRefundMaintenanceResult struct {
 // failures so one unavailable refund cannot starve later rows.
 func (s *Store) MaintainMerchantRefunds(ctx context.Context, p MerchantRefundProvider, cursor string, limit int) (MerchantRefundMaintenanceResult, error) {
 	result := MerchantRefundMaintenanceResult{Cursor: cursor}
-	if err := validateMerchantProviderMode(p); err != nil {
+	if err := s.validateMerchantProviderMode(p); err != nil {
 		return result, err
 	}
 	if limit < 1 || limit > 100 {
@@ -25,7 +25,7 @@ func (s *Store) MaintainMerchantRefunds(ctx context.Context, p MerchantRefundPro
 	if err != nil {
 		return result, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE provider_id IS NOT NULL AND provider_id<>'' AND id>? ORDER BY id LIMIT ?", cursor, limit)
+	rows, err := tx.QueryContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE mode=? AND provider_id IS NOT NULL AND provider_id<>'' AND id>? ORDER BY id LIMIT ?", s.merchantModeValue(), cursor, limit)
 	if err != nil {
 		tx.Rollback()
 		return result, err

@@ -2,21 +2,27 @@ package portal
 
 import "errors"
 
-var ErrMerchantProviderMode = errors.New("merchant provider must use test billing mode")
+var ErrMerchantProviderMode = errors.New("merchant provider does not match selected payment mode")
 
 type merchantBillingModeProvider interface {
 	BillingMode() string
 }
 
-// validateMerchantProviderMode keeps the merchant tables test-only while the
-// merchant schema has no live-mode partition. Existing test doubles may omit
-// BillingMode; explicit live or unknown modes are rejected before any state or
-// provider operation.
-func validateMerchantProviderMode(provider any) error {
+// validateMerchantProviderMode requires a real provider to match the
+// operator-selected merchant partition. Test doubles may omit BillingMode only
+// when the selected partition is test.
+func (s *Store) validateMerchantProviderMode(provider any) error {
 	if provider == nil {
 		return ErrInvalid
 	}
-	if modeProvider, ok := provider.(merchantBillingModeProvider); ok && modeProvider.BillingMode() != "test" {
+	modeProvider, ok := provider.(merchantBillingModeProvider)
+	if !ok {
+		if s.merchantModeValue() == "test" {
+			return nil
+		}
+		return ErrMerchantProviderMode
+	}
+	if modeProvider.BillingMode() != s.merchantModeValue() {
 		return ErrMerchantProviderMode
 	}
 	return nil

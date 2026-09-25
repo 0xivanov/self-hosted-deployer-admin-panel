@@ -64,7 +64,7 @@ func freshMerchantAccount(account MerchantAccount, now int64) bool {
 }
 
 func (s *Store) loadFreshMerchantAccount(ctx context.Context, tx *sql.Tx, workspace string, now int64) (MerchantAccount, error) {
-	account, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE workspace_id=?", workspace))
+	account, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE mode=? AND workspace_id=?", s.merchantModeValue(), workspace))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return MerchantAccount{}, ErrBillingConflict
@@ -94,8 +94,9 @@ func (s *Store) RequestMerchantOrder(ctx context.Context, buyerToken, productID 
 	}
 	defer tx.Rollback()
 	buyerHash := digest(buyerToken)
+	mode := s.merchantModeValue()
 	var existing MerchantOrder
-	existing, _, _, _, err = scanMerchantOrder(tx.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE buyer_hash=? AND request_key=?", buyerHash, key))
+	existing, _, _, _, err = scanMerchantOrder(tx.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE mode=? AND buyer_hash=? AND request_key=?", mode, buyerHash, key))
 	if err == nil {
 		if existing.ProductID != productID || existing.ProductRevision != revision {
 			return MerchantOrder{}, ErrBillingConflict
@@ -105,7 +106,7 @@ func (s *Store) RequestMerchantOrder(ctx context.Context, buyerToken, productID 
 	if !errors.Is(err, sql.ErrNoRows) {
 		return MerchantOrder{}, err
 	}
-	product, err := scanMerchantProduct(tx.QueryRowContext(ctx, "SELECT "+merchantProductColumns+" FROM merchant_products WHERE id=?", productID))
+	product, err := scanMerchantProduct(tx.QueryRowContext(ctx, "SELECT "+merchantProductColumns+" FROM merchant_products WHERE mode=? AND id=?", mode, productID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return MerchantOrder{}, ErrDenied
 	}
@@ -121,20 +122,20 @@ func (s *Store) RequestMerchantOrder(ctx context.Context, buyerToken, productID 
 		return MerchantOrder{}, err
 	}
 	var count int
-	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_orders WHERE workspace_id=?", product.WorkspaceID).Scan(&count); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_orders WHERE mode=? AND workspace_id=?", mode, product.WorkspaceID).Scan(&count); err != nil {
 		return MerchantOrder{}, err
 	}
 	if count >= 10000 {
 		return MerchantOrder{}, ErrBillingConflict
 	}
-	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_orders WHERE buyer_hash=? AND created_at>?", buyerHash, now-60).Scan(&count); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_orders WHERE mode=? AND buyer_hash=? AND created_at>?", mode, buyerHash, now-60).Scan(&count); err != nil {
 		return MerchantOrder{}, err
 	}
 	if count >= 20 {
 		return MerchantOrder{}, ErrBillingConflict
 	}
 	o := MerchantOrder{ID: randomToken(), WorkspaceID: product.WorkspaceID, ProductID: product.ID, ProductRevision: product.Revision, BuyerHash: buyerHash, RequestKey: key, AccountID: account.AccountID, Name: product.Name, Currency: product.Currency, AmountMinor: product.AmountMinor, State: "requested", PaymentStatus: "unpaid", CreatedAt: now}
-	_, err = tx.ExecContext(ctx, "INSERT INTO merchant_orders(id,workspace_id,product_id,product_revision,buyer_hash,request_key,account_id,name,currency,amount_minor,state,payment_status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,?)", o.ID, o.WorkspaceID, o.ProductID, o.ProductRevision, o.BuyerHash, o.RequestKey, o.AccountID, o.Name, o.Currency, o.AmountMinor, o.State, o.PaymentStatus, o.CreatedAt)
+	_, err = tx.ExecContext(ctx, "INSERT INTO merchant_orders(mode,id,workspace_id,product_id,product_revision,buyer_hash,request_key,account_id,name,currency,amount_minor,state,payment_status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", mode, o.ID, o.WorkspaceID, o.ProductID, o.ProductRevision, o.BuyerHash, o.RequestKey, o.AccountID, o.Name, o.Currency, o.AmountMinor, o.State, o.PaymentStatus, o.CreatedAt)
 	if err != nil {
 		return MerchantOrder{}, err
 	}
@@ -148,7 +149,8 @@ func (s *Store) BuyerMerchantOrder(ctx context.Context, buyerToken, orderID stri
 	if !validMerchantOrderToken(buyerToken) || orderID == "" {
 		return MerchantOrder{}, ErrInvalid
 	}
-	o, _, _, _, err := scanMerchantOrder(s.db.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE id=? AND (buyer_hash=? OR EXISTS (SELECT 1 FROM merchant_order_recovery_grants g JOIN merchant_buyer_sessions bs ON bs.token_hash=g.session_hash WHERE g.order_id=merchant_orders.id AND g.session_hash=? AND bs.expires_at>?))", orderID, digest(buyerToken), digest(buyerToken), s.now().Unix()))
+	mode := s.merchantModeValue()
+	o, _, _, _, err := scanMerchantOrder(s.db.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE mode=? AND id=? AND (buyer_hash=? OR EXISTS (SELECT 1 FROM merchant_order_recovery_grants g JOIN merchant_buyer_sessions bs ON bs.mode=g.mode AND bs.token_hash=g.session_hash WHERE g.mode=? AND g.order_id=merchant_orders.id AND g.session_hash=? AND bs.expires_at>?))", mode, orderID, digest(buyerToken), mode, digest(buyerToken), s.now().Unix()))
 	if errors.Is(err, sql.ErrNoRows) {
 		return MerchantOrder{}, ErrDenied
 	}
@@ -167,7 +169,7 @@ func (s *Store) MerchantOrders(ctx context.Context, ownerToken, workspace string
 	if _, err = s.authorizeOwner(ctx, tx, ownerToken, workspace); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 100", workspace)
+	rows, err := tx.QueryContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE mode=? AND workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 100", s.merchantModeValue(), workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -202,8 +204,12 @@ func validMerchantProviderID(value, prefix string) bool {
 	return true
 }
 
-func validMerchantCheckoutResult(result merchantbilling.Checkout, now, floor int64) bool {
-	if !validMerchantProviderID(result.ID, "cs_test_") || (result.State != "open" && result.State != "complete" && result.State != "expired") || (result.PaymentStatus != "unpaid" && result.PaymentStatus != "paid") || result.ObservedAt < floor || result.ObservedAt > now {
+func validMerchantCheckoutResultForMode(result merchantbilling.Checkout, mode string, now, floor int64) bool {
+	prefix := "cs_test_"
+	if mode == "live" {
+		prefix = "cs_live_"
+	}
+	if !validMerchantProviderID(result.ID, prefix) || (result.State != "open" && result.State != "complete" && result.State != "expired") || (result.PaymentStatus != "unpaid" && result.PaymentStatus != "paid") || result.ObservedAt < floor || result.ObservedAt > now {
 		return false
 	}
 	if result.PaymentStatus == "paid" && (result.State != "complete" || !validMerchantProviderID(result.PaymentIntentID, "pi_")) {
@@ -224,8 +230,14 @@ func validMerchantCheckoutResult(result merchantbilling.Checkout, now, floor int
 	return true
 }
 
+// validMerchantCheckoutResult preserves the historical test helper contract
+// for sandbox fixtures.
+func validMerchantCheckoutResult(result merchantbilling.Checkout, now, floor int64) bool {
+	return validMerchantCheckoutResultForMode(result, "test", now, floor)
+}
+
 func (s *Store) DispatchMerchantOrder(ctx context.Context, id string, provider MerchantCheckoutProvider) (MerchantOrder, error) {
-	if err := validateMerchantProviderMode(provider); err != nil {
+	if err := s.validateMerchantProviderMode(provider); err != nil {
 		return MerchantOrder{}, err
 	}
 	if id == "" {
@@ -236,7 +248,8 @@ func (s *Store) DispatchMerchantOrder(ctx context.Context, id string, provider M
 		return MerchantOrder{}, err
 	}
 	defer tx.Rollback()
-	o, _, _, _, err := scanMerchantOrder(tx.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE id=?", id))
+	mode := s.merchantModeValue()
+	o, _, _, _, err := scanMerchantOrder(tx.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE mode=? AND id=?", mode, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return MerchantOrder{}, ErrDenied
 	}
@@ -249,7 +262,7 @@ func (s *Store) DispatchMerchantOrder(ctx context.Context, id string, provider M
 		}
 		return o, tx.Commit()
 	}
-	product, err := scanMerchantProduct(tx.QueryRowContext(ctx, "SELECT "+merchantProductColumns+" FROM merchant_products WHERE id=? AND workspace_id=?", o.ProductID, o.WorkspaceID))
+	product, err := scanMerchantProduct(tx.QueryRowContext(ctx, "SELECT "+merchantProductColumns+" FROM merchant_products WHERE mode=? AND id=? AND workspace_id=?", mode, o.ProductID, o.WorkspaceID))
 	if err != nil {
 		return MerchantOrder{}, ErrBillingConflict
 	}
@@ -264,7 +277,7 @@ func (s *Store) DispatchMerchantOrder(ctx context.Context, id string, provider M
 		return MerchantOrder{}, err
 	}
 	submittedAt := s.now().Unix()
-	if _, err = tx.ExecContext(ctx, "UPDATE merchant_orders SET state='submitted',submitted_at=? WHERE id=? AND state='requested'", submittedAt, id); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE merchant_orders SET state='submitted',submitted_at=? WHERE mode=? AND id=? AND state='requested'", submittedAt, mode, id); err != nil {
 		return MerchantOrder{}, err
 	}
 	if err = audit(ctx, tx, account.ActorID, o.WorkspaceID, "merchant.order_submitted:"+id, submittedAt); err != nil {
@@ -289,7 +302,8 @@ func (s *Store) bindMerchantCheckout(ctx context.Context, id string, result merc
 		return MerchantOrder{}, err
 	}
 	defer tx.Rollback()
-	o, submitted, currentGeneration, _, err := scanMerchantOrder(tx.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE id=?", id))
+	mode := s.merchantModeValue()
+	o, submitted, currentGeneration, _, err := scanMerchantOrder(tx.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE mode=? AND id=?", mode, id))
 	if err != nil {
 		return MerchantOrder{}, err
 	}
@@ -300,7 +314,7 @@ func (s *Store) bindMerchantCheckout(ctx context.Context, id string, result merc
 	if floor < submitted {
 		floor = submitted
 	}
-	if !validMerchantCheckoutResult(result, now, floor) {
+	if !validMerchantCheckoutResultForMode(result, mode, now, floor) {
 		return MerchantOrder{}, ErrBillingConflict
 	}
 	if o.SessionID != "" && o.SessionID != result.ID {
@@ -316,19 +330,19 @@ func (s *Store) bindMerchantCheckout(ctx context.Context, id string, result merc
 		return MerchantOrder{}, ErrBillingConflict
 	}
 	var used int
-	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_orders WHERE account_id=? AND session_id=? AND id!=?", o.AccountID, result.ID, id).Scan(&used); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_orders WHERE mode=? AND account_id=? AND session_id=? AND id!=?", mode, o.AccountID, result.ID, id).Scan(&used); err != nil {
 		return MerchantOrder{}, err
 	}
 	if used != 0 {
 		return MerchantOrder{}, ErrBillingConflict
 	}
 	state := result.State
-	_, err = tx.ExecContext(ctx, "UPDATE merchant_orders SET state=?,payment_status=?,session_id=?,checkout_url=?,payment_intent_id=?,observation_generation=observation_generation+1,observed_at=? WHERE id=? AND observation_generation=?", state, result.PaymentStatus, result.ID, result.URL, result.PaymentIntentID, result.ObservedAt, id, currentGeneration)
+	_, err = tx.ExecContext(ctx, "UPDATE merchant_orders SET state=?,payment_status=?,session_id=?,checkout_url=?,payment_intent_id=?,observation_generation=observation_generation+1,observed_at=? WHERE mode=? AND id=? AND observation_generation=?", state, result.PaymentStatus, result.ID, result.URL, result.PaymentIntentID, result.ObservedAt, mode, id, currentGeneration)
 	if err != nil {
 		return MerchantOrder{}, err
 	}
 	var actor string
-	if err = tx.QueryRowContext(ctx, "SELECT actor_id FROM merchant_accounts WHERE workspace_id=?", o.WorkspaceID).Scan(&actor); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT actor_id FROM merchant_accounts WHERE mode=? AND workspace_id=?", mode, o.WorkspaceID).Scan(&actor); err != nil {
 		return MerchantOrder{}, err
 	}
 	if err = audit(ctx, tx, actor, o.WorkspaceID, "merchant.order_provider_update:"+id, result.ObservedAt); err != nil {
@@ -339,10 +353,14 @@ func (s *Store) bindMerchantCheckout(ctx context.Context, id string, result merc
 }
 
 func (s *Store) ReconcileMerchantOrder(ctx context.Context, id, sessionID string, provider MerchantCheckoutProvider) (MerchantOrder, error) {
-	if err := validateMerchantProviderMode(provider); err != nil {
+	if err := s.validateMerchantProviderMode(provider); err != nil {
 		return MerchantOrder{}, err
 	}
-	if id == "" || !validMerchantProviderID(sessionID, "cs_test_") {
+	prefix := "cs_test_"
+	if s.merchantModeValue() == "live" {
+		prefix = "cs_live_"
+	}
+	if id == "" || !validMerchantProviderID(sessionID, prefix) {
 		return MerchantOrder{}, ErrInvalid
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -350,14 +368,15 @@ func (s *Store) ReconcileMerchantOrder(ctx context.Context, id, sessionID string
 		return MerchantOrder{}, err
 	}
 	defer tx.Rollback()
-	o, _, generation, _, err := scanMerchantOrder(tx.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE id=?", id))
+	mode := s.merchantModeValue()
+	o, _, generation, _, err := scanMerchantOrder(tx.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE mode=? AND id=?", mode, id))
 	if err != nil {
 		return MerchantOrder{}, err
 	}
 	if o.State == "requested" || (o.SessionID != "" && o.SessionID != sessionID) {
 		return MerchantOrder{}, ErrBillingConflict
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE merchant_orders SET observation_generation=observation_generation+1 WHERE id=?", id); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE merchant_orders SET observation_generation=observation_generation+1 WHERE mode=? AND id=?", mode, id); err != nil {
 		tx.Rollback()
 		return MerchantOrder{}, err
 	}

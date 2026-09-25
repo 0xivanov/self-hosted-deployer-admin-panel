@@ -507,21 +507,20 @@ key and request/account bindings. Refund calls request an expanded payment inten
 so its mode can be checked alongside the retained order identity. A signed refund
 event is a reconciliation signal, not proof of a completed refund.
 
-Before live activation, preserve sandbox history while separating merchant
-accounts, catalog, orders, event processing, refunds and buyer recovery by mode;
-then wire an explicit merchant mode through startup, worker and UI. Qualify live
-Connect configuration and the account/checkout/refund lifecycle independently of
-hosting subscriptions. Real financial transactions still require authorization.
+Schema 56 now separates merchant accounts, products, orders, events, refunds,
+buyer sessions and recovery records by mode. Migration preserves existing rows
+as test data, including recovery relationships. Composite keys prevent records
+from referencing another mode; reads, updates and maintenance select the same
+partition. Buyer cookies also differ between live and test modes.
 
+Provider guards require the provider to match the selected merchant partition.
+Legacy provider doubles are accepted only in test mode. Hosting billing remains
+independent. Public configuration still selects test merchant behavior: an
+explicit merchant mode must next be wired through startup, workers, webhooks and
+customer-facing UI before live activation.
 
-The test-only portal now rejects explicit live/unknown merchant providers before
-account/order/refund submission, reconciliation and background processing, even
-when hosting billing uses live mode. It also rejects live merchant event objects
-before writing the inbox. Existing test provider doubles remain compatible.
-These guards must be replaced by matching merchant store/provider mode checks
-when persistence separation is implemented, rather than simply removed.
-
-Focused provider and portal merchant integration checks pass, including signed
-mode isolation, expanded payment-intent mode mismatches, existing checkout and
-refund behavior, and rejecting live providers before database/network access.
-No production files or merchant settings changed for this provider-only work.
+Verification includes merchant integration checks, the full portal integration
+suite, provider tests, static analysis and command builds. No production files
+or merchant settings changed for this work. Production remains schema 55.
+Qualify live Connect configuration and account/checkout/refund behavior before
+activation. Real financial transactions still require authorization.

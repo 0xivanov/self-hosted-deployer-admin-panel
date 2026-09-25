@@ -13,6 +13,7 @@ import (
 // its foreign key incompatible with the legacy billing_plans primary key.
 func downgradeBillingSchema54(t *testing.T, s *Store) {
 	t.Helper()
+	downgradeMerchantSchema55(t, s)
 	const backup = `
 CREATE TEMP TABLE fixture_billing_events AS SELECT id,event_type,provider_created,fingerprint,payload,state,received_at FROM billing_events WHERE mode='test';
 CREATE TEMP TABLE fixture_billing_customers AS SELECT workspace_id,request_id,actor_id,email,customer_id,created_at FROM billing_customers WHERE mode='test';

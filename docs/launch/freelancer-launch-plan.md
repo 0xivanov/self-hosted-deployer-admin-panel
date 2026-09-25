@@ -167,3 +167,15 @@ payments/domain purchasing, and operator approval for new client accounts.
 The production custom domain and Pages URLs returned HTTP 200 with the new
 client FAQ using a browser user agent; the first Python-default-agent request
 received HTTP 403. No security settings were changed. No outreach was sent.
+
+
+September 25 merchant payment follow-up: schema 56 separates sandbox and live
+merchant records, including account mappings, products, orders, refunds, event
+processing and buyer recovery. Existing history migrates to test mode unchanged.
+Provider/store mode checks and separate buyer cookies prevent crossover. Full
+portal integration checks, provider tests, static analysis and command builds
+passed; focused migration checks compare every original column in both directions.
+This checkpoint is committed source only. Production remains admin `417691c` /
+schema 55. Merchant runtime configuration and live-facing UI are next, followed
+by provider setup and a coordinated deployment. Live credentials, GitHub App
+setup, private registry qualification and registrar integration remain open.

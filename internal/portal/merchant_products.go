@@ -48,10 +48,11 @@ func (s *Store) MerchantProducts(ctx context.Context, token, workspace string) (
 		return nil, err
 	}
 	defer tx.Rollback()
+	mode := s.merchantModeValue()
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT "+merchantProductColumns+" FROM merchant_products WHERE workspace_id=? ORDER BY created_at,id LIMIT 100", workspace)
+	rows, err := tx.QueryContext(ctx, "SELECT "+merchantProductColumns+" FROM merchant_products WHERE mode=? AND workspace_id=? ORDER BY created_at,id LIMIT 100", mode, workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -94,12 +95,13 @@ func (s *Store) SaveMerchantProduct(ctx context.Context, token string, input Mer
 		return MerchantProduct{}, err
 	}
 	defer tx.Rollback()
+	mode := s.merchantModeValue()
 	actor, err := s.authorizeOwner(ctx, tx, token, input.Workspace)
 	if err != nil {
 		return MerchantProduct{}, err
 	}
 	if input.ID == "" {
-		existing, err := scanMerchantProduct(tx.QueryRowContext(ctx, "SELECT "+merchantProductColumns+" FROM merchant_products WHERE workspace_id=? AND request_key=?", input.Workspace, input.Key))
+		existing, err := scanMerchantProduct(tx.QueryRowContext(ctx, "SELECT "+merchantProductColumns+" FROM merchant_products WHERE mode=? AND workspace_id=? AND request_key=?", mode, input.Workspace, input.Key))
 		if err == nil {
 			if existing.Name != input.Name || existing.Currency != input.Currency || existing.AmountMinor != input.AmountMinor || existing.Active != *input.Active {
 				return MerchantProduct{}, ErrMerchantProductConflict
@@ -110,7 +112,7 @@ func (s *Store) SaveMerchantProduct(ctx context.Context, token string, input Mer
 			return MerchantProduct{}, err
 		}
 		var count int
-		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_products WHERE workspace_id=?", input.Workspace).Scan(&count); err != nil {
+		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_products WHERE mode=? AND workspace_id=?", mode, input.Workspace).Scan(&count); err != nil {
 			return MerchantProduct{}, err
 		}
 		if count >= 100 {
@@ -118,7 +120,7 @@ func (s *Store) SaveMerchantProduct(ctx context.Context, token string, input Mer
 		}
 		now := s.now().Unix()
 		product := MerchantProduct{ID: randomToken(), WorkspaceID: input.Workspace, Name: input.Name, Currency: input.Currency, AmountMinor: input.AmountMinor, Active: *input.Active, Revision: 1, CreatedAt: now, UpdatedAt: now}
-		if _, err = tx.ExecContext(ctx, "INSERT INTO merchant_products(id,workspace_id,request_key,name,currency,amount_minor,active,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,?,?)", product.ID, product.WorkspaceID, input.Key, product.Name, product.Currency, product.AmountMinor, product.Active, now, now); err != nil {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO merchant_products(mode,id,workspace_id,request_key,name,currency,amount_minor,active,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?, ?,1,?,?)", mode, product.ID, product.WorkspaceID, input.Key, product.Name, product.Currency, product.AmountMinor, product.Active, now, now); err != nil {
 			return MerchantProduct{}, err
 		}
 		if err = audit(ctx, tx, actor, input.Workspace, "merchant.product_created:"+product.ID, now); err != nil {
@@ -126,7 +128,7 @@ func (s *Store) SaveMerchantProduct(ctx context.Context, token string, input Mer
 		}
 		return product, tx.Commit()
 	}
-	product, err := scanMerchantProduct(tx.QueryRowContext(ctx, "SELECT "+merchantProductColumns+" FROM merchant_products WHERE id=? AND workspace_id=?", input.ID, input.Workspace))
+	product, err := scanMerchantProduct(tx.QueryRowContext(ctx, "SELECT "+merchantProductColumns+" FROM merchant_products WHERE mode=? AND id=? AND workspace_id=?", mode, input.ID, input.Workspace))
 	if errors.Is(err, sql.ErrNoRows) {
 		return MerchantProduct{}, ErrDenied
 	}
@@ -137,7 +139,7 @@ func (s *Store) SaveMerchantProduct(ctx context.Context, token string, input Mer
 		return MerchantProduct{}, ErrMerchantProductConflict
 	}
 	now := s.now().Unix()
-	result, err := tx.ExecContext(ctx, "UPDATE merchant_products SET name=?,currency=?,amount_minor=?,active=?,revision=revision+1,updated_at=? WHERE id=? AND workspace_id=? AND revision=?", input.Name, input.Currency, input.AmountMinor, *input.Active, now, input.ID, input.Workspace, input.Revision)
+	result, err := tx.ExecContext(ctx, "UPDATE merchant_products SET name=?,currency=?,amount_minor=?,active=?,revision=revision+1,updated_at=? WHERE mode=? AND id=? AND workspace_id=? AND revision=?", input.Name, input.Currency, input.AmountMinor, *input.Active, now, mode, input.ID, input.Workspace, input.Revision)
 	if err != nil {
 		return MerchantProduct{}, err
 	}

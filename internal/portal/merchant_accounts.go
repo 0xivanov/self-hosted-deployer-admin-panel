@@ -76,11 +76,12 @@ func (s *Store) RequestMerchantAccount(ctx context.Context, token, workspace, co
 		return MerchantAccount{}, err
 	}
 	defer tx.Rollback()
+	mode := s.merchantModeValue()
 	actor, err := s.authorizeOwner(ctx, tx, token, workspace)
 	if err != nil {
 		return MerchantAccount{}, err
 	}
-	existing, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE workspace_id=?", workspace))
+	existing, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE mode=? AND workspace_id=?", mode, workspace))
 	if err == nil {
 		if existing.Country != country {
 			return MerchantAccount{}, ErrBillingConflict
@@ -91,7 +92,7 @@ func (s *Store) RequestMerchantAccount(ctx context.Context, token, workspace, co
 		return MerchantAccount{}, err
 	}
 	account := MerchantAccount{WorkspaceID: workspace, RequestID: randomToken(), ActorID: actor, Country: country, State: "requested", CreatedAt: s.now().Unix()}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO merchant_accounts(workspace_id,request_id,actor_id,country,state,created_at) VALUES(?,?,?,?,?,?)", account.WorkspaceID, account.RequestID, account.ActorID, account.Country, account.State, account.CreatedAt); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO merchant_accounts(mode,workspace_id,request_id,actor_id,country,state,created_at) VALUES(?,?,?,?,?,?,?)", mode, account.WorkspaceID, account.RequestID, account.ActorID, account.Country, account.State, account.CreatedAt); err != nil {
 		return MerchantAccount{}, err
 	}
 	if err = audit(ctx, tx, actor, workspace, "merchant_account.requested:"+account.RequestID, account.CreatedAt); err != nil {
@@ -106,10 +107,11 @@ func (s *Store) MerchantAccount(ctx context.Context, token, workspace string) (M
 		return MerchantAccount{}, err
 	}
 	defer tx.Rollback()
+	mode := s.merchantModeValue()
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return MerchantAccount{}, err
 	}
-	account, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE workspace_id=?", workspace))
+	account, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE mode=? AND workspace_id=?", mode, workspace))
 	if errors.Is(err, sql.ErrNoRows) {
 		return MerchantAccount{}, ErrDenied
 	}
@@ -123,7 +125,7 @@ func (s *Store) MerchantAccount(ctx context.Context, token, workspace string) (M
 // provider. A failed or uncertain create remains submitted and must be
 // reconciled by request identity rather than creating a replacement.
 func (s *Store) DispatchMerchantAccount(ctx context.Context, request string, provider MerchantAccountProvider) (MerchantAccount, error) {
-	if err := validateMerchantProviderMode(provider); err != nil {
+	if err := s.validateMerchantProviderMode(provider); err != nil {
 		return MerchantAccount{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -131,7 +133,8 @@ func (s *Store) DispatchMerchantAccount(ctx context.Context, request string, pro
 		return MerchantAccount{}, err
 	}
 	defer tx.Rollback()
-	account, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE request_id=?", request))
+	mode := s.merchantModeValue()
+	account, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE mode=? AND request_id=?", mode, request))
 	if errors.Is(err, sql.ErrNoRows) {
 		return MerchantAccount{}, ErrDenied
 	}
@@ -152,7 +155,7 @@ func (s *Store) DispatchMerchantAccount(ctx context.Context, request string, pro
 		return MerchantAccount{}, ErrDenied
 	}
 	submittedAt := s.now().Unix()
-	if _, err = tx.ExecContext(ctx, "UPDATE merchant_accounts SET state='submitted',submitted_at=? WHERE request_id=? AND state='requested'", submittedAt, request); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE merchant_accounts SET state='submitted',submitted_at=? WHERE mode=? AND request_id=? AND state='requested'", submittedAt, mode, request); err != nil {
 		return MerchantAccount{}, err
 	}
 	if err = audit(ctx, tx, account.ActorID, account.WorkspaceID, "merchant_account.submitted:"+request, submittedAt); err != nil {
@@ -175,13 +178,14 @@ func (s *Store) DispatchMerchantAccount(ctx context.Context, request string, pro
 // ReconcileMerchantAccount retrieves a submitted candidate using trusted provider
 // evidence. Bound mappings are immutable; this method does not refresh readiness.
 func (s *Store) ReconcileMerchantAccount(ctx context.Context, request, accountID string, provider MerchantAccountProvider) (MerchantAccount, error) {
-	if err := validateMerchantProviderMode(provider); err != nil {
+	if err := s.validateMerchantProviderMode(provider); err != nil {
 		return MerchantAccount{}, err
 	}
 	if !validMerchantAccountID(accountID) {
 		return MerchantAccount{}, ErrInvalid
 	}
-	account, err := scanMerchantAccount(s.db.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE request_id=?", request))
+	mode := s.merchantModeValue()
+	account, err := scanMerchantAccount(s.db.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE mode=? AND request_id=?", mode, request))
 	if errors.Is(err, sql.ErrNoRows) {
 		return MerchantAccount{}, ErrDenied
 	}
@@ -219,7 +223,8 @@ func (s *Store) bindMerchantAccount(ctx context.Context, request string, provide
 		return MerchantAccount{}, err
 	}
 	defer tx.Rollback()
-	account, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE request_id=?", request))
+	mode := s.merchantModeValue()
+	account, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE mode=? AND request_id=?", mode, request))
 	if errors.Is(err, sql.ErrNoRows) {
 		return MerchantAccount{}, ErrDenied
 	}
@@ -233,14 +238,14 @@ func (s *Store) bindMerchantAccount(ctx context.Context, request string, provide
 		return account, tx.Commit()
 	}
 	var submittedAt int64
-	if err = tx.QueryRowContext(ctx, "SELECT submitted_at FROM merchant_accounts WHERE request_id=?", account.RequestID).Scan(&submittedAt); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT submitted_at FROM merchant_accounts WHERE mode=? AND request_id=?", mode, account.RequestID).Scan(&submittedAt); err != nil {
 		return MerchantAccount{}, err
 	}
 	if account.State != "submitted" || providerAccount.Country != account.Country || providerAccount.ObservedAt < submittedAt || providerAccount.ObservedAt > s.now().Unix() {
 		return MerchantAccount{}, ErrBillingConflict
 	}
 	var used int
-	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_accounts WHERE account_id=? AND request_id!=?", providerAccount.ID, request).Scan(&used); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM merchant_accounts WHERE mode=? AND account_id=? AND request_id!=?", mode, providerAccount.ID, request).Scan(&used); err != nil {
 		return MerchantAccount{}, err
 	}
 	if used != 0 {
@@ -250,7 +255,7 @@ func (s *Store) bindMerchantAccount(ctx context.Context, request string, provide
 	if err != nil {
 		return MerchantAccount{}, err
 	}
-	result, err := tx.ExecContext(ctx, "UPDATE merchant_accounts SET account_id=?,state='bound',snapshot=? WHERE request_id=? AND state='submitted' AND account_id IS NULL", providerAccount.ID, snapshot, request)
+	result, err := tx.ExecContext(ctx, "UPDATE merchant_accounts SET account_id=?,state='bound',snapshot=? WHERE mode=? AND request_id=? AND state='submitted' AND account_id IS NULL", providerAccount.ID, snapshot, mode, request)
 	if err != nil {
 		return MerchantAccount{}, err
 	}

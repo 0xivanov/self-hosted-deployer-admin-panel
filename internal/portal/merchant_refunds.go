@@ -47,18 +47,19 @@ func (s *Store) RequestMerchantRefund(ctx context.Context, token, workspace, ord
 		return MerchantRefund{}, err
 	}
 	defer tx.Rollback()
+	mode := s.merchantModeValue()
 	actor, err := s.authorizeOwner(ctx, tx, token, workspace)
 	if err != nil {
 		return MerchantRefund{}, err
 	}
-	prior, err := scanMerchantRefund(tx.QueryRowContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE order_id=? AND workspace_id=?", orderID, workspace))
+	prior, err := scanMerchantRefund(tx.QueryRowContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE mode=? AND order_id=? AND workspace_id=?", mode, orderID, workspace))
 	if err == nil {
 		return prior, tx.Commit()
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return MerchantRefund{}, err
 	}
-	order, _, _, _, err := scanMerchantOrder(tx.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE id=? AND workspace_id=?", orderID, workspace))
+	order, _, _, _, err := scanMerchantOrder(tx.QueryRowContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE mode=? AND id=? AND workspace_id=?", mode, orderID, workspace))
 	if errors.Is(err, sql.ErrNoRows) {
 		return MerchantRefund{}, ErrDenied
 	}
@@ -69,7 +70,7 @@ func (s *Store) RequestMerchantRefund(ctx context.Context, token, workspace, ord
 		return MerchantRefund{}, ErrBillingConflict
 	}
 	r := MerchantRefund{ID: randomToken(), OrderID: order.ID, WorkspaceID: workspace, ActorID: actor, AccountID: order.AccountID, PaymentIntentID: order.PaymentIntentID, Currency: order.Currency, AmountMinor: order.AmountMinor, State: "requested", CreatedAt: s.now().Unix()}
-	_, err = tx.ExecContext(ctx, "INSERT INTO merchant_refunds(id,order_id,workspace_id,actor_id,account_id,payment_intent_id,currency,amount_minor,state,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", r.ID, r.OrderID, r.WorkspaceID, r.ActorID, r.AccountID, r.PaymentIntentID, r.Currency, r.AmountMinor, r.State, r.CreatedAt)
+	_, err = tx.ExecContext(ctx, "INSERT INTO merchant_refunds(mode,id,order_id,workspace_id,actor_id,account_id,payment_intent_id,currency,amount_minor,state,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", mode, r.ID, r.OrderID, r.WorkspaceID, r.ActorID, r.AccountID, r.PaymentIntentID, r.Currency, r.AmountMinor, r.State, r.CreatedAt)
 	if err != nil {
 		return MerchantRefund{}, err
 	}
@@ -87,7 +88,7 @@ func (s *Store) MerchantRefunds(ctx context.Context, token, workspace string) ([
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 100", workspace)
+	rows, err := tx.QueryContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE mode=? AND workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 100", s.merchantModeValue(), workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +110,7 @@ func (s *Store) MerchantRefunds(ctx context.Context, token, workspace string) ([
 	return out, tx.Commit()
 }
 func (s *Store) DispatchMerchantRefund(ctx context.Context, id string, p MerchantRefundProvider) (MerchantRefund, error) {
-	if err := validateMerchantProviderMode(p); err != nil {
+	if err := s.validateMerchantProviderMode(p); err != nil {
 		return MerchantRefund{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -117,7 +118,8 @@ func (s *Store) DispatchMerchantRefund(ctx context.Context, id string, p Merchan
 		return MerchantRefund{}, err
 	}
 	defer tx.Rollback()
-	r, err := scanMerchantRefund(tx.QueryRowContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE id=?", id))
+	mode := s.merchantModeValue()
+	r, err := scanMerchantRefund(tx.QueryRowContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE mode=? AND id=?", mode, id))
 	if err != nil {
 		return MerchantRefund{}, err
 	}
@@ -135,7 +137,7 @@ func (s *Store) DispatchMerchantRefund(ctx context.Context, id string, p Merchan
 		return r, ErrDenied
 	}
 	r.SubmittedAt = s.now().Unix()
-	if _, err = tx.ExecContext(ctx, "UPDATE merchant_refunds SET state='submitted',submitted_at=? WHERE id=?", r.SubmittedAt, id); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE merchant_refunds SET state='submitted',submitted_at=? WHERE mode=? AND id=?", r.SubmittedAt, mode, id); err != nil {
 		return r, err
 	}
 	if err = audit(ctx, tx, r.ActorID, r.WorkspaceID, "merchant.refund_submitted:"+r.ID, r.SubmittedAt); err != nil {
@@ -159,7 +161,8 @@ func (s *Store) bindMerchantRefund(ctx context.Context, id string, observed merc
 		return MerchantRefund{}, err
 	}
 	defer tx.Rollback()
-	r, err := scanMerchantRefund(tx.QueryRowContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE id=?", id))
+	mode := s.merchantModeValue()
+	r, err := scanMerchantRefund(tx.QueryRowContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE mode=? AND id=?", mode, id))
 	if err != nil {
 		return r, err
 	}
@@ -177,7 +180,7 @@ func (s *Store) bindMerchantRefund(ctx context.Context, id string, observed merc
 	// A bank may return funds after apparent success. Accept fresh canonical
 	// status changes; generation fencing rejects older in-flight observations.
 
-	if _, err = tx.ExecContext(ctx, "UPDATE merchant_refunds SET state=?,provider_id=?,observed_at=?,generation=generation+1 WHERE id=?", observed.State, observed.ID, observed.ObservedAt, id); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE merchant_refunds SET state=?,provider_id=?,observed_at=?,generation=generation+1 WHERE mode=? AND id=?", observed.State, observed.ID, observed.ObservedAt, mode, id); err != nil {
 		return r, err
 	}
 	if r.State != observed.State {
@@ -189,7 +192,7 @@ func (s *Store) bindMerchantRefund(ctx context.Context, id string, observed merc
 	return r, tx.Commit()
 }
 func (s *Store) ReconcileMerchantRefund(ctx context.Context, id, providerID string, p MerchantRefundProvider) (MerchantRefund, error) {
-	if err := validateMerchantProviderMode(p); err != nil {
+	if err := s.validateMerchantProviderMode(p); err != nil {
 		return MerchantRefund{}, err
 	}
 	if !validMerchantProviderID(providerID, "re_") {
@@ -200,14 +203,15 @@ func (s *Store) ReconcileMerchantRefund(ctx context.Context, id, providerID stri
 		return MerchantRefund{}, err
 	}
 	defer tx.Rollback()
-	r, err := scanMerchantRefund(tx.QueryRowContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE id=?", id))
+	mode := s.merchantModeValue()
+	r, err := scanMerchantRefund(tx.QueryRowContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE mode=? AND id=?", mode, id))
 	if err != nil {
 		return r, err
 	}
 	if r.State == "requested" || (r.ProviderID != "" && r.ProviderID != providerID) {
 		return r, ErrBillingConflict
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE merchant_refunds SET generation=generation+1 WHERE id=?", id); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE merchant_refunds SET generation=generation+1 WHERE mode=? AND id=?", mode, id); err != nil {
 		return r, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -235,7 +239,7 @@ func (s *Store) OwnerMerchantRefund(ctx context.Context, token, workspace, id st
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return MerchantRefund{}, err
 	}
-	r, err := scanMerchantRefund(tx.QueryRowContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE id=? AND workspace_id=?", id, workspace))
+	r, err := scanMerchantRefund(tx.QueryRowContext(ctx, "SELECT "+merchantRefundColumns+" FROM merchant_refunds WHERE mode=? AND id=? AND workspace_id=?", s.merchantModeValue(), id, workspace))
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, ErrDenied
 	}

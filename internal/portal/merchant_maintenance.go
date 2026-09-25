@@ -27,7 +27,7 @@ type maintenanceAccount struct {
 }
 
 func (s *Store) readMaintenanceAccounts(ctx context.Context, cursor string, limit int) ([]maintenanceAccount, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+merchantAccountColumns+",observation_generation FROM merchant_accounts WHERE state='bound' AND workspace_id>? ORDER BY workspace_id LIMIT ?", cursor, limit)
+	rows, err := s.db.QueryContext(ctx, "SELECT "+merchantAccountColumns+",observation_generation FROM merchant_accounts WHERE mode=? AND state='bound' AND workspace_id>? ORDER BY workspace_id LIMIT ?", s.merchantModeValue(), cursor, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,8 @@ func (s *Store) refreshMappedMerchantAccount(ctx context.Context, item maintenan
 	if err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, "UPDATE merchant_accounts SET observation_generation=observation_generation+1 WHERE workspace_id=? AND state='bound' AND account_id=? AND observation_generation=?", item.Account.WorkspaceID, item.Account.AccountID, item.Generation)
+	mode := s.merchantModeValue()
+	result, err := tx.ExecContext(ctx, "UPDATE merchant_accounts SET observation_generation=observation_generation+1 WHERE mode=? AND workspace_id=? AND state='bound' AND account_id=? AND observation_generation=?", mode, item.Account.WorkspaceID, item.Account.AccountID, item.Generation)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -98,7 +99,7 @@ func (s *Store) refreshMappedMerchantAccount(ctx context.Context, item maintenan
 		return err
 	}
 	defer tx.Rollback()
-	result, err = tx.ExecContext(ctx, "UPDATE merchant_accounts SET snapshot=? WHERE workspace_id=? AND state='bound' AND account_id=? AND observation_generation=?", snapshot, item.Account.WorkspaceID, item.Account.AccountID, item.Generation+1)
+	result, err = tx.ExecContext(ctx, "UPDATE merchant_accounts SET snapshot=? WHERE mode=? AND workspace_id=? AND state='bound' AND account_id=? AND observation_generation=?", snapshot, mode, item.Account.WorkspaceID, item.Account.AccountID, item.Generation+1)
 	if err != nil {
 		return err
 	}
@@ -120,7 +121,7 @@ func (s *Store) refreshMappedMerchantAccount(ctx context.Context, item maintenan
 
 func (s *Store) MaintainMerchants(ctx context.Context, provider MerchantMaintenanceProvider, accountCursor, orderCursor string, limit int) (MerchantMaintenanceResult, error) {
 	result := MerchantMaintenanceResult{}
-	if err := validateMerchantProviderMode(provider); err != nil {
+	if err := s.validateMerchantProviderMode(provider); err != nil {
 		return result, err
 	}
 	if limit < 1 || limit > 100 {
@@ -145,7 +146,7 @@ func (s *Store) MaintainMerchants(ctx context.Context, provider MerchantMaintena
 	} else {
 		result.AccountCursor = ""
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE session_id IS NOT NULL AND session_id<>'' AND state IN ('open','complete') AND payment_status!='paid' AND id>? ORDER BY id LIMIT ?", orderCursor, limit)
+	rows, err := s.db.QueryContext(ctx, "SELECT "+merchantOrderColumns+" FROM merchant_orders WHERE mode=? AND session_id IS NOT NULL AND session_id<>'' AND state IN ('open','complete') AND payment_status!='paid' AND id>? ORDER BY id LIMIT ?", s.merchantModeValue(), orderCursor, limit)
 	if err != nil {
 		return result, err
 	}

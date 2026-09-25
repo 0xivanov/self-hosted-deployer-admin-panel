@@ -35,10 +35,11 @@ func (s *Store) MerchantStatus(ctx context.Context, token, workspace string) (Me
 		return MerchantView{}, err
 	}
 	defer tx.Rollback()
+	mode := s.merchantModeValue()
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return MerchantView{}, err
 	}
-	account, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE workspace_id=?", workspace))
+	account, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE mode=? AND workspace_id=?", mode, workspace))
 	if errors.Is(err, sql.ErrNoRows) {
 		return MerchantView{State: "not_started", Stale: true}, tx.Commit()
 	}
@@ -81,7 +82,7 @@ func (s *Store) merchantActionIntent(ctx context.Context, tx *sql.Tx, actor, wor
 }
 
 func (s *Store) MerchantOnboardingLink(ctx context.Context, token, workspace string, p MerchantProvider) (merchantbilling.OnboardingLink, error) {
-	if err := validateMerchantProviderMode(p); err != nil {
+	if err := s.validateMerchantProviderMode(p); err != nil {
 		return merchantbilling.OnboardingLink{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -89,11 +90,12 @@ func (s *Store) MerchantOnboardingLink(ctx context.Context, token, workspace str
 		return merchantbilling.OnboardingLink{}, err
 	}
 	defer tx.Rollback()
+	mode := s.merchantModeValue()
 	actor, err := s.authorizeOwner(ctx, tx, token, workspace)
 	if err != nil {
 		return merchantbilling.OnboardingLink{}, err
 	}
-	a, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE workspace_id=?", workspace))
+	a, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE mode=? AND workspace_id=?", mode, workspace))
 	if err != nil {
 		return merchantbilling.OnboardingLink{}, ErrDenied
 	}
@@ -127,7 +129,7 @@ func (s *Store) MerchantOnboardingLink(ctx context.Context, token, workspace str
 		return merchantbilling.OnboardingLink{}, err
 	}
 	var bound string
-	if err = tx.QueryRowContext(ctx, "SELECT account_id FROM merchant_accounts WHERE workspace_id=? AND state='bound'", workspace).Scan(&bound); err != nil || bound != a.AccountID {
+	if err = tx.QueryRowContext(ctx, "SELECT account_id FROM merchant_accounts WHERE mode=? AND workspace_id=? AND state='bound'", mode, workspace).Scan(&bound); err != nil || bound != a.AccountID {
 		return merchantbilling.OnboardingLink{}, ErrBillingConflict
 	}
 	if err = audit(ctx, tx, actor, workspace, "merchant.onboarding_issued:"+request, now); err != nil {
@@ -139,7 +141,7 @@ func (s *Store) MerchantOnboardingLink(ctx context.Context, token, workspace str
 // RefreshMerchantAccount fences older provider reads before the request starts.
 // It records provider evidence, never activates website checkout or fulfillment.
 func (s *Store) RefreshMerchantAccount(ctx context.Context, token, workspace string, p MerchantAccountProvider) error {
-	if err := validateMerchantProviderMode(p); err != nil {
+	if err := s.validateMerchantProviderMode(p); err != nil {
 		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -147,11 +149,12 @@ func (s *Store) RefreshMerchantAccount(ctx context.Context, token, workspace str
 		return err
 	}
 	defer tx.Rollback()
+	mode := s.merchantModeValue()
 	actor, err := s.authorizeOwner(ctx, tx, token, workspace)
 	if err != nil {
 		return err
 	}
-	a, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE workspace_id=?", workspace))
+	a, err := scanMerchantAccount(tx.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE mode=? AND workspace_id=?", mode, workspace))
 	if err != nil {
 		return ErrDenied
 	}
@@ -162,7 +165,7 @@ func (s *Store) RefreshMerchantAccount(ctx context.Context, token, workspace str
 		return err
 	}
 	var generation int64
-	if err = tx.QueryRowContext(ctx, "UPDATE merchant_accounts SET observation_generation=observation_generation+1 WHERE workspace_id=? RETURNING observation_generation", workspace).Scan(&generation); err != nil {
+	if err = tx.QueryRowContext(ctx, "UPDATE merchant_accounts SET observation_generation=observation_generation+1 WHERE mode=? AND workspace_id=? RETURNING observation_generation", mode, workspace).Scan(&generation); err != nil {
 		return err
 	}
 	if err = tx.Commit(); err != nil {
@@ -190,7 +193,7 @@ func (s *Store) RefreshMerchantAccount(ctx context.Context, token, workspace str
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, "UPDATE merchant_accounts SET snapshot=? WHERE workspace_id=? AND account_id=? AND observation_generation=? AND state='bound'", raw, workspace, a.AccountID, generation)
+	result, err := tx.ExecContext(ctx, "UPDATE merchant_accounts SET snapshot=? WHERE mode=? AND workspace_id=? AND account_id=? AND observation_generation=? AND state='bound'", raw, mode, workspace, a.AccountID, generation)
 	if err != nil {
 		return err
 	}

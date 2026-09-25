@@ -16,17 +16,19 @@ func TestValidateMerchantProviderMode(t *testing.T) {
 		"explicit test":      merchantModeFixture("test"),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := validateMerchantProviderMode(provider); err != nil {
+			s := &Store{merchantMode: "test"}
+			if err := s.validateMerchantProviderMode(provider); err != nil {
 				t.Fatalf("provider rejected: %v", err)
 			}
 		})
 	}
 	for _, mode := range []string{"live", "production", ""} {
-		if err := validateMerchantProviderMode(merchantModeFixture(mode)); !errors.Is(err, ErrMerchantProviderMode) {
+		s := &Store{merchantMode: "test"}
+		if err := s.validateMerchantProviderMode(merchantModeFixture(mode)); !errors.Is(err, ErrMerchantProviderMode) {
 			t.Fatalf("mode %q error=%v, want ErrMerchantProviderMode", mode, err)
 		}
 	}
-	if err := validateMerchantProviderMode(nil); !errors.Is(err, ErrInvalid) {
+	if err := (&Store{merchantMode: "test"}).validateMerchantProviderMode(nil); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("nil error=%v, want ErrInvalid", err)
 	}
 }

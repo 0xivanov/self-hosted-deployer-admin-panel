@@ -86,11 +86,13 @@ live payment entitlement. Existing websites keep running when changes are held.
 
 ## Required next implementation
 
-1. Merchant live provider constructors and signed event verification are now
-   implemented locally, with portal guards rejecting live providers against
-   test-only records. Apply persistence separation to Connect accounts, products, orders,
-   refunds, disputes and buyer recovery. Hosting and merchant payment scopes
-   remain distinct; completing one does not activate the other.
+1. Merchant live provider constructors, signed event verification and schema 56
+   persistence separation are implemented locally. Accounts, products, orders,
+   events, refunds, buyer sessions and recovery records are isolated by mode.
+   Existing records migrate to test mode. Runtime activation and truthful
+   live merchant UI still need wiring; public configuration remains test-only.
+   Hosting and merchant payment scopes remain distinct. Production remains
+   schema 55 until an explicit rollout with a matching database/binary backup.
 2. Activate provider configuration only after the owner has live account access,
    agreed prices/limits and customer-facing business and service details. Verify
    webhook routing and recovery without charging a customer. Any real purchase

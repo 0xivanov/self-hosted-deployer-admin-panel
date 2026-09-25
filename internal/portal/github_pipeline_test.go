@@ -153,7 +153,7 @@ func TestGitHubPipelineSchema51MigrationPreservesInbox(t *testing.T) {
 	if err = s.db.QueryRow("SELECT count(*) FROM github_push_events").Scan(&count); err != nil || count != 1 {
 		t.Fatal(count, err)
 	}
-	if err = s.db.QueryRow("PRAGMA user_version").Scan(&count); err != nil || count != 55 {
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&count); err != nil || count != 56 {
 		t.Fatal(count, err)
 	}
 }
