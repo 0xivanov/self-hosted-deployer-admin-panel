@@ -167,12 +167,6 @@ func (s *Store) AcceptGitHubPush(ctx context.Context, push githubdeploy.Push, pa
 		return ErrGitHubPushCapacity
 	}
 	for _, b := range bindings {
-		var duplicate string
-		if err = tx.QueryRowContext(ctx, "SELECT id FROM github_push_events WHERE project_id=? AND connection_revision=? AND ref=? AND before_sha=? AND after_sha=? AND deleted=?", b.projectID, b.revision, push.Ref, push.Before, push.After, push.Deleted).Scan(&duplicate); err == nil {
-			continue
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
 		var count int
 		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM github_push_events WHERE project_id=?", b.projectID).Scan(&count); err != nil {
 			return err

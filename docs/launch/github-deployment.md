@@ -273,8 +273,8 @@ without changing projects. Malformed or unauthenticated requests are rejected.
 A push is retained only for matching connected repository/branch bindings with
 deploy-on-push enabled and current verified owner/hosting access. Each delivery
 has a global payload receipt and separate project bindings, so one repository
-can feed multiple sites atomically. The inbox also deduplicates each project's
-connection revision/ref/before/after/deletion tuple. It stores identity and commit
+can feed multiple sites atomically. The inbox deduplicates each project's signed payload identity. It allows separate
+provider events to revisit the same branch before/after commits. It stores identity and commit
 metadata, never the raw provider payload or credentials. Intake returns success
 only after its database transaction commits.
 
@@ -315,10 +315,9 @@ all portal database consumers together before activation. Production is still
 schema 46 and has no GitHub App configuration. Actual GitHub installation and
 provider delivery are not yet verified.
 
-Before enabling deploy-on-push, revise permanent semantic tuple deduplication to
-allow legitimate force-push cycles that revisit the same before/after pair while
-still rejecting repeated deliveries. Retention must not permanently suppress such
-future updates. Automatic publication must also serialize with manual publication
+Schema 53 removes permanent semantic tuple deduplication so legitimate branch
+return cycles can revisit the same before/after pair. Exact signed payload receipts
+still suppress redelivery. Retention must preserve this distinction. Automatic publication must also serialize with manual publication
 and recheck branch head after a Node build.
 
 Focused integration checks passed for push-to-upload, provider-failure recovery,
@@ -356,8 +355,8 @@ The activity panel shows waiting, building, publishing and terminal results with
 commit/time, bounded polling and safe failure text. Failed work can use the normal
 upload/build/publication controls for recovery. Dedicated automatic-pipeline retry
 is not implemented. All portal database consumers must upgrade together to schema
-52. Provider setup, delivery against a real App, force-push replay semantics and
-retention still require completion before production enablement.
+52. Provider setup, delivery against a real App and history retention still require
+completion before production enablement.
 
 Validation: focused integration checks passed for the GitHub flow, existing manual
 publication/Node workflows and schema migrations. A local static flow used real
@@ -365,3 +364,21 @@ archive validation, publication claim and completion APIs; Node orchestration us
 retained-release fixtures and simulated worker results. Owner/CSRF/runtime admission
 and queued-disconnect fencing passed. Eleven GitHub DOM checks and portal/CLI static
 analysis passed. No real provider delivery or worker-cluster rollout was performed.
+
+
+## Branch-return replay handling (local schema 53, not deployed)
+
+Duplicate detection uses the SHA-256 receipt of the authenticated raw payload,
+not a permanent before/after commit pair. Separate signed events may have the
+same commits, as happens when a branch moves A to B, back to A, then to B again.
+Each new event receives its own processing/import/pipeline identity. Repeated
+identical payloads remain acknowledged without creating new work. The processor
+still compares each event with the provider's current head before importing.
+
+The migration rebuilds the event parent table on one pinned connection and in a
+transaction, preserves child processing/pipeline rows, checks all foreign keys
+before commit, and restores foreign-key enforcement. All portal database consumers
+must be upgraded together to schema 53. Focused checks passed for branch return,
+exact redelivery, multiple projects and migration preserving publication references.
+Production remains unchanged. History retention is still unfinished; receipt and
+event caps remain 10,000 and return explicit retryable capacity errors.

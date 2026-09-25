@@ -72,7 +72,7 @@ func (s *Store) migrateGitHubPipeline() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
 		return err
 	}
-	if v == 52 {
+	if v >= 52 {
 		return nil
 	}
 	if v != 51 {

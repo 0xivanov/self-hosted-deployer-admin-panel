@@ -18,7 +18,7 @@ func githubPushFixture() githubdeploy.Push {
 
 func githubPushHash(n byte) string { return hex.EncodeToString(append([]byte{n}, make([]byte, 31)...)) }
 
-func TestAcceptGitHubPushDeduplicatesPayloadAndSemanticIdentity(t *testing.T) {
+func TestAcceptGitHubPushDeduplicatesExactPayloadAcrossProjects(t *testing.T) {
 	s, owner, session, _, _, p := projectClientFixture(t)
 	defer s.Close()
 	if _, err := s.SaveGitHubConnection(t.Context(), session.Token, githubConnectionFixture(t, s, session.Token, p.ID), githubAccessFixture(), "main", "", true); err != nil {
@@ -42,7 +42,7 @@ func TestAcceptGitHubPushDeduplicatesPayloadAndSemanticIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int
-	if err := s.db.QueryRow("SELECT count(*) FROM github_push_events").Scan(&count); err != nil || count != 2 {
+	if err := s.db.QueryRow("SELECT count(*) FROM github_push_events").Scan(&count); err != nil || count != 4 {
 		t.Fatal(count, err)
 	}
 	_ = p
