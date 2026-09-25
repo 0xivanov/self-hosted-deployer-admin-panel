@@ -190,3 +190,84 @@ func TestAppliedCandidateCleanupRetriesAfterDeadlineWithoutRecovery(t *testing.T
 		t.Fatal("cleanup reused expired activation deadline")
 	}
 }
+
+type missingRequestDeployer struct {
+	*candidateDeployer
+	withdrawals    int
+	original       string
+	withdrawErr    error
+	beforeWithdraw func()
+}
+
+func (d *missingRequestDeployer) WithdrawDeployRequest(_ context.Context, app, original, id string) (client.DeployRequestResult, error) {
+	d.withdrawals++
+	if d.beforeWithdraw != nil {
+		d.beforeWithdraw()
+	}
+	if app != d.request.AppName || id != d.request.RequestID || original != d.original {
+		return client.DeployRequestResult{}, errors.New("changed original request")
+	}
+	return d.request, d.withdrawErr
+}
+
+func TestMissingContainerRequestWithdrawsOriginalAfterDeadline(t *testing.T) {
+	for _, outcome := range []string{"pending", "applied", "withdrawn"} {
+		t.Run(outcome, func(t *testing.T) {
+			mock := &missingRequestDeployer{candidateDeployer: &candidateDeployer{trackedDeployer: &trackedDeployer{withdrawalDeployer: &withdrawalDeployer{containerDeployerMock: &containerDeployerMock{}}}}}
+			w, q, cleanup := containerRuntimeFixture(t, mock.containerDeployerMock)
+			defer cleanup()
+			w.cfg.EnableCandidateOperations = true
+			w.factory = func(string) (Deployer, error) { return mock, nil }
+			r := containerRuntimeFor(w, q)
+			raw, _ := renderContainerYAML(r.a, q.Release)
+			var desired map[string]any
+			_ = yaml.Unmarshal([]byte(raw), &desired)
+			state, _ := json.Marshal(desired)
+			mock.preflightState = string(state)
+			mock.original = raw
+			mock.request = client.DeployRequestResult{AppName: appName(r.a.id), RequestID: q.Deployment.ID, State: "pending", RequestedState: state}
+			_ = r.SubmitContainerRuntime(t.Context(), q)
+			mock.lookupErr = errors.New("lookup unavailable")
+			if err := r.AdvanceContainerRuntime(t.Context(), q, true); err == nil || mock.withdrawals != 0 {
+				t.Fatal("lookup error before deadline started withdrawal")
+			}
+			op, err := readContainerOperation(r.statePath(q.Deployment.ID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			q.ActivateBefore = time.Now().Add(-time.Second).Unix()
+			op.Request = q
+			if err = r.save(op); err != nil {
+				t.Fatal(err)
+			}
+			mock.beforeWithdraw = func() {
+				saved, err := readContainerOperation(r.statePath(q.Deployment.ID))
+				if err != nil || saved.Stage != "recovering" {
+					t.Fatal("withdrawal dispatched before durable intent")
+				}
+			}
+			mock.withdrawErr = errors.New("lost withdrawal reply")
+			if err = r.AdvanceContainerRuntime(t.Context(), q, true); err == nil {
+				t.Fatal("lost reply accepted as outcome")
+			}
+			mock.withdrawErr = nil
+			mock.request.State = outcome
+			restarted := containerRuntimeFor(w, q)
+			if err = restarted.AdvanceContainerRuntime(t.Context(), q, true); err != nil {
+				t.Fatal(err)
+			}
+			if mock.submissions != 1 || mock.withdrawals != 2 {
+				t.Fatal("request resubmitted or withdrawal not retried")
+			}
+			if outcome == "applied" && (mock.advances != 1 || mock.recoveries != 0) {
+				t.Fatal("applied race winner not preserved and cleaned")
+			}
+			if outcome == "pending" && mock.recoveries != 1 {
+				t.Fatal("pending withdrawal did not recover")
+			}
+			if outcome == "withdrawn" && (mock.advances != 0 || mock.recoveries != 0) {
+				t.Fatal("terminal withdrawal mutated")
+			}
+		})
+	}
+}

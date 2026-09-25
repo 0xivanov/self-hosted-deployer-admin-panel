@@ -292,3 +292,13 @@ func (c *CLI) RecoverDeployRequest(ctx context.Context, app, requestID string) (
 	e = c.read(ctx, &v, "apps", "recover", app, requestID)
 	return
 }
+
+// WithdrawDeployRequest preserves the original YAML and request identity when
+// the server may not yet have recorded the initial submission.
+func (c *CLI) WithdrawDeployRequest(ctx context.Context, app, data, requestID string) (v DeployRequestResult, e error) {
+	if len(app) > 63 || !registryAppNamePattern.MatchString(app) || !registryRevisionPattern.MatchString(requestID) {
+		return v, errors.New("invalid deployment request identity")
+	}
+	e = c.withYAML(ctx, data, "apps", &v, "withdraw", app, requestID)
+	return
+}

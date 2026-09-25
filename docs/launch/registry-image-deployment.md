@@ -202,3 +202,24 @@ Core `273999b` and the corresponding fleet change are source-only. Focused check
 passed for retained active generations, pending recovery predecessors, expired
 deadlines and retry after worker reconstruction. Lost initial submissions without
 a request record and real-cluster qualification remain before production enablement.
+
+### Missing submission recovery integration (September 25)
+
+The fleet worker now saves the original YAML alongside each tracked operation.
+After the activation deadline, revoked activation authorization, or persisted
+recovery intent, a failed request lookup invokes the core withdrawal RPC with
+that same YAML and request ID. No error string is treated as proof of absence.
+Core atomically records withdrawal if the request is missing, resumes recovery
+if it is pending, and preserves an applied race winner. The worker checks the
+returned identity and full preflight state, and still requires ordinary fresh
+observation before settling the portal job. Applied winners go through earlier
+workload cleanup. A lost withdrawal reply is retried after restart without a
+second deployment submission.
+
+Recovery intent is saved before dispatch, including if the CLI lacks the new
+operation. Older local operation records without saved original YAML remain
+pending for operator review; they are not reconstructed or resubmitted. This is
+source-only and requires core 68df8a4 (schema 12) plus the updated CLI and fleet
+worker. Focused worker/client tests and portal reconciliation integration checks
+passed. Actual cluster qualification and the coordinated production rollout
+remain outstanding.

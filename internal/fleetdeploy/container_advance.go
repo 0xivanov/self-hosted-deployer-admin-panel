@@ -11,6 +11,10 @@ import (
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/portal"
 )
 
+type missingCandidateWithdrawer interface {
+	WithdrawDeployRequest(context.Context, string, string, string) (client.DeployRequestResult, error)
+}
+
 type candidateContainerDeployer interface {
 	AdvanceDeployRequest(context.Context, string, string) (client.DeployRequestResult, error)
 	RecoverDeployRequest(context.Context, string, string) (client.DeployRequestResult, error)
@@ -64,7 +68,32 @@ func (r *containerRuntime) AdvanceContainerRuntime(ctx context.Context, q portal
 	}
 	record, err := tracker.GetDeployRequest(ctx, appName(r.a.id), op.RequestID)
 	if err != nil {
-		return err
+		// A failed lookup is ambiguous. Once activation is no longer allowed,
+		// withdraw the original identity; the server atomically records the intent
+		// if absent and preserves an already-applied winner. Never infer failure
+		// from a transport error or submit the deployment again.
+		if op.Stage != "recovering" && allowActivation && q.ActivateBefore > time.Now().Unix() {
+			return err
+		}
+		if op.Stage != "recovering" {
+			op.Stage = "recovering"
+			if saveErr := r.save(op); saveErr != nil {
+				return saveErr
+			}
+		}
+		withdrawer, ok := c.(missingCandidateWithdrawer)
+		if !ok {
+			return errors.New("missing-request withdrawal unavailable")
+		}
+		original, renderErr := renderContainerYAML(r.a, q.Release)
+		if renderErr != nil || op.OriginalYAML == "" || original != op.OriginalYAML {
+			return errors.New("original deployment configuration unavailable or changed")
+		}
+
+		record, err = withdrawer.WithdrawDeployRequest(ctx, appName(r.a.id), op.OriginalYAML, op.RequestID)
+		if err != nil {
+			return err
+		}
 	}
 	if record.AppName != appName(r.a.id) || record.RequestID != op.RequestID || !matchingContainerStates(record.RequestedState, op.PreflightState) {
 		return errors.New("candidate receipt identity mismatch")

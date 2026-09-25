@@ -78,11 +78,21 @@ func TestAdvanceAndRecoverDeployRequestCommands(t *testing.T) {
 	if err != nil || recovered.AppName != "my-api" || recovered.RequestID != id || recovered.State != "pending" {
 		t.Fatalf("recover response: %#v err=%v", recovered, err)
 	}
+	if _, err := c.WithdrawDeployRequest(t.Context(), "my-api", "name: my-api\n", id); err != nil {
+		t.Fatal(err)
+	}
 	raw, err := os.ReadFile(capture)
 	if err != nil {
 		t.Fatal(err)
 	}
 	args := string(raw)
+	if !strings.Contains(args, "apps withdraw my-api "+id+" --file ") {
+		t.Fatal("missing withdrawal command")
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "app-*.yaml"))
+	if len(files) != 0 {
+		t.Fatal("original configuration temporary file retained")
+	}
 	if !strings.Contains(args, "apps advance my-api "+id) || !strings.Contains(args, "apps recover my-api "+id) {
 		t.Fatalf("wrong recovery commands: %q", args)
 	}

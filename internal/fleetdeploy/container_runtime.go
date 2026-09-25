@@ -24,6 +24,7 @@ type containerRuntime struct {
 }
 
 type containerOperation struct {
+	OriginalYAML           string                         `json:"original_yaml,omitempty"`
 	CandidateOperations    bool                           `json:"candidate_operations,omitempty"`
 	RequestID              string                         `json:"request_id,omitempty"`
 	PreflightState         string                         `json:"preflight_state,omitempty"`
@@ -242,6 +243,7 @@ func (r *containerRuntime) SubmitContainerRuntime(ctx context.Context, q portal.
 		}
 		op.RequestID = q.Deployment.ID
 		op.PreflightState = preflight.DesiredState
+		op.OriginalYAML = spec
 	}
 	if r.w.cfg.EnableCandidateOperations {
 		if _, ok := c.(candidateContainerDeployer); !hasTracked || !ok {
