@@ -1,7 +1,7 @@
 # GitHub deployment
 
-Status: implementation started September 25. Repository archive preparation and
-push signature validation are source components, not a connected customer
+Status: implementation started September 25. Repository archive preparation, push signature validation and GitHub App
+authentication are source components, not a connected customer
 feature. No GitHub webhook endpoint, installation callback or deployment worker
 is enabled in production yet. Do not advertise deploy-on-push as available.
 
@@ -48,6 +48,13 @@ project deletion or disconnect must prevent new imports/publications.
 
 `internal/githubdeploy` includes:
 
+- GitHub App RSA key validation and short-lived RS256 app assertions, plus a
+  fixed-endpoint installation-token client. Every token request explicitly selects
+  one numeric repository ID and contents-read permission. Responses must confirm
+  that repository, read-only scope and a bounded expiry. Redirects are refused;
+  credentials are excluded from JSON and ordinary diagnostic formatting. Operator
+  private-file configuration and user/installation linking are still required.
+
 - Raw-body HMAC-SHA256 push verification and bounded parsing. A verified event
   identifies an installation/repository/ref/commit; it does not grant portal
   access or trigger a deployment by itself.
@@ -89,3 +96,19 @@ only through a verified installation and an exact commit resolved through GitHub
 
 The schema must be upgraded across all portal database consumers together, as
 in the [September 25 coordinated upgrade](production-upgrade-20260925.md).
+
+
+## App authentication evidence, September 25
+
+App signing follows [GitHub's JWT requirements](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app).
+Installation requests use the [installation access-token endpoint](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app)
+with explicit repository and permission restrictions. The client uses a dedicated
+HTTPS transport without environment proxy settings, a 20-second request timeout,
+a 1 MiB response limit and no redirect following. It does not cache tokens or
+return upstream response bodies in errors.
+
+Focused checks independently verified JWT signatures/claims and key rejection,
+request scope, response scope/expiry rejection, redirect refusal and credential
+redaction. These checks used generated keys and mock provider responses. No real
+GitHub App has been registered/configured through this code, and no customer
+repository access or deployment has been attempted.
