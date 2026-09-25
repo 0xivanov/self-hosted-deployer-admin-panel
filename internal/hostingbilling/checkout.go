@@ -18,6 +18,14 @@ type Client struct {
 	success, cancel string
 	plans           map[string]string
 }
+
+func (c *Client) BillingMode() string {
+	if c != nil && c.live {
+		return "live"
+	}
+	return "test"
+}
+
 type Checkout struct {
 	ID  string
 	URL string

@@ -29,7 +29,14 @@ type BillingReceipt struct {
 // AcceptBillingWebhook verifies the raw signature before any durable mutation.
 // Success means the event is durably queued, not that hosting was paid for.
 func (s *Store) AcceptBillingWebhook(ctx context.Context, body []byte, signature, secret string) (BillingReceipt, error) {
-	event, err := hostingbilling.VerifyTestEvent(body, signature, secret)
+	mode := s.billingModeValue()
+	var event hostingbilling.Event
+	var err error
+	if mode == "live" {
+		event, err = hostingbilling.VerifyLiveEvent(body, signature, secret)
+	} else {
+		event, err = hostingbilling.VerifyTestEvent(body, signature, secret)
+	}
 	if err != nil {
 		return BillingReceipt{}, err
 	}
@@ -64,7 +71,7 @@ func (s *Store) AcceptBillingWebhook(ctx context.Context, body []byte, signature
 	}
 	defer tx.Rollback()
 	var existing string
-	err = tx.QueryRowContext(ctx, "SELECT fingerprint FROM billing_events WHERE id=?", event.ID).Scan(&existing)
+	err = tx.QueryRowContext(ctx, "SELECT fingerprint FROM billing_events WHERE mode=? AND id=?", mode, event.ID).Scan(&existing)
 	if err == nil {
 		if existing != fingerprint {
 			return BillingReceipt{}, ErrBillingConflict
@@ -75,13 +82,13 @@ func (s *Store) AcceptBillingWebhook(ctx context.Context, body []byte, signature
 		return BillingReceipt{}, err
 	}
 	var count, size int64
-	if err = tx.QueryRowContext(ctx, "SELECT count(*),COALESCE(sum(length(payload)),0) FROM billing_events").Scan(&count, &size); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT count(*),COALESCE(sum(length(payload)),0) FROM billing_events WHERE mode=?", mode).Scan(&count, &size); err != nil {
 		return BillingReceipt{}, err
 	}
 	if count >= BillingInboxEvents || size+int64(len(payload)) > BillingInboxBytes {
 		return BillingReceipt{}, ErrBillingCapacity
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO billing_events(id,event_type,provider_created,fingerprint,payload,received_at) VALUES(?,?,?,?,?,?)", event.ID, event.Type, event.Created, fingerprint, payload, s.now().Unix()); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO billing_events(mode,id,event_type,provider_created,fingerprint,payload,received_at) VALUES(?,?,?,?,?,?,?)", mode, event.ID, event.Type, event.Created, fingerprint, payload, s.now().Unix()); err != nil {
 		return BillingReceipt{}, err
 	}
 	return BillingReceipt{ID: event.ID}, tx.Commit()

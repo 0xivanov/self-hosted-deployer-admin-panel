@@ -16,6 +16,9 @@ func (s *Store) BillingManagementURL(ctx context.Context, p BillingManagement, t
 	if p == nil {
 		return "", ErrDenied
 	}
+	if err := s.validateBillingProviderMode(p); err != nil {
+		return "", err
+	}
 	customer, err := s.BillingCustomer(ctx, token, workspace)
 	if err != nil {
 		return "", err

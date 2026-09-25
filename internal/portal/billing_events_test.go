@@ -134,7 +134,7 @@ func TestBillingWebhookAcknowledgesOnlyDurableEvents(t *testing.T) {
 func TestBillingInboxCapacity(t *testing.T) {
 	t.Parallel()
 	s, _ := newStore(t)
-	_, err := s.db.Exec(`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<10000) INSERT INTO billing_events SELECT 'fixture-'||x,'invoice.paid',1,'fixture',x'7b7d','pending',1 FROM n`)
+	_, err := s.db.Exec(`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<10000) INSERT INTO billing_events(mode,id,event_type,provider_created,fingerprint,payload,state,received_at) SELECT 'test','fixture-'||x,'invoice.paid',1,'fixture',x'7b7d','pending',1 FROM n`)
 	if err != nil {
 		t.Fatal(err)
 	}

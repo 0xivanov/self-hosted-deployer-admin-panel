@@ -42,7 +42,8 @@ func (s *Store) ConfigureBillingPlan(ctx context.Context, plan, price string, en
 	if plan == "" || len(plan) > 100 || !strings.HasPrefix(price, "price_") || len(price) > 255 || len(price) <= 6 || strings.ContainsAny(price, " /\\\r\n") {
 		return ErrInvalid
 	}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO billing_plans(id,price_id,enabled) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,enabled=excluded.enabled,price_snapshot=NULL,price_observed=0,next_refresh=0,price_generation=price_generation+1 WHERE price_id!=excluded.price_id OR enabled!=excluded.enabled", plan, price, enabled)
+	mode := s.billingModeValue()
+	_, err := s.db.ExecContext(ctx, "INSERT INTO billing_plans(mode,id,price_id,enabled) VALUES(?,?,?,?) ON CONFLICT(mode,id) DO UPDATE SET price_id=excluded.price_id,enabled=excluded.enabled,price_snapshot=NULL,price_observed=0,next_refresh=0,price_generation=price_generation+1 WHERE price_id!=excluded.price_id OR enabled!=excluded.enabled", mode, plan, price, enabled)
 	return err
 }
 func (s *Store) RequestBillingCheckout(ctx context.Context, token, workspace, plan string) (BillingCheckout, error) {
@@ -51,11 +52,12 @@ func (s *Store) RequestBillingCheckout(ctx context.Context, token, workspace, pl
 		return BillingCheckout{}, err
 	}
 	defer tx.Rollback()
+	mode := s.billingModeValue()
 	actor, err := s.authorizeOwner(ctx, tx, token, workspace)
 	if err != nil {
 		return BillingCheckout{}, err
 	}
-	existing, err := scanCheckout(tx.QueryRowContext(ctx, "SELECT "+checkoutColumns+" FROM billing_checkouts WHERE workspace_id=? AND state IN ('pending','open','completed')", workspace))
+	existing, err := scanCheckout(tx.QueryRowContext(ctx, "SELECT "+checkoutColumns+" FROM billing_checkouts WHERE mode=? AND workspace_id=? AND state IN ('pending','open','completed')", mode, workspace))
 	if err == nil {
 		if existing.PlanID != plan {
 			return BillingCheckout{}, ErrBillingConflict
@@ -66,14 +68,14 @@ func (s *Store) RequestBillingCheckout(ctx context.Context, token, workspace, pl
 		return BillingCheckout{}, err
 	}
 	c := BillingCheckout{ID: randomToken(), WorkspaceID: workspace, ActorID: actor, PlanID: plan, State: "pending", CreatedAt: s.now().Unix()}
-	err = tx.QueryRowContext(ctx, "SELECT price_id FROM billing_plans WHERE id=? AND enabled=1", plan).Scan(&c.PriceID)
+	err = tx.QueryRowContext(ctx, "SELECT price_id FROM billing_plans WHERE mode=? AND id=? AND enabled=1", mode, plan).Scan(&c.PriceID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, ErrInvalid
 	}
 	if err != nil {
 		return c, err
 	}
-	err = tx.QueryRowContext(ctx, "SELECT customer_id FROM billing_customers WHERE workspace_id=? AND customer_id IS NOT NULL", workspace).Scan(&c.CustomerID)
+	err = tx.QueryRowContext(ctx, "SELECT customer_id FROM billing_customers WHERE mode=? AND workspace_id=? AND customer_id IS NOT NULL", mode, workspace).Scan(&c.CustomerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, ErrBillingConflict
 	}
@@ -91,7 +93,7 @@ func (s *Store) RequestBillingCheckout(ctx context.Context, token, workspace, pl
 			return c, err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO billing_checkouts(id,workspace_id,actor_id,customer_id,plan_id,price_id,hosting_limits,state,created_at) VALUES(?,?,?,?,?,?,?,?,?)", c.ID, workspace, actor, c.CustomerID, plan, c.PriceID, limits, c.State, c.CreatedAt); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO billing_checkouts(mode,id,workspace_id,actor_id,customer_id,plan_id,price_id,hosting_limits,state,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", mode, c.ID, workspace, actor, c.CustomerID, plan, c.PriceID, limits, c.State, c.CreatedAt); err != nil {
 		return c, err
 	}
 	if err = audit(ctx, tx, actor, workspace, "billing.checkout_requested:"+c.ID, c.CreatedAt); err != nil {
@@ -105,10 +107,11 @@ func (s *Store) BillingCheckout(ctx context.Context, token, workspace, id string
 		return BillingCheckout{}, err
 	}
 	defer tx.Rollback()
+	mode := s.billingModeValue()
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return BillingCheckout{}, err
 	}
-	c, err := scanCheckout(tx.QueryRowContext(ctx, "SELECT "+checkoutColumns+" FROM billing_checkouts WHERE workspace_id=? AND id=?", workspace, id))
+	c, err := scanCheckout(tx.QueryRowContext(ctx, "SELECT "+checkoutColumns+" FROM billing_checkouts WHERE mode=? AND workspace_id=? AND id=?", mode, workspace, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, ErrDenied
 	}
@@ -126,7 +129,8 @@ func (s *Store) BillingCheckoutWork(ctx context.Context, id string) (BillingChec
 		return BillingCheckout{}, err
 	}
 	defer tx.Rollback()
-	c, err := scanCheckout(tx.QueryRowContext(ctx, "SELECT "+checkoutColumns+" FROM billing_checkouts WHERE id=?", id))
+	mode := s.billingModeValue()
+	c, err := scanCheckout(tx.QueryRowContext(ctx, "SELECT "+checkoutColumns+" FROM billing_checkouts WHERE mode=? AND id=?", mode, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, ErrDenied
 	}
@@ -137,7 +141,7 @@ func (s *Store) BillingCheckoutWork(ctx context.Context, id string) (BillingChec
 		return c, tx.Commit()
 	}
 	var valid int
-	err = tx.QueryRowContext(ctx, `SELECT count(*) FROM memberships m JOIN users u ON u.id=m.user_id JOIN billing_plans p ON p.id=? WHERE m.workspace_id=? AND u.id=? AND u.verified=1 AND u.disabled=0 AND m.role='owner' AND p.enabled=1 AND p.price_id=?`, c.PlanID, c.WorkspaceID, c.ActorID, c.PriceID).Scan(&valid)
+	err = tx.QueryRowContext(ctx, `SELECT count(*) FROM memberships m JOIN users u ON u.id=m.user_id JOIN billing_plans p ON p.mode=? AND p.id=? WHERE m.workspace_id=? AND u.id=? AND u.verified=1 AND u.disabled=0 AND m.role='owner' AND p.enabled=1 AND p.price_id=?`, mode, c.PlanID, c.WorkspaceID, c.ActorID, c.PriceID).Scan(&valid)
 	if err != nil {
 		return c, err
 	}
@@ -153,8 +157,9 @@ func (s *Store) BillingCheckoutWork(ctx context.Context, id string) (BillingChec
 // BindBillingCheckout is a trusted provider acknowledgement, not a browser
 // redirect handler. It opens a checkout link; it does not mark anything paid.
 func (s *Store) BindBillingCheckout(ctx context.Context, id, session, rawURL string) error {
+	mode := s.billingModeValue()
 	u, err := url.Parse(rawURL)
-	if err != nil || u.Scheme != "https" || u.Host != "checkout.stripe.com" || u.User != nil || len(rawURL) > 8192 || !strings.HasPrefix(session, "cs_test_") || len(session) > 255 || len(session) <= 8 {
+	if err != nil || u.Scheme != "https" || u.Host != "checkout.stripe.com" || u.User != nil || len(rawURL) > 8192 || !strings.HasPrefix(session, "cs_"+mode+"_") || len(session) > 255 || len(session) <= 8 {
 		return ErrInvalid
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -162,7 +167,7 @@ func (s *Store) BindBillingCheckout(ctx context.Context, id, session, rawURL str
 		return err
 	}
 	defer tx.Rollback()
-	c, err := scanCheckout(tx.QueryRowContext(ctx, "SELECT "+checkoutColumns+" FROM billing_checkouts WHERE id=?", id))
+	c, err := scanCheckout(tx.QueryRowContext(ctx, "SELECT "+checkoutColumns+" FROM billing_checkouts WHERE mode=? AND id=?", mode, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrDenied
 	}
@@ -179,13 +184,13 @@ func (s *Store) BindBillingCheckout(ctx context.Context, id, session, rawURL str
 		return ErrBillingConflict
 	}
 	var count int
-	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM billing_checkouts WHERE session_id=?", session).Scan(&count); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM billing_checkouts WHERE mode=? AND session_id=?", mode, session).Scan(&count); err != nil {
 		return err
 	}
 	if count != 0 {
 		return ErrBillingConflict
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE billing_checkouts SET session_id=?,checkout_url=?,state='open' WHERE id=?", session, rawURL, id); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE billing_checkouts SET session_id=?,checkout_url=?,state='open' WHERE mode=? AND id=?", session, rawURL, mode, id); err != nil {
 		return err
 	}
 	if err = audit(ctx, tx, c.ActorID, c.WorkspaceID, "billing.checkout_opened:"+id, s.now().Unix()); err != nil {

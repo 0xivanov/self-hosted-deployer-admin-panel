@@ -44,10 +44,11 @@ func (s *Store) WorkspaceBillingPayments(ctx context.Context, token, workspace, 
 		return page, err
 	}
 	defer tx.Rollback()
+	mode := s.billingModeValue()
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return page, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT c.id,s.plan_id,c.customer_id,c.subscription_id,c.invoice_id,c.payment_intent_id,c.snapshot FROM billing_charges c JOIN billing_subscriptions s ON s.id=c.subscription_id AND s.customer_id=c.customer_id WHERE s.workspace_id=? AND (?='' OR c.id<?) ORDER BY c.id DESC LIMIT 21`, workspace, before, before)
+	rows, err := tx.QueryContext(ctx, `SELECT c.id,s.plan_id,c.customer_id,c.subscription_id,c.invoice_id,c.payment_intent_id,c.snapshot FROM billing_charges c JOIN billing_subscriptions s ON s.mode=c.mode AND s.id=c.subscription_id AND s.customer_id=c.customer_id WHERE c.mode=? AND s.workspace_id=? AND (?='' OR c.id<?) ORDER BY c.id DESC LIMIT 21`, mode, workspace, before, before)
 	if err != nil {
 		return page, err
 	}

@@ -32,13 +32,14 @@ func (s *Store) ConfigureHostingLimits(ctx context.Context, plan string, limits 
 		return err
 	}
 	defer tx.Rollback()
+	mode := s.billingModeValue()
 	var exists int
-	if err = tx.QueryRowContext(ctx, "SELECT 1 FROM billing_plans WHERE id=?", plan).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
+	if err = tx.QueryRowContext(ctx, "SELECT 1 FROM billing_plans WHERE mode=? AND id=?", mode, plan).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
 		return ErrDenied
 	} else if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO hosting_plan_limits(plan_id,projects,uploads,upload_bytes,node) VALUES(?,?,?,?,?) ON CONFLICT(plan_id) DO UPDATE SET projects=excluded.projects,uploads=excluded.uploads,upload_bytes=excluded.upload_bytes,node=excluded.node`, plan, limits.Projects, limits.Uploads, limits.UploadBytes, limits.Node); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO hosting_plan_limits(mode,plan_id,projects,uploads,upload_bytes,node) VALUES(?,?,?,?,?,?) ON CONFLICT(mode,plan_id) DO UPDATE SET projects=excluded.projects,uploads=excluded.uploads,upload_bytes=excluded.upload_bytes,node=excluded.node`, mode, plan, limits.Projects, limits.Uploads, limits.UploadBytes, limits.Node); err != nil {
 		return err
 	}
 	if err = audit(ctx, tx, "operator", "", "hosting.plan-limits.configured:"+plan, s.now().Unix()); err != nil {
@@ -48,7 +49,7 @@ func (s *Store) ConfigureHostingLimits(ctx context.Context, plan string, limits 
 }
 func (s *Store) savedHostingLimits(ctx context.Context, tx *sql.Tx, plan string) (*HostingPlanLimits, error) {
 	var limits HostingPlanLimits
-	err := tx.QueryRowContext(ctx, "SELECT projects,uploads,upload_bytes,node FROM hosting_plan_limits WHERE plan_id=?", plan).Scan(&limits.Projects, &limits.Uploads, &limits.UploadBytes, &limits.Node)
+	err := tx.QueryRowContext(ctx, "SELECT projects,uploads,upload_bytes,node FROM hosting_plan_limits WHERE mode=? AND plan_id=?", s.billingModeValue(), plan).Scan(&limits.Projects, &limits.Uploads, &limits.UploadBytes, &limits.Node)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

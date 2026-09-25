@@ -22,10 +22,14 @@ func (s *Store) ReconcileBillingCharge(ctx context.Context, p BillingChargeReade
 	if p == nil || !strings.HasPrefix(id, "ch_") || len(id) <= 3 || len(id) > 255 || strings.ContainsAny(id, " /\\\r\n") {
 		return ErrInvalid
 	}
+	if err := s.validateBillingProviderMode(p); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	mode := s.billingModeValue()
 	var generation int64
-	err := s.db.QueryRowContext(ctx, `INSERT INTO billing_charges(id,generation) VALUES(?,1) ON CONFLICT(id) DO UPDATE SET generation=generation+1 RETURNING generation`, id).Scan(&generation)
+	err := s.db.QueryRowContext(ctx, `INSERT INTO billing_charges(mode,id,generation) VALUES(?,?,1) ON CONFLICT(mode,id) DO UPDATE SET generation=generation+1 RETURNING generation`, mode, id).Scan(&generation)
 	if err != nil {
 		return err
 	}
@@ -43,7 +47,7 @@ func (s *Store) ReconcileBillingCharge(ctx context.Context, p BillingChargeReade
 	}
 	defer tx.Rollback()
 	var customer string
-	err = tx.QueryRowContext(ctx, "SELECT customer_id FROM billing_subscriptions WHERE id=?", observation.SubscriptionID).Scan(&customer)
+	err = tx.QueryRowContext(ctx, "SELECT customer_id FROM billing_subscriptions WHERE mode=? AND id=?", mode, observation.SubscriptionID).Scan(&customer)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrBillingUnmatched
 	}
@@ -55,7 +59,7 @@ func (s *Store) ReconcileBillingCharge(ctx context.Context, p BillingChargeReade
 	}
 	var currentGeneration int64
 	var sub, priorCustomer, invoice, payment string
-	err = tx.QueryRowContext(ctx, "SELECT generation,COALESCE(subscription_id,''),COALESCE(customer_id,''),invoice_id,payment_intent_id FROM billing_charges WHERE id=?", id).Scan(&currentGeneration, &sub, &priorCustomer, &invoice, &payment)
+	err = tx.QueryRowContext(ctx, "SELECT generation,COALESCE(subscription_id,''),COALESCE(customer_id,''),invoice_id,payment_intent_id FROM billing_charges WHERE mode=? AND id=?", mode, id).Scan(&currentGeneration, &sub, &priorCustomer, &invoice, &payment)
 	if err != nil {
 		return err
 	}
@@ -69,7 +73,7 @@ func (s *Store) ReconcileBillingCharge(ctx context.Context, p BillingChargeReade
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE billing_charges SET subscription_id=?,customer_id=?,invoice_id=?,payment_intent_id=?,snapshot=?,next_refresh=? WHERE id=?", observation.SubscriptionID, customer, observation.InvoiceID, observation.PaymentIntentID, data, s.now().Unix()+300, id); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE billing_charges SET subscription_id=?,customer_id=?,invoice_id=?,payment_intent_id=?,snapshot=?,next_refresh=? WHERE mode=? AND id=?", observation.SubscriptionID, customer, observation.InvoiceID, observation.PaymentIntentID, data, s.now().Unix()+300, mode, id); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -81,11 +85,12 @@ func (s *Store) BillingChargeObservation(ctx context.Context, token, workspace, 
 		return hostingbilling.ChargeObservation{}, err
 	}
 	defer tx.Rollback()
+	mode := s.billingModeValue()
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return hostingbilling.ChargeObservation{}, err
 	}
 	var data []byte
-	err = tx.QueryRowContext(ctx, `SELECT c.snapshot FROM billing_charges c JOIN billing_subscriptions s ON s.id=c.subscription_id WHERE c.id=? AND s.workspace_id=?`, id, workspace).Scan(&data)
+	err = tx.QueryRowContext(ctx, `SELECT c.snapshot FROM billing_charges c JOIN billing_subscriptions s ON s.mode=c.mode AND s.id=c.subscription_id WHERE c.mode=? AND c.id=? AND s.workspace_id=?`, mode, id, workspace).Scan(&data)
 	if errors.Is(err, sql.ErrNoRows) {
 		return hostingbilling.ChargeObservation{}, ErrDenied
 	}
@@ -106,9 +111,13 @@ func (s *Store) RefreshBillingChargeOnce(ctx context.Context, p BillingChargeRea
 	if p == nil {
 		return false, ErrInvalid
 	}
+	if err := s.validateBillingProviderMode(p); err != nil {
+		return false, err
+	}
 	var id string
 	now := s.now().Unix()
-	err := s.db.QueryRowContext(ctx, `UPDATE billing_charges SET next_refresh=? WHERE id=(SELECT id FROM billing_charges WHERE next_refresh<=? ORDER BY next_refresh,id LIMIT 1) RETURNING id`, now+60, now).Scan(&id)
+	mode := s.billingModeValue()
+	err := s.db.QueryRowContext(ctx, `UPDATE billing_charges SET next_refresh=? WHERE mode=? AND id=(SELECT id FROM billing_charges WHERE mode=? AND next_refresh<=? ORDER BY next_refresh,id LIMIT 1) RETURNING id`, now+60, mode, mode, now).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}

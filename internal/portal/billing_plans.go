@@ -14,7 +14,7 @@ func (s *Store) AvailableBillingPlans(ctx context.Context, token, workspace stri
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT id FROM billing_plans WHERE enabled=1 ORDER BY id")
+	rows, err := tx.QueryContext(ctx, "SELECT id FROM billing_plans WHERE mode=? AND enabled=1 ORDER BY id", s.billingModeValue())
 	if err != nil {
 		return nil, err
 	}

@@ -30,6 +30,7 @@ var (
 )
 
 type Store struct {
+	billingMode       string
 	containerProjects bool
 	projectCapacity   int
 	nodeCapacity      int
@@ -137,6 +138,9 @@ func Open(path string) (*Store, error) {
 	if err == nil {
 		err = s.migrateClientLabels()
 	}
+	if err == nil {
+		err = s.migrateBillingModes()
+	}
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -154,7 +158,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 54 {
+	if version > 55 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {

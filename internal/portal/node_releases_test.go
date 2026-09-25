@@ -201,6 +201,7 @@ func TestNodeReleaseRetentionCountAndMigration(t *testing.T) {
 	if err = s.DispatchNodeBuild(ctx, c.Job.ID, c.ExecutionID, c.Lease, root, nodeSubmit(func(context.Context, NodeExecutionRequest) error { return nil })); err != nil {
 		t.Fatal(err)
 	}
+	downgradeBillingSchema54(t, s)
 	if _, err = s.db.Exec("DROP TABLE project_domains; ALTER TABLE projects DROP COLUMN deletion_requested_at; ALTER TABLE projects DROP COLUMN deletion_error; DROP TABLE node_active_deployments; DROP TABLE node_deployment_releases; DROP TABLE node_deployments; DROP TABLE node_releases; ALTER TABLE billing_checkouts DROP COLUMN hosting_limits; DROP TABLE hosting_plan_limits; DROP TABLE hosting_workspace_policies; DROP TABLE merchant_order_recovery_grants; DROP TABLE merchant_order_recovery_codes; DROP TABLE merchant_buyer_sessions; DROP TABLE domain_orders; DROP TABLE merchant_refunds; DROP TABLE merchant_events; DROP TABLE merchant_orders; DROP TABLE merchant_products; DROP TABLE merchant_accounts; PRAGMA user_version=20"); err != nil {
 		t.Fatal(err)
 	}

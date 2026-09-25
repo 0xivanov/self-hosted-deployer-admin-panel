@@ -21,12 +21,16 @@ func (s *Store) RefreshBillingPriceOnce(ctx context.Context, p BillingPriceReade
 	if p == nil {
 		return false, ErrInvalid
 	}
+	if err := s.validateBillingProviderMode(p); err != nil {
+		return false, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	now := s.now().Unix()
+	mode := s.billingModeValue()
 	var plan, price string
 	var generation int64
-	err := s.db.QueryRowContext(ctx, `UPDATE billing_plans SET next_refresh=?,price_generation=price_generation+1 WHERE id=(SELECT id FROM billing_plans WHERE enabled=1 AND next_refresh<=? ORDER BY next_refresh,id LIMIT 1) RETURNING id,price_id,price_generation`, now+60, now).Scan(&plan, &price, &generation)
+	err := s.db.QueryRowContext(ctx, `UPDATE billing_plans SET next_refresh=?,price_generation=price_generation+1 WHERE mode=? AND id=(SELECT id FROM billing_plans WHERE mode=? AND enabled=1 AND next_refresh<=? ORDER BY next_refresh,id LIMIT 1) RETURNING id,price_id,price_generation`, now+60, mode, mode, now).Scan(&plan, &price, &generation)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -44,7 +48,7 @@ func (s *Store) RefreshBillingPriceOnce(ctx context.Context, p BillingPriceReade
 	if err != nil {
 		return true, err
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE billing_plans SET price_snapshot=?,price_observed=?,next_refresh=? WHERE id=? AND price_id=? AND enabled=1 AND price_generation=?`, data, snapshot.ObservedAt, s.now().Unix()+300, plan, price, generation)
+	result, err := s.db.ExecContext(ctx, `UPDATE billing_plans SET price_snapshot=?,price_observed=?,next_refresh=? WHERE mode=? AND id=? AND price_id=? AND enabled=1 AND price_generation=?`, data, snapshot.ObservedAt, s.now().Unix()+300, mode, plan, price, generation)
 	if err != nil {
 		return true, err
 	}
@@ -72,10 +76,11 @@ func (s *Store) BillingPlanOffers(ctx context.Context, token, workspace string) 
 		return nil, err
 	}
 	defer tx.Rollback()
+	mode := s.billingModeValue()
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id,price_snapshot,price_observed FROM billing_plans WHERE enabled=1 ORDER BY id`)
+	rows, err := tx.QueryContext(ctx, `SELECT id,price_snapshot,price_observed FROM billing_plans WHERE mode=? AND enabled=1 ORDER BY id`, mode)
 	if err != nil {
 		return nil, err
 	}

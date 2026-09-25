@@ -132,6 +132,7 @@ func TestNodeRuntimeDispatchRejectsInvalidAuthorityAndArchive(t *testing.T) {
 func TestNodeRuntimeDispatchMigrationFencesLegacyRunning(t *testing.T) {
 	t.Parallel()
 	s, path, _, c := dispatchDeploymentFixture(t)
+	downgradeBillingSchema54(t, s)
 	if _, err := s.db.Exec("DROP TABLE project_domains; ALTER TABLE projects DROP COLUMN deletion_requested_at; ALTER TABLE projects DROP COLUMN deletion_error; ALTER TABLE node_deployments DROP COLUMN dispatch_intent; ALTER TABLE billing_checkouts DROP COLUMN hosting_limits; DROP TABLE hosting_plan_limits; DROP TABLE hosting_workspace_policies; DROP TABLE merchant_order_recovery_grants; DROP TABLE merchant_order_recovery_codes; DROP TABLE merchant_buyer_sessions; DROP TABLE domain_orders; DROP TABLE merchant_refunds; DROP TABLE merchant_events; DROP TABLE merchant_orders; DROP TABLE merchant_products; DROP TABLE merchant_accounts; PRAGMA user_version=23"); err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +151,7 @@ func TestNodeRuntimeDispatchMigrationFencesLegacyRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 54 {
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 55 {
 		t.Fatal(version, err)
 	}
 }

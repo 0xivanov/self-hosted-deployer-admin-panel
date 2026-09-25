@@ -95,6 +95,7 @@ func TestMerchantRecoveryMigrationPreservesBuyer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	downgradeBillingSchema54(t, s)
 	if _, err = s.db.Exec("DROP TABLE project_domains; ALTER TABLE projects DROP COLUMN deletion_requested_at; ALTER TABLE projects DROP COLUMN deletion_error; ALTER TABLE billing_checkouts DROP COLUMN hosting_limits; DROP TABLE hosting_plan_limits; DROP TABLE hosting_workspace_policies; DROP TABLE merchant_order_recovery_grants; DROP TABLE merchant_order_recovery_codes; PRAGMA user_version=34"); err != nil {
 		t.Fatal(err)
 	}

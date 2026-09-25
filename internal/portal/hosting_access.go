@@ -75,9 +75,9 @@ func (s *Store) qualifyingHostingEntitlement(ctx context.Context, tx *sql.Tx, wo
 	now := s.now().Unix()
 	rows, err := tx.QueryContext(ctx, `SELECT s.plan_id,s.id,s.customer_id,s.price_id,s.snapshot,c.customer_id,c.price_id,CASE WHEN c.hosting_limits IS NOT NULL AND length(c.hosting_limits)=0 THEN 'null' ELSE c.hosting_limits END
 		FROM billing_subscriptions s
-		JOIN billing_checkouts c ON c.id=s.checkout_id AND c.workspace_id=s.workspace_id AND c.customer_id=s.customer_id AND c.plan_id=s.plan_id AND c.price_id=s.price_id AND c.state='completed'
-		JOIN billing_customers bc ON bc.workspace_id=s.workspace_id AND bc.customer_id=s.customer_id
-		WHERE s.workspace_id=? ORDER BY s.id`, workspace)
+		JOIN billing_checkouts c ON c.mode=s.mode AND c.id=s.checkout_id AND c.workspace_id=s.workspace_id AND c.customer_id=s.customer_id AND c.plan_id=s.plan_id AND c.price_id=s.price_id AND c.state='completed'
+		JOIN billing_customers bc ON bc.mode=s.mode AND bc.workspace_id=s.workspace_id AND bc.customer_id=s.customer_id
+		WHERE s.mode=? AND s.workspace_id=? ORDER BY s.id`, s.billingModeValue(), workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func (s *Store) qualifyingHostingEntitlement(ctx context.Context, tx *sql.Tx, wo
 			continue
 		}
 		var count int
-		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM billing_charges WHERE subscription_id=? AND customer_id=? AND invoice_id=?", id, customer, snapshot.InvoiceID).Scan(&count); err != nil {
+		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM billing_charges WHERE mode=? AND subscription_id=? AND customer_id=? AND invoice_id=?", s.billingModeValue(), id, customer, snapshot.InvoiceID).Scan(&count); err != nil {
 			return nil, err
 		}
 		if count != 1 {
@@ -113,7 +113,7 @@ func (s *Store) qualifyingHostingEntitlement(ctx context.Context, tx *sql.Tx, wo
 		}
 		var chargeID, chargeSub, chargeCustomer, invoiceID, paymentID string
 		var chargeData []byte
-		if err = tx.QueryRowContext(ctx, "SELECT id,subscription_id,customer_id,invoice_id,payment_intent_id,snapshot FROM billing_charges WHERE subscription_id=? AND customer_id=? AND invoice_id=?", id, customer, snapshot.InvoiceID).Scan(&chargeID, &chargeSub, &chargeCustomer, &invoiceID, &paymentID, &chargeData); err != nil {
+		if err = tx.QueryRowContext(ctx, "SELECT id,subscription_id,customer_id,invoice_id,payment_intent_id,snapshot FROM billing_charges WHERE mode=? AND subscription_id=? AND customer_id=? AND invoice_id=?", s.billingModeValue(), id, customer, snapshot.InvoiceID).Scan(&chargeID, &chargeSub, &chargeCustomer, &invoiceID, &paymentID, &chargeData); err != nil {
 			return nil, err
 		}
 		if chargeData == nil || chargeSub != id || chargeCustomer != customer || invoiceID != snapshot.InvoiceID || paymentID == "" {
@@ -185,7 +185,7 @@ func (s *Store) WorkspaceHostingAccess(ctx context.Context, token, workspace str
 	}
 	access := HostingAccess{Mode: "legacy", Allowed: true}
 	if required != 0 {
-		access.Mode = "test_subscription"
+		access.Mode = s.billingModeValue() + "_subscription"
 		var entitlement *hostingEntitlement
 		entitlement, err = s.qualifyingHostingEntitlement(ctx, tx, workspace)
 		if entitlement != nil {

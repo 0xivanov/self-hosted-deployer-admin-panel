@@ -13,6 +13,13 @@ type Management struct {
 	configuration string
 }
 
+func (m *Management) BillingMode() string {
+	if m == nil || m.client == nil {
+		return ""
+	}
+	return m.client.BillingMode()
+}
+
 func NewManagement(client *Client, configuration string) (*Management, error) {
 	if client == nil || !providerID(configuration, "bpc_") {
 		return nil, errors.New("a portal configuration is required")

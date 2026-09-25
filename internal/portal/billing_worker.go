@@ -9,7 +9,7 @@ import (
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/hostingbilling"
 )
 
-// BillingProvider must be an authenticated test provider. No browser-supplied
+// BillingProvider must match the store’s operator-selected mode. No browser-supplied
 // customer IDs, prices or redirect URLs enter these operations.
 type BillingProvider interface {
 	SubscriptionReader
@@ -24,6 +24,9 @@ func (s *Store) BillingWorkOnce(ctx context.Context, provider BillingProvider) (
 	if provider == nil {
 		return false, ErrInvalid
 	}
+	if err := s.validateBillingProviderMode(provider); err != nil {
+		return false, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -31,20 +34,21 @@ func (s *Store) BillingWorkOnce(ctx context.Context, provider BillingProvider) (
 		return false, err
 	}
 	defer tx.Rollback()
+	mode := s.billingModeValue()
 	for _, query := range []string{
-		`INSERT OR IGNORE INTO billing_work(kind,reference) SELECT 'customer',request_id FROM billing_customers WHERE customer_id IS NULL`,
-		`INSERT OR IGNORE INTO billing_work(kind,reference) SELECT 'checkout',id FROM billing_checkouts WHERE state='pending'`,
-		`INSERT OR IGNORE INTO billing_work(kind,reference) SELECT 'event',id FROM billing_events WHERE state='pending' AND event_type IN ('checkout.session.completed','checkout.session.expired','customer.subscription.created','customer.subscription.updated','customer.subscription.deleted','invoice.paid','invoice.payment_failed','invoice.payment_action_required','invoice.voided','invoice.marked_uncollectible','invoice.finalized','charge.succeeded','charge.refunded','charge.dispute.created','charge.dispute.updated','charge.dispute.closed','charge.dispute.funds_withdrawn','charge.dispute.funds_reinstated')`,
-		`INSERT OR IGNORE INTO billing_work(kind,reference) SELECT 'subscription',id FROM billing_subscriptions`,
+		`INSERT OR IGNORE INTO billing_work(mode,kind,reference) SELECT ?, 'customer',request_id FROM billing_customers WHERE mode=? AND customer_id IS NULL`,
+		`INSERT OR IGNORE INTO billing_work(mode,kind,reference) SELECT ?, 'checkout',id FROM billing_checkouts WHERE mode=? AND state='pending'`,
+		`INSERT OR IGNORE INTO billing_work(mode,kind,reference) SELECT ?, 'event',id FROM billing_events WHERE mode=? AND state='pending' AND event_type IN ('checkout.session.completed','checkout.session.expired','customer.subscription.created','customer.subscription.updated','customer.subscription.deleted','invoice.paid','invoice.payment_failed','invoice.payment_action_required','invoice.voided','invoice.marked_uncollectible','invoice.finalized','charge.succeeded','charge.refunded','charge.dispute.created','charge.dispute.updated','charge.dispute.closed','charge.dispute.funds_withdrawn','charge.dispute.funds_reinstated')`,
+		`INSERT OR IGNORE INTO billing_work(mode,kind,reference) SELECT ?, 'subscription',id FROM billing_subscriptions WHERE mode=?`,
 	} {
-		if _, err = tx.ExecContext(ctx, query); err != nil {
+		if _, err = tx.ExecContext(ctx, query, mode, mode); err != nil {
 			return false, err
 		}
 	}
 	now := s.now().Unix()
 	var kind, reference string
 	var attempts int
-	err = tx.QueryRowContext(ctx, `SELECT kind,reference,attempts FROM billing_work WHERE done=0 AND next_attempt<=? AND lease_until<=? ORDER BY next_attempt,kind,reference LIMIT 1`, now, now).Scan(&kind, &reference, &attempts)
+	err = tx.QueryRowContext(ctx, `SELECT kind,reference,attempts FROM billing_work WHERE mode=? AND done=0 AND next_attempt<=? AND lease_until<=? ORDER BY next_attempt,kind,reference LIMIT 1`, mode, now, now).Scan(&kind, &reference, &attempts)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, tx.Commit()
 	}
@@ -52,7 +56,7 @@ func (s *Store) BillingWorkOnce(ctx context.Context, provider BillingProvider) (
 		return false, err
 	}
 	lease := randomToken()
-	if _, err = tx.ExecContext(ctx, `UPDATE billing_work SET lease_hash=?,lease_until=?,attempts=attempts+1 WHERE kind=? AND reference=?`, digest(lease), now+60, kind, reference); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE billing_work SET lease_hash=?,lease_until=?,attempts=attempts+1 WHERE mode=? AND kind=? AND reference=?`, digest(lease), now+60, mode, kind, reference); err != nil {
 		return false, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -75,7 +79,7 @@ func (s *Store) BillingWorkOnce(ctx context.Context, provider BillingProvider) (
 	}
 	// A canceled operation leaves the lease for recovery. Never acknowledge a
 	// result after another worker has acquired this task.
-	result, err := s.db.ExecContext(ctx, `UPDATE billing_work SET done=?,next_attempt=?,lease_hash='',lease_until=0,attempts=CASE WHEN ? THEN 0 ELSE attempts END WHERE kind=? AND reference=? AND lease_hash=? AND lease_until>?`, done, s.now().Unix()+delay, workErr == nil, kind, reference, digest(lease), s.now().Unix())
+	result, err := s.db.ExecContext(ctx, `UPDATE billing_work SET done=?,next_attempt=?,lease_hash='',lease_until=0,attempts=CASE WHEN ? THEN 0 ELSE attempts END WHERE mode=? AND kind=? AND reference=? AND lease_hash=? AND lease_until>?`, done, s.now().Unix()+delay, workErr == nil, mode, kind, reference, digest(lease), s.now().Unix())
 	if err != nil {
 		return true, err
 	}

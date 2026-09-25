@@ -33,11 +33,12 @@ func (s *Store) RequestBillingCustomer(ctx context.Context, token, workspace str
 		return BillingCustomer{}, err
 	}
 	defer tx.Rollback()
+	mode := s.billingModeValue()
 	actor, err := s.authorizeOwner(ctx, tx, token, workspace)
 	if err != nil {
 		return BillingCustomer{}, err
 	}
-	existing, err := scanBillingCustomer(tx.QueryRowContext(ctx, "SELECT "+billingCustomerColumns+" FROM billing_customers WHERE workspace_id=?", workspace))
+	existing, err := scanBillingCustomer(tx.QueryRowContext(ctx, "SELECT "+billingCustomerColumns+" FROM billing_customers WHERE mode=? AND workspace_id=?", mode, workspace))
 	if err == nil {
 		return existing, tx.Commit()
 	}
@@ -48,7 +49,7 @@ func (s *Store) RequestBillingCustomer(ctx context.Context, token, workspace str
 	if err = tx.QueryRowContext(ctx, "SELECT email FROM users WHERE id=?", actor).Scan(&c.Email); err != nil {
 		return BillingCustomer{}, err
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO billing_customers(workspace_id,request_id,actor_id,email,created_at) VALUES(?,?,?,?,?)", workspace, c.RequestID, actor, c.Email, c.CreatedAt); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO billing_customers(mode,workspace_id,request_id,actor_id,email,created_at) VALUES(?,?,?,?,?,?)", mode, workspace, c.RequestID, actor, c.Email, c.CreatedAt); err != nil {
 		return BillingCustomer{}, err
 	}
 	if err = audit(ctx, tx, actor, workspace, "billing.customer_requested:"+c.RequestID, c.CreatedAt); err != nil {
@@ -62,10 +63,11 @@ func (s *Store) BillingCustomer(ctx context.Context, token, workspace string) (B
 		return BillingCustomer{}, err
 	}
 	defer tx.Rollback()
+	mode := s.billingModeValue()
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return BillingCustomer{}, err
 	}
-	c, err := scanBillingCustomer(tx.QueryRowContext(ctx, "SELECT "+billingCustomerColumns+" FROM billing_customers WHERE workspace_id=?", workspace))
+	c, err := scanBillingCustomer(tx.QueryRowContext(ctx, "SELECT "+billingCustomerColumns+" FROM billing_customers WHERE mode=? AND workspace_id=?", mode, workspace))
 	if errors.Is(err, sql.ErrNoRows) {
 		return BillingCustomer{}, ErrDenied
 	}
@@ -79,7 +81,8 @@ func (s *Store) BillingCustomer(ctx context.Context, token, workspace string) (B
 // creates beyond the provider's idempotency retention window. Old uncertain
 // requests require provider reconciliation with their retained request identity.
 func (s *Store) BillingCustomerWork(ctx context.Context, request string) (BillingCustomer, error) {
-	c, err := scanBillingCustomer(s.db.QueryRowContext(ctx, "SELECT "+billingCustomerColumns+" FROM billing_customers WHERE request_id=?", request))
+	mode := s.billingModeValue()
+	c, err := scanBillingCustomer(s.db.QueryRowContext(ctx, "SELECT "+billingCustomerColumns+" FROM billing_customers WHERE mode=? AND request_id=?", mode, request))
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, ErrDenied
 	}
@@ -113,7 +116,8 @@ func (s *Store) BindBillingCustomer(ctx context.Context, request, customer strin
 		return err
 	}
 	defer tx.Rollback()
-	c, err := scanBillingCustomer(tx.QueryRowContext(ctx, "SELECT "+billingCustomerColumns+" FROM billing_customers WHERE request_id=?", request))
+	mode := s.billingModeValue()
+	c, err := scanBillingCustomer(tx.QueryRowContext(ctx, "SELECT "+billingCustomerColumns+" FROM billing_customers WHERE mode=? AND request_id=?", mode, request))
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrDenied
 	}
@@ -127,13 +131,13 @@ func (s *Store) BindBillingCustomer(ctx context.Context, request, customer strin
 		return tx.Commit()
 	}
 	var used int
-	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM billing_customers WHERE customer_id=?", customer).Scan(&used); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM billing_customers WHERE mode=? AND customer_id=?", mode, customer).Scan(&used); err != nil {
 		return err
 	}
 	if used != 0 {
 		return ErrBillingConflict
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE billing_customers SET customer_id=? WHERE request_id=?", customer, request); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE billing_customers SET customer_id=? WHERE mode=? AND request_id=?", customer, mode, request); err != nil {
 		return err
 	}
 	if err = audit(ctx, tx, c.ActorID, c.WorkspaceID, "billing.customer_bound:"+request, s.now().Unix()); err != nil {

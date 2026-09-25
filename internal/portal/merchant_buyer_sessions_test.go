@@ -93,6 +93,7 @@ func TestMerchantBuyerLegacyMigration(t *testing.T) {
 	if _, err := s.RequestMerchantOrder(ctx, token, product.ID, product.Revision, randomToken()); err != nil {
 		t.Fatal(err)
 	}
+	downgradeBillingSchema54(t, s)
 	if _, err := s.db.Exec("DROP TABLE project_domains; ALTER TABLE projects DROP COLUMN deletion_requested_at; ALTER TABLE projects DROP COLUMN deletion_error; ALTER TABLE billing_checkouts DROP COLUMN hosting_limits; DROP TABLE hosting_plan_limits; DROP TABLE hosting_workspace_policies; DROP TABLE merchant_order_recovery_grants; DROP TABLE merchant_order_recovery_codes; DROP TABLE merchant_buyer_sessions; PRAGMA user_version=33"); err != nil {
 		t.Fatal(err)
 	}

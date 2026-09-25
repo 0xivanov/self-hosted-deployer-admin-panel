@@ -22,9 +22,10 @@ func (s *Store) ProcessBillingCheckoutEvent(ctx context.Context, eventID string)
 		return false, err
 	}
 	defer tx.Rollback()
+	mode := s.billingModeValue()
 	var kind, state string
 	var payload []byte
-	err = tx.QueryRowContext(ctx, "SELECT event_type,state,payload FROM billing_events WHERE id=?", eventID).Scan(&kind, &state, &payload)
+	err = tx.QueryRowContext(ctx, "SELECT event_type,state,payload FROM billing_events WHERE mode=? AND id=?", mode, eventID).Scan(&kind, &state, &payload)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, ErrDenied
 	}
@@ -42,10 +43,17 @@ func (s *Store) ProcessBillingCheckoutEvent(ctx context.Context, eventID string)
 		Live   *bool  `json:"livemode"`
 		Object string `json:"object"`
 	}
-	if json.Unmarshal(payload, &session) != nil || json.Unmarshal(payload, &scope) != nil || scope.Live == nil || *scope.Live || scope.Object != "checkout.session" || session.Mode != "subscription" || session.Customer == nil {
+	if json.Unmarshal(payload, &session) != nil || json.Unmarshal(payload, &scope) != nil || scope.Live == nil || *scope.Live != (mode == "live") || scope.Object != "checkout.session" || session.Mode != "subscription" || session.Customer == nil {
 		return false, ErrBillingConflict
 	}
-	c, err := scanCheckout(tx.QueryRowContext(ctx, "SELECT "+checkoutColumns+" FROM billing_checkouts WHERE session_id=?", session.ID))
+	prefix := "cs_test_"
+	if mode == "live" {
+		prefix = "cs_live_"
+	}
+	if !strings.HasPrefix(session.ID, prefix) || len(session.ID) <= len(prefix) || len(session.ID) > 255 || strings.ContainsAny(session.ID, " /\\\r\n") {
+		return false, ErrBillingConflict
+	}
+	c, err := scanCheckout(tx.QueryRowContext(ctx, "SELECT "+checkoutColumns+" FROM billing_checkouts WHERE mode=? AND session_id=?", mode, session.ID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, ErrBillingUnmatched
 	}
@@ -62,7 +70,7 @@ func (s *Store) ProcessBillingCheckoutEvent(ctx context.Context, eventID string)
 		}
 		// Never let a delayed expiry overwrite a recorded completed checkout.
 		if c.State == "completed" {
-			if _, err = tx.ExecContext(ctx, "UPDATE billing_events SET state='ignored' WHERE id=?", eventID); err != nil {
+			if _, err = tx.ExecContext(ctx, "UPDATE billing_events SET state='ignored' WHERE mode=? AND id=?", mode, eventID); err != nil {
 				return false, err
 			}
 			return true, tx.Commit()
@@ -79,26 +87,26 @@ func (s *Store) ProcessBillingCheckoutEvent(ctx context.Context, eventID string)
 			return false, ErrBillingConflict
 		}
 		var boundID, boundCheckout string
-		err = tx.QueryRowContext(ctx, "SELECT id,checkout_id FROM billing_subscriptions WHERE id=? OR checkout_id=?", session.Subscription.ID, c.ID).Scan(&boundID, &boundCheckout)
+		err = tx.QueryRowContext(ctx, "SELECT id,checkout_id FROM billing_subscriptions WHERE mode=? AND (id=? OR checkout_id=?)", mode, session.Subscription.ID, c.ID).Scan(&boundID, &boundCheckout)
 		if err == nil {
 			if boundID != session.Subscription.ID || boundCheckout != c.ID {
 				return false, ErrBillingConflict
 			}
 		} else if errors.Is(err, sql.ErrNoRows) {
-			if _, err = tx.ExecContext(ctx, "INSERT INTO billing_subscriptions(id,checkout_id,workspace_id,customer_id,plan_id,price_id,first_event) VALUES(?,?,?,?,?,?,?)", session.Subscription.ID, c.ID, c.WorkspaceID, c.CustomerID, c.PlanID, c.PriceID, eventID); err != nil {
+			if _, err = tx.ExecContext(ctx, "INSERT INTO billing_subscriptions(mode,id,checkout_id,workspace_id,customer_id,plan_id,price_id,first_event) VALUES(?,?,?,?,?,?,?,?)", mode, session.Subscription.ID, c.ID, c.WorkspaceID, c.CustomerID, c.PlanID, c.PriceID, eventID); err != nil {
 				return false, err
 			}
 		} else {
 			return false, err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE billing_checkouts SET state=? WHERE id=?", target, c.ID); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE billing_checkouts SET state=? WHERE mode=? AND id=?", target, mode, c.ID); err != nil {
 		return false, err
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE billing_events SET state='processed' WHERE id=?", eventID); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE billing_events SET state='processed' WHERE mode=? AND id=?", mode, eventID); err != nil {
 		return false, err
 	}
-	if err = audit(ctx, tx, "stripe-test", c.WorkspaceID, "billing.checkout_"+target+":"+c.ID+":event:"+eventID, s.now().Unix()); err != nil {
+	if err = audit(ctx, tx, "stripe-"+mode, c.WorkspaceID, "billing.checkout_"+target+":"+c.ID+":event:"+eventID, s.now().Unix()); err != nil {
 		return false, err
 	}
 	return true, tx.Commit()

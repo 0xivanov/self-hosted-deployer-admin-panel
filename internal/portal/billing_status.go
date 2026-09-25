@@ -36,12 +36,13 @@ func (s *Store) WorkspaceBillingStatus(ctx context.Context, token, workspace str
 		return BillingStatus{}, err
 	}
 	defer tx.Rollback()
+	mode := s.billingModeValue()
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return BillingStatus{}, err
 	}
 	status := BillingStatus{CustomerState: "not_started", Subscriptions: []BillingSubscriptionView{}}
 	var customer string
-	err = tx.QueryRowContext(ctx, "SELECT COALESCE(customer_id,'') FROM billing_customers WHERE workspace_id=?", workspace).Scan(&customer)
+	err = tx.QueryRowContext(ctx, "SELECT COALESCE(customer_id,'') FROM billing_customers WHERE mode=? AND workspace_id=?", mode, workspace).Scan(&customer)
 	if err == nil {
 		status.CustomerState = "pending"
 		if customer != "" {
@@ -50,13 +51,13 @@ func (s *Store) WorkspaceBillingStatus(ctx context.Context, token, workspace str
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return status, err
 	}
-	checkout, err := scanCheckout(tx.QueryRowContext(ctx, "SELECT "+checkoutColumns+" FROM billing_checkouts WHERE workspace_id=? AND state IN ('pending','open','completed')", workspace))
+	checkout, err := scanCheckout(tx.QueryRowContext(ctx, "SELECT "+checkoutColumns+" FROM billing_checkouts WHERE mode=? AND workspace_id=? AND state IN ('pending','open','completed')", mode, workspace))
 	if err == nil {
 		status.Checkout = &checkout
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return status, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id,checkout_id,plan_id,customer_id,price_id,snapshot FROM billing_subscriptions WHERE workspace_id=? ORDER BY id`, workspace)
+	rows, err := tx.QueryContext(ctx, `SELECT id,checkout_id,plan_id,customer_id,price_id,snapshot FROM billing_subscriptions WHERE mode=? AND workspace_id=? ORDER BY id`, mode, workspace)
 	if err != nil {
 		return status, err
 	}
