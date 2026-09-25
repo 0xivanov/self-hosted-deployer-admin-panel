@@ -218,3 +218,15 @@ portal and existing custom domain returned HTTPS 200. Only customer-portal was
 restarted. Schema remains 56 and workers remain `fa4eda4`. No authenticated
 browser visual check is claimed. Previous portal binary is retained at
 `/var/backups/launchstead-portal-portfolio-20260925/customer-portal`.
+
+
+September 25 onboarding and marketing: landing-page `7e884a8` is deployed to
+Cloudflare Pages and the public Launchstead domain. The homepage now describes
+shipped client/status portfolio filters. A public first-site guide covers project
+fit, ZIP preparation, publishing, existing-domain DNS/HTTPS, scoped client access,
+one successful update and feedback. It explicitly retains private-access limits
+and excludes unavailable integrations, domain purchases and live sales.
+The marketing kit links the guide and uses the current portfolio workflow.
+Public content was checked after deployment propagation; both the guide and
+homepage returned HTTPS 200 with the new copy. No outreach was sent and no pilot
+customers or paid outcomes were fabricated.
