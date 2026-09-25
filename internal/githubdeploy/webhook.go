@@ -16,7 +16,9 @@ import (
 	"unicode/utf8"
 )
 
-const maxPushPayloadSize = 2 << 20
+const MaxWebhookPayload = 2 << 20
+
+const maxPushPayloadSize = MaxWebhookPayload
 
 var (
 	ErrInvalidSignature = errors.New("invalid GitHub webhook signature")
@@ -34,6 +36,19 @@ type Push struct {
 	After              string
 	Deleted            bool
 }
+
+// Delivery is the authenticated webhook envelope. Kind is one of "push",
+// "ping", or "ignored". Event headers are intentionally not accepted here.
+type Delivery struct {
+	Kind string
+	Push *Push
+}
+
+const (
+	DeliveryPush    = "push"
+	DeliveryPing    = "ping"
+	DeliveryIgnored = "ignored"
+)
 
 type pushPayload struct {
 	Ref        string `json:"ref"`
@@ -67,6 +82,9 @@ func VerifyPush(secret []byte, signature string, payload []byte) (Push, error) {
 	if err := verifySignature(secret, signature, payload); err != nil {
 		return Push{}, err
 	}
+	if len(payload) > MaxWebhookPayload {
+		return Push{}, ErrInvalidPayload
+	}
 
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	var raw pushPayload
@@ -89,6 +107,54 @@ func VerifyPush(secret []byte, signature string, payload []byte) (Push, error) {
 		After:              strings.ToLower(raw.After),
 		Deleted:            raw.Deleted,
 	}, nil
+}
+
+// VerifyDelivery authenticates a webhook body and classifies only supported
+// push and ping envelopes. The caller must use Kind rather than an untrusted
+// X-GitHub-Event header. Authenticated but unsupported event bodies return
+// ignored with no side effects implied.
+func VerifyDelivery(secret []byte, signature string, payload []byte) (Delivery, error) {
+	if err := verifySignature(secret, signature, payload); err != nil {
+		return Delivery{}, err
+	}
+	if len(payload) > MaxWebhookPayload {
+		return Delivery{}, ErrInvalidPayload
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	var fields map[string]json.RawMessage
+	if err := decoder.Decode(&fields); err != nil || fields == nil {
+		return Delivery{}, ErrInvalidPayload
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return Delivery{}, ErrInvalidPayload
+	}
+	if hasWebhookField(fields, "before") || hasWebhookField(fields, "after") {
+		push, err := VerifyPush(secret, signature, payload)
+		if err != nil {
+			return Delivery{}, err
+		}
+		return Delivery{Kind: DeliveryPush, Push: &push}, nil
+	}
+	if validPingEnvelope(fields) {
+		return Delivery{Kind: DeliveryPing}, nil
+	}
+	return Delivery{Kind: DeliveryIgnored}, nil
+}
+
+func hasWebhookField(fields map[string]json.RawMessage, name string) bool {
+	_, ok := fields[name]
+	return ok
+}
+
+func validPingEnvelope(fields map[string]json.RawMessage) bool {
+	var zen string
+	var hookID int64
+	var hook, app map[string]json.RawMessage
+	if json.Unmarshal(fields["zen"], &zen) != nil || zen == "" || json.Unmarshal(fields["hook_id"], &hookID) != nil || hookID <= 0 || json.Unmarshal(fields["hook"], &hook) != nil || hook == nil || json.Unmarshal(fields["app"], &app) != nil || app == nil {
+		return false
+	}
+	return true
 }
 
 func verifySignature(secret []byte, signature string, payload []byte) error {

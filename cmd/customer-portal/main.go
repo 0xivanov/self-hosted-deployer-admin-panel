@@ -64,6 +64,7 @@ func run() error {
 	if flag.NArg() != 0 {
 		return errors.New("unexpected arguments")
 	}
+	var githubWebhookSecret string
 	var githubApp *githubdeploy.App
 	var githubOAuth *githubdeploy.OAuth
 	if *githubConfig != "" {
@@ -78,12 +79,14 @@ func run() error {
 			ClientID      string `json:"client_id"`
 			PrivateKeyPEM string `json:"private_key_pem"`
 			ClientSecret  string `json:"client_secret"`
+			WebhookSecret string `json:"webhook_secret"`
 		}
 		decoder := json.NewDecoder(bytes.NewReader(raw))
 		decoder.DisallowUnknownFields()
 		if decoder.Decode(&cfg) != nil || decoder.Decode(new(any)) != io.EOF {
 			return errors.New("invalid GitHub configuration")
 		}
+		githubWebhookSecret = cfg.WebhookSecret
 		githubApp, e = githubdeploy.NewApp(cfg.ClientID, []byte(cfg.PrivateKeyPEM))
 		if e != nil {
 			return errors.New("invalid GitHub App configuration")
@@ -304,6 +307,7 @@ func run() error {
 	if githubApp != nil {
 		opts.GitHubApp = githubApp
 		opts.GitHubOAuth = githubOAuth
+		opts.GitHubWebhookSecret = githubWebhookSecret
 	}
 	opts.ContainerHosting = *containerHosting
 	if *containerCredentialKey != "" {

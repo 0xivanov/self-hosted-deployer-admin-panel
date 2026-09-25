@@ -78,6 +78,49 @@ func TestVerifyPushRejectsSignatureAndPayloadLimits(t *testing.T) {
 	}
 }
 
+func TestVerifyDeliveryClassifiesPushWithoutEventHeader(t *testing.T) {
+	payload := []byte(`{"ref":"refs/heads/main","before":"1111111111111111111111111111111111111111","after":"2222222222222222222222222222222222222222","deleted":false,"repository":{"id":42,"full_name":"octocat/repo","owner":{"login":"octocat"}},"installation":{"id":7}}`)
+	delivery, err := VerifyDelivery([]byte("secret"), sign("secret", payload), payload)
+	if err != nil || delivery.Kind != DeliveryPush || delivery.Push == nil || delivery.Push.RepositoryID != 42 {
+		t.Fatalf("delivery=%+v err=%v", delivery, err)
+	}
+}
+
+func TestVerifyDeliveryRecognizesSignedPing(t *testing.T) {
+	payload := []byte(`{"zen":"Keep it logically awesome.","hook_id":123,"hook":{"type":"Repository"},"app":{"id":456}}`)
+	delivery, err := VerifyDelivery([]byte("secret"), sign("secret", payload), payload)
+	if err != nil || delivery.Kind != DeliveryPing || delivery.Push != nil {
+		t.Fatalf("delivery=%+v err=%v", delivery, err)
+	}
+}
+
+func TestVerifyDeliveryIgnoresAuthenticatedUnsupportedEvents(t *testing.T) {
+	payload := []byte(`{"action":"deleted","installation":{"id":7},"repository":{"id":42}}`)
+	delivery, err := VerifyDelivery([]byte("secret"), sign("secret", payload), payload)
+	if err != nil || delivery.Kind != DeliveryIgnored || delivery.Push != nil {
+		t.Fatalf("delivery=%+v err=%v", delivery, err)
+	}
+}
+
+func TestVerifyDeliveryIgnoresSignedBranchCreateEvent(t *testing.T) {
+	payload := []byte(`{"ref":"topic","ref_type":"branch","repository":{"id":42,"full_name":"octocat/repo"}}`)
+	delivery, err := VerifyDelivery([]byte("secret"), sign("secret", payload), payload)
+	if err != nil || delivery.Kind != DeliveryIgnored || delivery.Push != nil {
+		t.Fatalf("delivery=%+v err=%v", delivery, err)
+	}
+}
+
+func TestVerifyDeliveryRejectsTrailingAndOversizeAfterAuthentication(t *testing.T) {
+	trailing := []byte(`{"zen":"hello","hook_id":1,"hook":{},"app":{}} {}`)
+	if _, err := VerifyDelivery([]byte("secret"), sign("secret", trailing), trailing); !errors.Is(err, ErrInvalidPayload) {
+		t.Fatalf("trailing error=%v, want invalid payload", err)
+	}
+	oversize := []byte(strings.Repeat("x", MaxWebhookPayload+1))
+	if _, err := VerifyDelivery([]byte("secret"), sign("secret", oversize), oversize); !errors.Is(err, ErrInvalidPayload) {
+		t.Fatalf("oversize error=%v, want invalid payload", err)
+	}
+}
+
 func TestPayloadSHA256(t *testing.T) {
 	want := sha256.Sum256([]byte("payload"))
 	if got := PayloadSHA256([]byte("payload")); got != hex.EncodeToString(want[:]) {

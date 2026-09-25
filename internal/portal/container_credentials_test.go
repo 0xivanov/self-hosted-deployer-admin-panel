@@ -124,7 +124,7 @@ func TestContainerCredentialsMigrationPreservesProjectData(t *testing.T) {
 		t.Fatalf("project after credential migration: %#v %v", got, err)
 	}
 	var version int
-	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 49 {
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 50 {
 		t.Fatalf("schema version: %d %v", version, err)
 	}
 }

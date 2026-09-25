@@ -26,6 +26,7 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
+	GitHubWebhookSecret       string
 	GitHubApp                 GitHubAccessProvider
 	GitHubOAuth               GitHubOAuthProvider
 	ContainerEnvironments     *ContainerEnvironments
@@ -60,6 +61,7 @@ type attemptWindow struct {
 	count int
 }
 type HTTP struct {
+	githubWebhook             http.Handler
 	githubApp                 GitHubAccessProvider
 	githubOAuth               GitHubOAuthProvider
 	githubFlows               githubBrowserFlows
@@ -178,6 +180,16 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 			return nil, err
 		}
 	}
+	var githubWebhook http.Handler
+	if opts.GitHubWebhookSecret != "" {
+		if opts.GitHubApp == nil || opts.Development {
+			return nil, errors.New("GitHub webhook requires App configuration and HTTPS")
+		}
+		githubWebhook, err = GitHubWebhookHandler(store, u.Host, opts.GitHubWebhookSecret)
+		if err != nil {
+			return nil, err
+		}
+	}
 	cookie := "__Host-portal-session"
 	if opts.Development {
 		cookie = "portal-dev-session"
@@ -191,7 +203,7 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if resolverImage == nil {
 		resolverImage = publicContainerResolver
 	}
-	return &HTTP{githubApp: opts.GitHubApp, githubOAuth: opts.GitHubOAuth, githubFlows: githubBrowserFlows{starts: map[string]githubBrowserFlow{}, selections: map[string]githubBrowserFlow{}}, containerEnvironments: opts.ContainerEnvironments, containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{githubWebhook: githubWebhook, githubApp: opts.GitHubApp, githubOAuth: opts.GitHubOAuth, githubFlows: githubBrowserFlows{starts: map[string]githubBrowserFlow{}, selections: map[string]githubBrowserFlow{}}, containerEnvironments: opts.ContainerEnvironments, containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, testBilling: opts.TestBilling, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 
 func (h *HTTP) nodeProjectSnapshot() map[string]NodeProjectConfig {
@@ -273,6 +285,14 @@ func (h *HTTP) allowLogin(address string) bool {
 	return true
 }
 func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/webhooks/github" {
+		if h.githubWebhook == nil {
+			httpError(w, 404, "Not found")
+			return
+		}
+		h.githubWebhook.ServeHTTP(w, r)
+		return
+	}
 	if r.URL.Path == "/webhooks/stripe-merchant-test" {
 		if h.merchantWebhook == nil || r.URL.EscapedPath() != "/webhooks/stripe-merchant-test" || r.URL.RawQuery != "" || r.URL.ForceQuery {
 			httpError(w, 404, "Not found")

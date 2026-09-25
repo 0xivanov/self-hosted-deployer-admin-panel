@@ -224,8 +224,9 @@ its upload. Both the requesting owner and the connection authorizer must retain
 verified owner access. Job errors use fixed safe reason codes, never raw provider
 responses or signed download URLs.
 
-This does not complete deploy-on-push: durable webhook intake, event deduplication,
-branch ordering and automatic queue/publication integration remain outstanding.
+This does not complete deploy-on-push: durable webhook intake and event deduplication are now implemented locally.
+Branch ordering, push processing and automatic queue/publication integration
+remain outstanding.
 Production is unchanged and no real GitHub App import has been attempted.
 
 
@@ -258,3 +259,40 @@ explains selected-repository access and lets the owner refresh the chooser after
 saving. It follows [GitHub's documented installation URL](https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party).
 Focused provider, HTTP and DOM checks passed; actual App registration and a real
 installation/import remain unverified. No production configuration changed.
+
+
+## Durable push intake (local schema 50, not deployed)
+
+The optional `webhook_secret` field in the private GitHub configuration enables
+`POST /webhooks/github` over the configured HTTPS host with JSON bodies. Use a
+random secret of at least 32 bytes. The endpoint authenticates the exact raw body,
+limits it to 2 MiB and ignores unsigned event/delivery headers when classifying
+or deduplicating events. Signed pings and unsupported event bodies are acknowledged
+without changing projects. Malformed or unauthenticated requests are rejected.
+
+A push is retained only for matching connected repository/branch bindings with
+deploy-on-push enabled and current verified owner/hosting access. Each delivery
+has a global payload receipt and separate project bindings, so one repository
+can feed multiple sites atomically. The inbox also deduplicates each project's
+connection revision/ref/before/after/deletion tuple. It stores identity and commit
+metadata, never the raw provider payload or credentials. Intake returns success
+only after its database transaction commits.
+
+Receipt history and per-project event history are capped at 10,000. Capacity
+failures return a retryable error and roll back the entire intake, including its
+receipt. A repeated already-retained payload still succeeds at capacity. One
+request matches at most 1,000 project bindings. Retention and processing will be
+added before enabling this endpoint in production.
+
+Checks cover multiple matching projects, replay with changed unsigned headers,
+wrong bindings, disconnect, provider ping, endpoint restrictions, capacity rollback,
+and migration/reopen preservation. Push events currently remain pending; there is
+no event processor or automatic publication yet, and the customer toggle stays
+unavailable. Existing manual GitHub imports and ZIP deployment behavior are unchanged.
+
+Next, a push processor must compare the event commit with the repository's actual
+branch head, retain a stable import/pipeline identity, and recheck the connection
+and head before entering publication. Node pipelines must repeat that check after
+the build, since a newer commit can arrive while code is being built. Existing
+runtime publication revisions and recovery remain authoritative. No browser session
+or operator personal token should be manufactured for background deployment work.
