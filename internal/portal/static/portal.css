@@ -224,9 +224,10 @@ body{background:var(--paper);color:var(--ink)}
 .workspace-nav button{padding:9px 18px;border-radius:7px}
 .workspace-nav button[aria-current=page]{background:var(--accent-soft);color:var(--accent)}
 .workspace-nav button[aria-current=page]:after{display:none}
-.portfolio-tools{grid-column:1/-1;display:flex;align-items:flex-end;gap:16px;padding:18px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.portfolio-tools{grid-column:1/-1;display:flex;align-items:flex-end;gap:12px;padding:18px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
 .portfolio-tools label{margin:0;flex:1}
 .portfolio-tools label:first-child{flex:2}
+.portfolio-tools label:nth-last-of-type(-n+4){min-width:125px}
 .portfolio-tools p{margin:0 0 10px;color:var(--muted);font-size:12px;white-space:nowrap}
 .getting-started{grid-column:1/-1;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:14px 18px}
 .getting-started summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--accent)}

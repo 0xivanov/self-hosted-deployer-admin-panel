@@ -499,6 +499,7 @@ function renderContainerLive(entry,data){
  }else{
   workflow.dataset.tone='next';title.textContent=releases.length?'Ready to publish':'Check your container image';text.textContent=releases.length?'Choose Deploy beside a saved release below.':'Enter an image reference, its listening port and a health-check path.';
  }
+ workflow.dataset.portfolioStatus=pending?'inprogress':latest?.state==='failed'||!data.available?'attention':active?'live':'unpublished';
  workflow.append(title,text);
  if(pending||!data.available){const progress=createProgress(pending?(pending.state==='queued'?'Waiting for the deployment worker…':'Checking application and HTTPS readiness…'):'Waiting for hosting setup…');progress.bar.removeAttribute('value');workflow.append(progress.box);}
  if(pending)appendContainerWaitDetails(workflow,pending);
@@ -676,23 +677,29 @@ function projectWorkflow(kind,uploads,data){
  if(publishing)return {step:kind==='node'?3:2,title:'Publishing your website',text:publishing.message||'This page updates automatically. You can leave it open while we finish.',busy:true};
  if(building)return {step:2,title:'Building your website',text:building.message||'Preparing your files for hosting. Your current website stays online.',busy:true};
  if(!latest)return {step:1,title:'Add your website files',text:'Upload a ZIP to get started. We’ll guide you through publishing it.',action:'upload',label:'Upload website'};
- if(!data.available)return {step:1,title:'Waiting for a hosting assignment',text:'Your files are saved, but no hosting slot is assigned yet. This may need operator attention if capacity is full. Status updates automatically.'};
+ if(!data.available)return {attention:true,step:1,title:'Waiting for a hosting assignment',text:'Your files are saved, but no hosting slot is assigned yet. This may need operator attention if capacity is full. Status updates automatically.'};
  if(kind==='node'){
   const build=builds.find(b=>b.upload_id===latest.id);
   const release=releases.find(r=>r.build_id===build?.id);
   if(release&&active?.release_id===release.build_id)return {step:4,title:'Your website is live',text:'Upload a new version when you’re ready to update it.',action:'upload',label:'Upload new version',live:true};
   const attempt=release&&jobs.find(job=>job.release_id===release.build_id);
-  if(release&&attempt?.state==='failed')return {step:3,title:'Publishing needs attention',text:attempt.message||'This deployment failed. Retry the saved release or restore a previously published release from history.',action:'publish',id:release.build_id,label:'Retry publishing'};
+  if(release&&attempt?.state==='failed')return {attention:true,step:3,title:'Publishing needs attention',text:attempt.message||'This deployment failed. Retry the saved release or restore a previously published release from history.',action:'publish',id:release.build_id,label:'Retry publishing'};
   if(release)return {step:3,title:active?'Your update is ready':'Ready to publish',text:'The build succeeded. Publish it to make this version available on your website.',action:'publish',id:release.build_id,label:active?'Publish update':'Publish website'};
-  return {step:2,title:build?.state==='failed'?'Your build needs attention':'Files uploaded · Build next',text:build?.state==='failed'?(build.message||'Check your project files, then try building again.'):'Build your Node.js project before publishing it. This does not change your live website.',action:'build',id:latest.id,label:build?.state==='failed'?'Retry build':'Build website'};
+  return {attention:build?.state==='failed',step:2,title:build?.state==='failed'?'Your build needs attention':'Files uploaded · Build next',text:build?.state==='failed'?(build.message||'Check your project files, then try building again.'):'Build your Node.js project before publishing it. This does not change your live website.',action:'build',id:latest.id,label:build?.state==='failed'?'Retry build':'Build website'};
  }
  if(active?.upload_id===latest.id)return {step:3,title:'Your website is live',text:'Upload a new version when you’re ready to update it.',action:'upload',label:'Upload new version',live:true};
  const failed=jobs.find(j=>j.upload_id===latest.id)?.state==='failed';
- return {step:2,title:failed?'Publishing needs attention':active?'Your update is ready':'Ready to publish',text:failed?'The previous attempt failed. Retry publishing your uploaded files.':'Your HTML and CSS files are ready. Publish them to make your website available.',action:'publish',id:latest.id,label:failed?'Retry publishing':active?'Publish update':'Publish website'};
+ return {attention:failed,step:2,title:failed?'Publishing needs attention':active?'Your update is ready':'Ready to publish',text:failed?'The previous attempt failed. Retry publishing your uploaded files.':'Your HTML and CSS files are ready. Publish them to make your website available.',action:'publish',id:latest.id,label:failed?'Retry publishing':active?'Publish update':'Publish website'};
+}
+function projectPortfolioStatus(kind,uploads,data,flow){
+ if(flow.busy)return 'inprogress';
+ if(flow.attention)return 'attention';
+ const published=kind==='node'?data.active:(data.jobs||[]).find(job=>job.id===data.active);
+ return published?'live':'unpublished';
 }
 // End project workflow state.
 function renderWorkflow(project,role,uploads,data,perform){
- const flow=projectWorkflow(project.kind,uploads,data);const panel=document.createElement('section');panel.className='project-workflow';panel.dataset.tone=flow.live?'live':flow.busy?'busy':'next';
+ const flow=projectWorkflow(project.kind,uploads,data);const panel=document.createElement('section');panel.className='project-workflow';panel.dataset.tone=flow.attention?'attention':flow.live?'live':flow.busy?'busy':'next';panel.dataset.portfolioStatus=projectPortfolioStatus(project.kind,uploads,data,flow);
  const steps=document.createElement('ol');steps.className='workflow-steps';steps.setAttribute('aria-label','Publishing progress');
  for(const [index,label] of (project.kind==='node'?['Upload','Build','Publish']:['Upload','Publish']).entries()){
   const step=document.createElement('li');step.textContent=(index+1)+'. '+label;step.className=index+1<flow.step?'complete':index+1===flow.step?'current':'';if(index+1===flow.step)step.setAttribute('aria-current','step');steps.append(step);
@@ -1315,12 +1322,24 @@ function updateWebsiteSummary(card){
 function filterWebsiteCards(){
  const query=$('website-search').value.trim().toLocaleLowerCase();
  const kind=$('website-type-filter').value;
+ const status=$('website-status-filter').value;
+ let label=$('website-label-filter').value;
+ const sort=$('website-sort').value;
  const cards=Array.from($('projects').querySelectorAll(':scope > .project[data-project-id]'));
+ const labels=new Set();
+ for(const card of cards){const value=card.querySelector('.project-client-label')?.textContent.trim();if(value)labels.add(value);}
+ const labelFilter=$('website-label-filter');const selectedLabel=labelFilter.value;const option=(text,value)=>{const item=document.createElement('option');item.textContent=text;item.value=value;return item;};const desired=[['All client labels','all'],['Unassigned','unassigned'],...[...labels].sort((a,b)=>a.localeCompare(b)).map(value=>[value,'client:'+value])];const current=[...labelFilter.options].map(item=>[item.textContent,item.value]);if(current.length!==desired.length||current.some((item,index)=>item[0]!==desired[index][0]||item[1]!==desired[index][1])){labelFilter.replaceChildren(...desired.map(item=>option(item[0],item[1])));}
+ labelFilter.value=[...labelFilter.options].some(option=>option.value===selectedLabel)?selectedLabel:'all';
+ label=labelFilter.value;
+ const ordered=[...cards].sort((a,b)=>{const result=(a.querySelector('.project-name')?.textContent||'').localeCompare(b.querySelector('.project-name')?.textContent||'',undefined,{sensitivity:'base'});return sort==='za'?-result:result;});
+ if(!selectedWebsite&&ordered.some((card,index)=>cards[index]!==card))for(const card of ordered)$('projects').append(card);
  let shown=0;
  for(const card of cards){
   updateWebsiteSummary(card);
   const searchText=[card.querySelector('.project-name')?.textContent||'',card.querySelector('.project-client-label')?.textContent||''].join(' ').toLocaleLowerCase();
-  const matches=(!query||searchText.includes(query))&&(kind==='all'||card.dataset.projectKind===kind);
+  const workflow=card.querySelector('.project-workflow');const cardStatus=card.dataset.deleting==='true'?'attention':workflow?.dataset.portfolioStatus||'loading';
+  const clientLabel=card.querySelector('.project-client-label')?.textContent.trim()||'';
+  const matches=(!query||searchText.includes(query))&&(kind==='all'||card.dataset.projectKind===kind)&&(status==='all'||cardStatus===status)&&(label==='all'||(label==='unassigned'?!clientLabel:clientLabel===label.slice(7)));
   card.hidden=selectedWebsite?card.dataset.projectId!==selectedWebsite:!matches;
   card.classList.toggle('website-detail-active',card.dataset.projectId===selectedWebsite);
   if(matches)shown++;
@@ -1334,6 +1353,9 @@ function filterWebsiteCards(){
 $('back-to-websites').addEventListener('click',()=>showWebsite(''));
 $('website-search').addEventListener('input',filterWebsiteCards);
 $('website-type-filter').addEventListener('change',filterWebsiteCards);
+$('website-status-filter').addEventListener('change',filterWebsiteCards);
+$('website-label-filter').addEventListener('change',filterWebsiteCards);
+$('website-sort').addEventListener('change',filterWebsiteCards);
 new MutationObserver(filterWebsiteCards).observe($('projects'),{childList:true,subtree:true,characterData:true});
 (function configureAppearance(){
  const input=$('theme-choice'),media=window.matchMedia('(prefers-color-scheme: dark)');

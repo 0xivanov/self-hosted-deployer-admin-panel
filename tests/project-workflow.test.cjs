@@ -25,3 +25,15 @@ test('failed deployment offers retry of the saved release, not a rebuild',()=>{
 test('publishing shows persisted deployment stage',()=>{
  const result=c.projectWorkflow('node',[upload],{available:true,deployments:[{state:'running',message:'Waiting for health confirmation.'}]});assert.equal(result.text,'Waiting for health confirmation.');assert.equal(result.busy,true);
 });
+
+for(const [name,kind,uploads,data,want] of [
+ ['unpublished site','static',[upload],{available:true},'unpublished'],
+ ['old live site with new files','static',[upload],{available:true,active:'old',jobs:[{id:'old',upload_id:'older',state:'succeeded'}]},'live'],
+ ['failed update over live site','static',[upload],{available:true,active:'old',jobs:[{id:'new',upload_id:'new',state:'failed'},{id:'old',upload_id:'older',state:'succeeded'}]},'attention'],
+ ['build underway over live site','node',[upload],{available:true,active:{release_id:'old'},builds:[{...build,state:'running'}]},'inprogress'],
+ ['hosting assignment missing','node',[upload],{available:false},'attention'],
+ ['node update built over live site','node',[upload],{available:true,active:{release_id:'old'},builds:[build],releases:[release]},'live'],
+])test('portfolio status: '+name,()=>{
+ const flow=c.projectWorkflow(kind,uploads,data);
+ assert.equal(c.projectPortfolioStatus(kind,uploads,data,flow),want);
+});
