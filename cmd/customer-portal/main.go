@@ -59,6 +59,7 @@ func run() error {
 	projectCapacity := flag.Int("hosting-project-capacity", 0, "total fleet project slots, including queued and deleting projects; 0 disables admission cap")
 	nodeCapacity := flag.Int("hosting-node-capacity", 0, "Node project slots within total fleet capacity")
 	runtimeLogs := flag.String("runtime-log-socket", "", "private fleet log bridge Unix socket")
+	githubAutoDeploy := flag.Bool("github-auto-deploy", false, "enable GitHub push build and publication through configured workers")
 	githubConfig := flag.String("github-config", "", "private JSON GitHub App settings with client_id, private_key_pem and client_secret")
 	flag.Parse()
 	if flag.NArg() != 0 {
@@ -309,6 +310,7 @@ func run() error {
 		opts.GitHubOAuth = githubOAuth
 		opts.GitHubWebhookSecret = githubWebhookSecret
 	}
+	opts.GitHubAutoDeploy = *githubAutoDeploy
 	opts.ContainerHosting = *containerHosting
 	if *containerCredentialKey != "" {
 		if !*containerHosting {
@@ -375,6 +377,9 @@ func run() error {
 						if _, err := store.WorkGitHubPush(ctx, githubApp); err != nil && ctx.Err() == nil {
 							fmt.Fprintln(os.Stderr, "GitHub push could not advance; inspect push status")
 						}
+					}
+					if _, err := handler.WorkGitHubPipeline(ctx); err != nil && ctx.Err() == nil {
+						fmt.Fprintln(os.Stderr, "GitHub deployment could not advance; inspect deployment status")
 					}
 					if _, err := store.WorkGitHubImport(ctx, githubApp); err != nil && ctx.Err() == nil {
 						fmt.Fprintln(os.Stderr, "GitHub import could not advance; inspect import status")

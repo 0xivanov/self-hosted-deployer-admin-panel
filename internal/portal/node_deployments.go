@@ -49,15 +49,32 @@ func (s *Store) RequestNodeDeployment(ctx context.Context, token, project, relea
 	if err != nil {
 		return NodeDeployment{}, err
 	}
+	j, err := s.requestNodeDeploymentTx(ctx, tx, p, actor, releaseID, key, runtimeID)
+	if err != nil {
+		return NodeDeployment{}, err
+	}
+	return j, tx.Commit()
+}
+
+// requestNodeDeploymentTx is a trusted transaction helper. The caller must
+// have already established the acting account and project authorization.
+func (s *Store) requestNodeDeploymentTx(ctx context.Context, tx *sql.Tx, p Project, actor, releaseID, key, runtimeID string) (NodeDeployment, error) {
+	if tx == nil {
+		return NodeDeployment{}, ErrInvalid
+	}
+	pin, err := hex.DecodeString(runtimeID)
+	if err != nil || len(pin) != 32 || hex.EncodeToString(pin) != runtimeID || len(key) < 16 || len(key) > 128 {
+		return NodeDeployment{}, ErrInvalid
+	}
 	if p.Kind != "node" {
 		return NodeDeployment{}, ErrInvalid
 	}
-	existing, err := scanNodeDeployment(tx.QueryRowContext(ctx, "SELECT "+nodeDeploymentColumns+" FROM node_deployments WHERE project_id=? AND request_key=?", project, key))
+	existing, err := scanNodeDeployment(tx.QueryRowContext(ctx, "SELECT "+nodeDeploymentColumns+" FROM node_deployments WHERE project_id=? AND request_key=?", p.ID, key))
 	if err == nil {
 		if existing.ReleaseID != releaseID || existing.RuntimeID != runtimeID {
 			return NodeDeployment{}, ErrConflict
 		}
-		return existing, tx.Commit()
+		return existing, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return NodeDeployment{}, err
@@ -66,14 +83,14 @@ func (s *Store) RequestNodeDeployment(ctx context.Context, token, project, relea
 		return NodeDeployment{}, err
 	}
 	var activeRuntime string
-	err = tx.QueryRowContext(ctx, "SELECT j.runtime_id FROM node_active_deployments a JOIN node_deployments j ON j.id=a.deployment_id WHERE a.project_id=?", project).Scan(&activeRuntime)
+	err = tx.QueryRowContext(ctx, "SELECT j.runtime_id FROM node_active_deployments a JOIN node_deployments j ON j.id=a.deployment_id WHERE a.project_id=?", p.ID).Scan(&activeRuntime)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return NodeDeployment{}, err
 	}
 	if activeRuntime != "" && activeRuntime != runtimeID {
 		return NodeDeployment{}, ErrConflict
 	}
-	release, err := savedNodeRelease(ctx, tx, releaseID, project)
+	release, err := savedNodeRelease(ctx, tx, releaseID, p.ID)
 	if err != nil {
 		return NodeDeployment{}, err
 	}
@@ -82,7 +99,7 @@ func (s *Store) RequestNodeDeployment(ctx context.Context, token, project, relea
 	}
 	var count, pending int
 	var revision int64
-	if err = tx.QueryRowContext(ctx, "SELECT count(*),COALESCE(sum(state IN ('queued','running')),0),COALESCE(max(revision),0)+1 FROM node_deployments WHERE project_id=?", project).Scan(&count, &pending, &revision); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT count(*),COALESCE(sum(state IN ('queued','running')),0),COALESCE(max(revision),0)+1 FROM node_deployments WHERE project_id=?", p.ID).Scan(&count, &pending, &revision); err != nil {
 		return NodeDeployment{}, err
 	}
 	if pending > 0 {
@@ -91,8 +108,8 @@ func (s *Store) RequestNodeDeployment(ctx context.Context, token, project, relea
 	if count >= 1000 {
 		return NodeDeployment{}, ErrBuildQuota
 	}
-	j := NodeDeployment{ID: randomToken(), ProjectID: project, ReleaseID: releaseID, ArtifactSHA256: release.ArtifactSHA256, RuntimeID: runtimeID, Revision: revision, State: "queued", CreatedAt: s.now().Unix()}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO node_deployments(id,project_id,release_id,artifact_sha256,runtime_id,actor_id,request_key,revision,state,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", j.ID, project, releaseID, j.ArtifactSHA256, runtimeID, actor, key, revision, j.State, j.CreatedAt); err != nil {
+	j := NodeDeployment{ID: randomToken(), ProjectID: p.ID, ReleaseID: releaseID, ArtifactSHA256: release.ArtifactSHA256, RuntimeID: runtimeID, Revision: revision, State: "queued", CreatedAt: s.now().Unix()}
+	if _, err = tx.ExecContext(ctx, "INSERT INTO node_deployments(id,project_id,release_id,artifact_sha256,runtime_id,actor_id,request_key,revision,state,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", j.ID, p.ID, releaseID, j.ArtifactSHA256, runtimeID, actor, key, revision, j.State, j.CreatedAt); err != nil {
 		return NodeDeployment{}, err
 	}
 	if _, err = tx.ExecContext(ctx, "INSERT INTO node_deployment_releases(deployment_id,release_id) VALUES(?,?)", j.ID, releaseID); err != nil {
@@ -101,7 +118,7 @@ func (s *Store) RequestNodeDeployment(ctx context.Context, token, project, relea
 	if err = audit(ctx, tx, actor, p.WorkspaceID, "node_deployment.requested:"+j.ID, j.CreatedAt); err != nil {
 		return NodeDeployment{}, err
 	}
-	return j, tx.Commit()
+	return j, nil
 }
 func (s *Store) NodeDeployments(ctx context.Context, token, project string) ([]NodeDeployment, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -182,7 +199,10 @@ type NodeDeploymentClaim struct {
 func nodeDeploymentActor(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
 	var count int
 	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM node_deployments j JOIN projects p ON p.id=j.project_id JOIN users u ON u.id=j.actor_id JOIN memberships m ON m.workspace_id=p.workspace_id AND m.user_id=u.id WHERE j.id=? AND p.kind='node' AND u.disabled=0 AND u.verified=1 AND m.role IN ('owner','developer')`, id).Scan(&count)
-	return count == 1, err
+	if err != nil || count != 1 {
+		return false, err
+	}
+	return githubPipelineJobAuthorized(ctx, tx, "deployment", id)
 }
 
 // ClaimNodeDeployment is trusted worker access. Matching the assigned runtime,

@@ -285,8 +285,7 @@ request matches at most 1,000 project bindings. Retention will be added before e
 
 Checks cover multiple matching projects, replay with changed unsigned headers,
 wrong bindings, disconnect, provider ping, endpoint restrictions, capacity rollback,
-and migration/reopen preservation. Push events feed the processor described below. There is no automatic publication
-yet, and the customer toggle stays unavailable. Existing manual GitHub imports and ZIP deployment behavior are unchanged.
+and migration/reopen preservation. Push events feed the processor described below. Automatic publication is available behind the separate configuration described below. Existing manual GitHub imports and ZIP deployment behavior are unchanged.
 
 Before automatic publication, the pipeline must recheck the connection and branch
 head before entering publication. Node pipelines must repeat that check after
@@ -308,9 +307,8 @@ request key, so recovery cannot enqueue a second import for that event.
 Claim and completion recheck the connected repository revision, branch, authorizing
 owner, project lifecycle and hosting access. Existing queued/running imports and
 history limits still apply. Import completion continues to validate source through
-the existing archive path. A push import currently creates an upload only; it does
-not build or publish. The customer deploy-on-push toggle remains unavailable until
-the full pipeline and its visible progress/recovery are integrated.
+the existing archive path. A push import creates an upload. The separately enabled automatic pipeline below
+can build and publish that upload through the existing workers.
 
 Schema 51 adds processing records without rebuilding the schema 50 inbox. Upgrade
 all portal database consumers together before activation. Production is still
@@ -328,3 +326,42 @@ stale leases, retry exhaustion, superseded/deleted branches, manual-import
 contention, reconnect/disconnect fencing and schema migration with retained inbox
 events. Portal and customer-portal static analysis passed. These are local checks,
 not evidence of a real GitHub delivery or production publication.
+
+
+## Automatic build and publication (local schema 52, not deployed)
+
+`--github-auto-deploy` requires the private GitHub App, OAuth and webhook settings.
+It exposes per-project automatic deployment controls and activity in the connected
+repository panel. Enabling requires an assigned static origin or Node runtime.
+The option is off by default and is not enabled in production. Manual imports and
+ZIP workflows continue to work without it.
+
+Successful push imports create durable pipelines. Static projects enqueue normal
+publication jobs. Node projects enqueue normal isolated build jobs, then deploy
+that build's retained release through the normal deployment worker. The pipeline
+checks GitHub's branch head before enqueueing and again after a Node build. It
+keeps stable request identities, tracks actual worker terminal results, and rotates
+between projects so a slow build or provider failure cannot monopolize the queue.
+There is one active automatic pipeline per project. Existing manual queue conflicts
+remain waiting rather than replacing the manual operation.
+
+Connection revision, authorizing owner, project lifecycle and hosting entitlement
+are checked before enqueueing. Queued automatic jobs also check their connection
+before starting. Disabling or replacing the connection fences queued work; an
+already claimed operation can finish reconciling its result under the existing
+account checks. It does not remove the live website. A running Node build from an
+older connection can finish, but the pipeline cannot deploy it automatically.
+
+The activity panel shows waiting, building, publishing and terminal results with
+commit/time, bounded polling and safe failure text. Failed work can use the normal
+upload/build/publication controls for recovery. Dedicated automatic-pipeline retry
+is not implemented. All portal database consumers must upgrade together to schema
+52. Provider setup, delivery against a real App, force-push replay semantics and
+retention still require completion before production enablement.
+
+Validation: focused integration checks passed for the GitHub flow, existing manual
+publication/Node workflows and schema migrations. A local static flow used real
+archive validation, publication claim and completion APIs; Node orchestration used
+retained-release fixtures and simulated worker results. Owner/CSRF/runtime admission
+and queued-disconnect fencing passed. Eleven GitHub DOM checks and portal/CLI static
+analysis passed. No real provider delivery or worker-cluster rollout was performed.

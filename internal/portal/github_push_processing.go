@@ -31,7 +31,7 @@ func (s *Store) migrateGitHubPushProcessing() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version == 51 {
+	if version >= 51 {
 		return nil
 	}
 	if version != 50 {

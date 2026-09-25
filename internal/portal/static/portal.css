@@ -311,6 +311,17 @@ input::file-selector-button{background:var(--surface);color:var(--ink);border-co
 .github-imports{display:grid;gap:8px;border-top:1px solid var(--line);padding-top:14px;margin-top:5px}
 .github-imports>strong{font-size:13px}
 .github-import-status{margin:0;font-size:12px}
+.github-auto-deploy,.github-deployments{display:grid;gap:8px;border-top:1px solid var(--line);padding-top:14px;margin-top:5px}
+.github-auto-deploy label{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:650}
+.github-auto-deploy input{width:auto}
+.github-auto-deploy p{margin:0;font-size:12px}
+.github-deployment-status{margin:0;font-size:12px}
+.github-deployment-list{display:grid;gap:7px}
+.github-deployment-row{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline;padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft);font-size:11px}
+.github-deployment-row strong{font-size:11px}
+.github-deployment-row span{overflow-wrap:anywhere;color:var(--muted)}
+.github-deployment-row small{color:var(--muted);white-space:nowrap}
+.github-deployment-row p{grid-column:1/-1;margin:0;font-size:11px}
 @media(max-width:600px){.client-access-row{align-items:flex-start;flex-direction:column}}
 
 .github-access-guide{display:grid;gap:10px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft)}

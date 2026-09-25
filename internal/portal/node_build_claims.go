@@ -22,7 +22,10 @@ type NodeBuildClaim struct {
 func nodeBuildActor(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
 	var n int
 	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM node_builds j JOIN projects p ON p.id=j.project_id JOIN users u ON u.id=j.actor_id JOIN memberships m ON m.user_id=u.id AND m.workspace_id=p.workspace_id WHERE j.id=? AND p.kind='node' AND u.verified=1 AND u.disabled=0 AND m.role IN ('owner','developer')`, id).Scan(&n)
-	return n == 1, err
+	if err != nil || n != 1 {
+		return false, err
+	}
+	return githubPipelineJobAuthorized(ctx, tx, "build", id)
 }
 
 // ClaimNodeBuild is trusted worker access, never a browser API. The caller must

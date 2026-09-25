@@ -18,14 +18,15 @@ class Element{
  addEventListener(name,fn){this.listeners[name]=fn;}
  removeEventListener(name,fn){if(this.listeners[name]===fn)delete this.listeners[name];}
  dispatch(name,event={target:this,currentTarget:this,preventDefault(){}}){return this.listeners[name]?.(event);}
- querySelector(selector){for(const child of this.children){if(selector.startsWith('.')&&child.className===selector.slice(1))return child;if(selector==='form'&&child.tagName==='FORM')return child;if(selector==='button'&&child.tagName==='BUTTON')return child;const nested=child.querySelector?.(selector);if(nested)return nested;}return null;}
+ querySelector(selector){for(const child of this.children){if(selector.startsWith('.')&&child.className===selector.slice(1))return child;if(selector==='form'&&child.tagName==='FORM')return child;if(selector==='button'&&child.tagName==='BUTTON')return child;if(selector==='input'&&child.tagName==='INPUT')return child;const nested=child.querySelector?.(selector);if(nested)return nested;}return null;}
 }
 function allText(element){return element.textContent+' '+element.children.map(allText).join(' ');}
-function ctxFor(apiImpl){
- const context={Map,Promise,Number,encodeURIComponent,console,confirm:()=>true,crypto:{randomUUID:()=>"request-key"},document:{hidden:false,createElement:tag=>new Element(tag),addEventListener(){}},api:apiImpl,githubConnections:true,githubInstallation:false,githubImports:false,generation:1,currentView:'projects',githubCallbackHandled:false,githubCallbackCode:'',githubCallbackState:'',githubCallbackError:'',location:{assign(url){context.assigned=url;}},showWebsite(id){context.shown=id;},projectCard(){return null;},refreshProject:async()=>{context.refreshed=(context.refreshed||0)+1;},setTimeout(fn){fn();return 1;},clearTimeout(){},$(){return {value:'',};},workspaces:[],selectedWebsite:'',loadProjects:async()=>{context.loaded=(context.loaded||0)+1;}};
+function ctxFor(apiImpl,options={}){
+ const context={Map,Promise,Number,encodeURIComponent,console,confirm:()=>true,crypto:{randomUUID:()=>"request-key"},document:{hidden:false,createElement:tag=>new Element(tag),addEventListener(){}},api:apiImpl,githubConnections:true,githubInstallation:false,githubImports:options.githubImports===true,githubAutoDeploy:options.githubAutoDeploy===true,generation:1,currentView:'projects',githubCallbackHandled:false,githubCallbackCode:'',githubCallbackState:'',githubCallbackError:'',location:{assign(url){context.assigned=url;}},showWebsite(id){context.shown=id;},projectCard(){return null;},refreshProject:async()=>{context.refreshed=(context.refreshed||0)+1;},setTimeout(fn){fn();return 1;},clearTimeout(){},$(){return {value:'',};},workspaces:[],selectedWebsite:'',loadProjects:async()=>{context.loaded=(context.loaded||0)+1;}};
  vm.createContext(context);vm.runInContext(source.slice(start,end),context);return context;
 }
 function detailsAndContent(){const details=new Element('details');details.isConnected=true;const status=new Element('p');status.className='github-status';const content=new Element('div');content.className='github-content';details.append(status,content);return {details,status,content};}
+function enable(c,name){vm.runInContext(name+'=true',c);}
 
 test('pending OAuth response opens repository chooser and sends numeric IDs',async()=>{
  let requested='';let connected;
@@ -67,4 +68,13 @@ test('repository access guide links to verified app in a separate tab and can re
 test('repository access guide refuses an untrusted setup URL and offers retry',async()=>{
  const c=ctxFor(async()=>({url:'https://attacker.example/installations/new'}));c.githubInstallation=true;const {details,status,content}=detailsAndContent();c.githubAccessGuide(content,{id:'p'},details,status);await new Promise(setImmediate);
  const action=content.children[0].children[2];assert.equal(action.children.some(item=>item.tagName==='A'),false);assert.match(allText(action),/could not be verified/);assert.equal(action.children[1].textContent,'Retry GitHub App setup');
+});
+
+test('automatic deployment toggle is feature-gated and sends enabled state',async()=>{
+ let body;const c=ctxFor(async(path,requestBody)=>{if(path==='/api/github/auto-deploy'){body=requestBody;return {enabled:true};}if(path.startsWith('/api/github/connection'))return {connection:{connected:true,repository:'acme/site'},pending:false};return {deployments:[]};});const {details,status,content}=detailsAndContent();c.githubAutoDeploy=true;c.renderGithubAutoDeploy(content,{id:'p'}, {auto_deploy:false},details,status);const toggle=content.querySelector('input');assert.ok(toggle);toggle.checked=true;await toggle.dispatch('change');await Promise.resolve();assert.deepEqual({project:body.project,enabled:body.enabled},{project:'p',enabled:true});
+ const disabled=detailsAndContent();c.githubAutoDeploy=false;c.renderGithubAutoDeploy(disabled.content,{id:'p'},{auto_deploy:false},disabled.details,disabled.status);assert.equal(disabled.content.children.length,0);
+});
+
+test('automatic deployment progress renders safe failure guidance',async()=>{
+ const c=ctxFor(async(path)=>{if(path.startsWith('/api/github/deployments'))return {deployments:[{id:'d',state:'failed',error:'source_unavailable',commit:'abc',updated_at:1700000000}]};throw new Error('unexpected');});c.githubAutoDeploy=true;const {details,status,content}=detailsAndContent();details.open=true;c.renderGithubDeployments(content,{id:'p'},'owner',1,details);await new Promise(setImmediate);assert.match(allText(content),/repository source is unavailable/i);assert.doesNotMatch(allText(content),/source_unavailable/);
 });

@@ -61,12 +61,29 @@ func (s *Store) RequestNodeBuild(ctx context.Context, token, project, upload, ke
 	if err != nil {
 		return NodeBuild{}, err
 	}
+	j, err := s.requestNodeBuildTx(ctx, tx, p, actor, upload, key, assignment)
+	if err != nil {
+		return NodeBuild{}, err
+	}
+	return j, tx.Commit()
+}
+
+// requestNodeBuildTx is a trusted transaction helper. The caller must have
+// already established the acting account and project authorization.
+func (s *Store) requestNodeBuildTx(ctx context.Context, tx *sql.Tx, p Project, actor, upload, key string, assignment NodeBuildAssignment) (NodeBuild, error) {
+	if tx == nil {
+		return NodeBuild{}, ErrInvalid
+	}
+	pin, err := hex.DecodeString(assignment.ToolchainSHA256)
+	if err != nil || len(pin) != 32 || hex.EncodeToString(pin) != assignment.ToolchainSHA256 || len(key) < 16 || len(key) > 128 {
+		return NodeBuild{}, ErrInvalid
+	}
 	if p.Kind != "node" {
 		return NodeBuild{}, ErrInvalid
 	}
 	var source []byte
 	var digest string
-	err = tx.QueryRowContext(ctx, "SELECT archive,sha256 FROM uploads WHERE id=? AND project_id=?", upload, project).Scan(&source, &digest)
+	err = tx.QueryRowContext(ctx, "SELECT archive,sha256 FROM uploads WHERE id=? AND project_id=?", upload, p.ID).Scan(&source, &digest)
 	if errors.Is(err, sql.ErrNoRows) {
 		return NodeBuild{}, ErrDenied
 	}
@@ -81,7 +98,7 @@ func (s *Store) RequestNodeBuild(ctx context.Context, token, project, upload, ke
 	if err != nil {
 		return NodeBuild{}, err
 	}
-	existing, err := scanNodeBuild(tx.QueryRowContext(ctx, "SELECT "+nodeBuildColumns+" FROM node_builds WHERE project_id=? AND request_key=?", project, key))
+	existing, err := scanNodeBuild(tx.QueryRowContext(ctx, "SELECT "+nodeBuildColumns+" FROM node_builds WHERE project_id=? AND request_key=?", p.ID, key))
 	if err == nil {
 		previous, e := json.Marshal(existing.Plan)
 		if e != nil {
@@ -90,7 +107,7 @@ func (s *Store) RequestNodeBuild(ctx context.Context, token, project, upload, ke
 		if existing.UploadID != upload || existing.ToolchainSHA256 != assignment.ToolchainSHA256 || !bytes.Equal(previous, raw) {
 			return NodeBuild{}, ErrBuildConflict
 		}
-		return existing, tx.Commit()
+		return existing, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return NodeBuild{}, err
@@ -99,7 +116,7 @@ func (s *Store) RequestNodeBuild(ctx context.Context, token, project, upload, ke
 		return NodeBuild{}, err
 	}
 	var count, pending int
-	if err = tx.QueryRowContext(ctx, "SELECT count(*),COALESCE(sum(state IN ('queued','running')),0) FROM node_builds WHERE project_id=?", project).Scan(&count, &pending); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT count(*),COALESCE(sum(state IN ('queued','running')),0) FROM node_builds WHERE project_id=?", p.ID).Scan(&count, &pending); err != nil {
 		return NodeBuild{}, err
 	}
 	if pending > 0 {
@@ -108,14 +125,14 @@ func (s *Store) RequestNodeBuild(ctx context.Context, token, project, upload, ke
 	if count >= 100 {
 		return NodeBuild{}, ErrBuildQuota
 	}
-	j := NodeBuild{ID: randomToken(), ProjectID: project, UploadID: upload, Plan: plan, ToolchainSHA256: assignment.ToolchainSHA256, State: "queued", CreatedAt: s.now().Unix()}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO node_builds(id,project_id,upload_id,actor_id,request_key,plan,toolchain_sha256,state,created_at) VALUES(?,?,?,?,?,?,?,?,?)", j.ID, project, upload, actor, key, raw, j.ToolchainSHA256, j.State, j.CreatedAt); err != nil {
+	j := NodeBuild{ID: randomToken(), ProjectID: p.ID, UploadID: upload, Plan: plan, ToolchainSHA256: assignment.ToolchainSHA256, State: "queued", CreatedAt: s.now().Unix()}
+	if _, err = tx.ExecContext(ctx, "INSERT INTO node_builds(id,project_id,upload_id,actor_id,request_key,plan,toolchain_sha256,state,created_at) VALUES(?,?,?,?,?,?,?,?,?)", j.ID, p.ID, upload, actor, key, raw, j.ToolchainSHA256, j.State, j.CreatedAt); err != nil {
 		return NodeBuild{}, err
 	}
 	if err = audit(ctx, tx, actor, p.WorkspaceID, "node_build.requested:"+j.ID, j.CreatedAt); err != nil {
 		return NodeBuild{}, err
 	}
-	return j, tx.Commit()
+	return j, nil
 }
 
 func (s *Store) NodeBuilds(ctx context.Context, token, project string) ([]NodeBuild, error) {

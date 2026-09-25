@@ -51,15 +51,28 @@ func (s *Store) RequestPublication(ctx context.Context, token, project, upload, 
 	if err != nil {
 		return PublicationJob{}, err
 	}
+	j, err := s.requestPublicationTx(ctx, tx, p, actor, upload, key)
+	if err != nil {
+		return PublicationJob{}, err
+	}
+	return j, tx.Commit()
+}
+
+// requestPublicationTx is a trusted transaction helper. The caller must have
+// already established the acting account and project authorization.
+func (s *Store) requestPublicationTx(ctx context.Context, tx *sql.Tx, p Project, actor, upload, key string) (PublicationJob, error) {
+	if tx == nil || len(key) < 16 || len(key) > 128 {
+		return PublicationJob{}, ErrInvalid
+	}
 	if p.Kind != "static" {
 		return PublicationJob{}, ErrInvalid
 	}
-	existing, err := scanJob(tx.QueryRowContext(ctx, "SELECT "+jobColumns+" FROM publication_jobs WHERE project_id=? AND request_key=?", project, key))
+	existing, err := scanJob(tx.QueryRowContext(ctx, "SELECT "+jobColumns+" FROM publication_jobs WHERE project_id=? AND request_key=?", p.ID, key))
 	if err == nil {
 		if existing.UploadID != upload {
 			return PublicationJob{}, ErrConflict
 		}
-		return existing, tx.Commit()
+		return existing, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return PublicationJob{}, err
@@ -68,31 +81,31 @@ func (s *Store) RequestPublication(ctx context.Context, token, project, upload, 
 		return PublicationJob{}, err
 	}
 	var valid int
-	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM uploads WHERE id=? AND project_id=?", upload, project).Scan(&valid); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM uploads WHERE id=? AND project_id=?", upload, p.ID).Scan(&valid); err != nil {
 		return PublicationJob{}, err
 	}
 	if valid != 1 {
 		return PublicationJob{}, ErrDenied
 	}
 	var pending int
-	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM publication_jobs WHERE project_id=? AND state IN ('queued','running')", project).Scan(&pending); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM publication_jobs WHERE project_id=? AND state IN ('queued','running')", p.ID).Scan(&pending); err != nil {
 		return PublicationJob{}, err
 	}
 	if pending != 0 {
 		return PublicationJob{}, ErrPublishing
 	}
 	var revision int64
-	if err = tx.QueryRowContext(ctx, "SELECT COALESCE(max(revision),0)+1 FROM publication_jobs WHERE project_id=?", project).Scan(&revision); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT COALESCE(max(revision),0)+1 FROM publication_jobs WHERE project_id=?", p.ID).Scan(&revision); err != nil {
 		return PublicationJob{}, err
 	}
-	j := PublicationJob{ID: randomToken(), ProjectID: project, UploadID: upload, Revision: revision, State: "queued", CreatedAt: s.now().Unix()}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO publication_jobs(id,project_id,upload_id,actor_id,request_key,revision,state,created_at) VALUES(?,?,?,?,?,?,?,?)", j.ID, project, upload, actor, key, revision, j.State, j.CreatedAt); err != nil {
+	j := PublicationJob{ID: randomToken(), ProjectID: p.ID, UploadID: upload, Revision: revision, State: "queued", CreatedAt: s.now().Unix()}
+	if _, err = tx.ExecContext(ctx, "INSERT INTO publication_jobs(id,project_id,upload_id,actor_id,request_key,revision,state,created_at) VALUES(?,?,?,?,?,?,?,?)", j.ID, p.ID, upload, actor, key, revision, j.State, j.CreatedAt); err != nil {
 		return PublicationJob{}, err
 	}
 	if err = audit(ctx, tx, actor, p.WorkspaceID, "publication.requested:"+j.ID, j.CreatedAt); err != nil {
 		return PublicationJob{}, err
 	}
-	return j, tx.Commit()
+	return j, nil
 }
 
 func (s *Store) PublicationJobs(ctx context.Context, token, project string) ([]PublicationJob, string, error) {
@@ -151,7 +164,10 @@ func (s *Store) PublicationJobs(ctx context.Context, token, project string) ([]P
 func publicationActor(ctx context.Context, tx *sql.Tx, job string) (bool, error) {
 	var n int
 	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM publication_jobs j JOIN projects p ON p.id=j.project_id JOIN users u ON u.id=j.actor_id JOIN memberships m ON m.user_id=u.id AND m.workspace_id=p.workspace_id WHERE j.id=? AND u.verified=1 AND u.disabled=0 AND m.role IN ('owner','developer')`, job).Scan(&n)
-	return n == 1, err
+	if err != nil || n != 1 {
+		return false, err
+	}
+	return githubPipelineJobAuthorized(ctx, tx, "publication", job)
 }
 
 // ClaimPublication is a trusted worker operation, never a customer API. The

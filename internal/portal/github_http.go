@@ -87,6 +87,50 @@ func (h *HTTP) githubHTTP(w http.ResponseWriter, r *http.Request, session string
 		return
 	}
 	ctx := r.Context()
+	if r.URL.Path == "/api/github/auto-deploy" {
+		if !h.githubAutoDeploy || r.Method != "POST" {
+			httpError(w, 404, "GitHub automatic deployments are not enabled")
+			return
+		}
+		var input struct {
+			Project string `json:"project"`
+			Enabled bool   `json:"enabled"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		if input.Enabled {
+			p, err := h.store.GetProject(ctx, session, input.Project)
+			if err != nil {
+				h.githubError(w, err)
+				return
+			}
+			_, nodeReady := h.nodeProjectSnapshot()[input.Project]
+			if (p.Kind == "static" && h.publicationSiteSnapshot()[input.Project] == "") || (p.Kind == "node" && !nodeReady) {
+				httpError(w, 409, "Finish hosting setup before enabling automatic deployments")
+				return
+			}
+		}
+		if err := h.store.SetGitHubAutoDeploy(ctx, session, input.Project, input.Enabled); err != nil {
+			h.githubError(w, err)
+			return
+		}
+		httpJSON(w, map[string]bool{"enabled": input.Enabled})
+		return
+	}
+	if r.URL.Path == "/api/github/deployments" {
+		if !h.githubAutoDeploy || r.Method != "GET" {
+			httpError(w, 404, "GitHub automatic deployments are not enabled")
+			return
+		}
+		jobs, err := h.store.GitHubPipelines(ctx, session, r.URL.Query().Get("project"))
+		if err != nil {
+			h.githubError(w, err)
+			return
+		}
+		httpJSON(w, map[string]any{"deployments": jobs})
+		return
+	}
 	if r.URL.Path == "/api/github/imports" {
 		if _, ok := h.githubApp.(GitHubSourceProvider); !ok {
 			httpError(w, 404, "GitHub imports are not enabled")
