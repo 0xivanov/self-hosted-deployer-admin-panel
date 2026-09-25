@@ -108,3 +108,20 @@ price, tax, payment authorization and registrant contact requirements must be
 checked again before eventual purchase. Expired saved offers never authorize a
 later charge. No real registrar reader or purchase transport is configured yet;
 NameSilo sandbox endpoint/credentials remain required for that integration.
+
+
+### Expired quote retention, September 25
+
+Quote admission now removes unreferenced quotes only after their saved expiry
+and creation time are both over 24 hours old. Cleanup is scoped to the authorized
+workspace and shares the capacity transaction. Every order-linked quote is
+retained, including canceled orders; malformed or missing expiry evidence is
+retained for operator investigation. This prevents normal expired searches from
+permanently exhausting the 1,000-quote workspace allowance. Order registration,
+payment and renewal fulfillment remain unimplemented.
+
+Focused verification covered capacity recovery, canceled-order evidence,
+cross-workspace protection, recent history, malformed offers and the existing
+quote/order flows. This is source-only; production domain quotes remain disabled.
+The owner has offered existing Cloudflare DNS access for subdomains. Subdomain
+provisioning uses an already-owned domain and does not replace domain resale.

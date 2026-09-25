@@ -46,7 +46,7 @@ func (s *Store) RequestDomainQuote(ctx context.Context, p DomainQuoteReader, tok
 	if _, err = s.authorizeOwner(ctx, tx, token, workspace); err != nil {
 		return DomainQuote{}, err
 	}
-	if err = domainQuoteCapacity(ctx, tx, workspace); err != nil {
+	if err = domainQuoteCapacity(ctx, tx, workspace, s.now()); err != nil {
 		return DomainQuote{}, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -67,7 +67,7 @@ func (s *Store) RequestDomainQuote(ctx context.Context, p DomainQuoteReader, tok
 	if err != nil {
 		return DomainQuote{}, err
 	}
-	if err = domainQuoteCapacity(ctx, tx, workspace); err != nil {
+	if err = domainQuoteCapacity(ctx, tx, workspace, s.now()); err != nil {
 		return DomainQuote{}, err
 	}
 	offer, err := domains.OfferFor(evidence, name, markupMinor, s.now())
@@ -92,7 +92,39 @@ func (s *Store) RequestDomainQuote(ctx context.Context, p DomainQuoteReader, tok
 	return q, tx.Commit()
 }
 
-func domainQuoteCapacity(ctx context.Context, tx *sql.Tx, workspace string) error {
+func domainQuoteCapacity(ctx context.Context, tx *sql.Tx, workspace string, now time.Time) error {
+	// Retain at least 24 hours of expired lookup history. Order evidence is never
+	// pruned, including canceled orders. Authorization precedes this helper and
+	// cleanup shares the capacity transaction with quote admission.
+	cutoff := now.Add(-24 * time.Hour)
+	rows, err := tx.QueryContext(ctx, "SELECT id,offer FROM domain_quotes q WHERE workspace_id=? AND created_at<? AND NOT EXISTS (SELECT 1 FROM domain_orders o WHERE o.quote_id=q.id) ORDER BY created_at,id LIMIT 1000", workspace, cutoff.Unix())
+	if err != nil {
+		return err
+	}
+	var expired []string
+	for rows.Next() {
+		var id string
+		var raw []byte
+		if err = rows.Scan(&id, &raw); err != nil {
+			rows.Close()
+			return err
+		}
+		var offer domains.Offer
+		if json.Unmarshal(raw, &offer) == nil && !offer.ExpiresAt.IsZero() && offer.ExpiresAt.Before(cutoff) {
+			expired = append(expired, id)
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range expired {
+		if _, err = tx.ExecContext(ctx, "DELETE FROM domain_quotes WHERE id=? AND workspace_id=? AND NOT EXISTS (SELECT 1 FROM domain_orders WHERE quote_id=?)", id, workspace, id); err != nil {
+			return err
+		}
+	}
+
 	var count int
 	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM domain_quotes WHERE workspace_id=?", workspace).Scan(&count); err != nil {
 		return err
