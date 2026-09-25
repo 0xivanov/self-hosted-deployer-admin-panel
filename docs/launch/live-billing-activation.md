@@ -86,7 +86,9 @@ live payment entitlement. Existing websites keep running when changes are held.
 
 ## Required next implementation
 
-1. Apply the same separation to merchant Connect accounts, products, orders,
+1. Merchant live provider constructors and signed event verification are now
+   implemented locally, with portal guards rejecting live providers against
+   test-only records. Apply persistence separation to Connect accounts, products, orders,
    refunds, disputes and buyer recovery. Hosting and merchant payment scopes
    remain distinct; completing one does not activate the other.
 2. Activate provider configuration only after the owner has live account access,

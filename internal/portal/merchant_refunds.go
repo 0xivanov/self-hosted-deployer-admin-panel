@@ -109,8 +109,8 @@ func (s *Store) MerchantRefunds(ctx context.Context, token, workspace string) ([
 	return out, tx.Commit()
 }
 func (s *Store) DispatchMerchantRefund(ctx context.Context, id string, p MerchantRefundProvider) (MerchantRefund, error) {
-	if p == nil {
-		return MerchantRefund{}, ErrInvalid
+	if err := validateMerchantProviderMode(p); err != nil {
+		return MerchantRefund{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -189,7 +189,10 @@ func (s *Store) bindMerchantRefund(ctx context.Context, id string, observed merc
 	return r, tx.Commit()
 }
 func (s *Store) ReconcileMerchantRefund(ctx context.Context, id, providerID string, p MerchantRefundProvider) (MerchantRefund, error) {
-	if p == nil || !validMerchantProviderID(providerID, "re_") {
+	if err := validateMerchantProviderMode(p); err != nil {
+		return MerchantRefund{}, err
+	}
+	if !validMerchantProviderID(providerID, "re_") {
 		return MerchantRefund{}, ErrInvalid
 	}
 	tx, err := s.db.BeginTx(ctx, nil)

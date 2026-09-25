@@ -1,4 +1,4 @@
-// Package merchantbilling contains test-only merchant payment adapters, separate
+// Package merchantbilling contains mode-bound merchant payment adapters, separate
 // from the hosting subscription provider.
 package merchantbilling
 
@@ -14,6 +14,7 @@ import (
 )
 
 type Client struct {
+	live                  bool
 	stripe                *stripe.Client
 	http                  *http.Client
 	returnURL, refreshURL string
@@ -40,9 +41,25 @@ func NewTestClient(key, returnURL, refreshURL string, countries []string) (*Clie
 	return newTestClient(key, returnURL, refreshURL, countries, "")
 }
 
+const fixedStripeEndpoint = "https://api.stripe.com"
+
+// NewLiveClient explicitly selects the live Stripe account. Callers must keep
+// live merchant records separate from test records.
+func NewLiveClient(key, returnURL, refreshURL string, countries []string) (*Client, error) {
+	return newClient(key, returnURL, refreshURL, countries, fixedStripeEndpoint, true)
+}
+
 func newTestClient(key, returnURL, refreshURL string, countries []string, endpoint string) (*Client, error) {
-	if !strings.HasPrefix(key, "sk_test_") || len(key) < 16 {
-		return nil, errors.New("a Stripe test secret key is required")
+	return newClient(key, returnURL, refreshURL, countries, endpoint, false)
+}
+
+func newClient(key, returnURL, refreshURL string, countries []string, endpoint string, live bool) (*Client, error) {
+	prefix := "sk_test_"
+	if live {
+		prefix = "sk_live_"
+	}
+	if !strings.HasPrefix(key, prefix) || len(key) < 16 || strings.ContainsAny(key, " \r\n\t") {
+		return nil, errors.New("a Stripe secret key matching the selected mode is required")
 	}
 	parseURL := func(raw string) *url.URL {
 		u, err := url.Parse(raw)
@@ -74,10 +91,20 @@ func newTestClient(key, returnURL, refreshURL string, countries []string, endpoi
 		cfg.URL = stripe.String(endpoint)
 	}
 	sdk := stripe.NewClient(key, stripe.WithBackends(stripe.NewBackendsWithConfig(cfg)))
-	return &Client{stripe: sdk, http: hc, returnURL: returnURL, refreshURL: refreshURL, countries: allowed}, nil
+	return &Client{live: live, stripe: sdk, http: hc, returnURL: returnURL, refreshURL: refreshURL, countries: allowed}, nil
 }
 
 func (c *Client) Close() { c.http.CloseIdleConnections() }
+
+func (c *Client) BillingMode() string {
+	if c == nil {
+		return ""
+	}
+	if c.live {
+		return "live"
+	}
+	return "test"
+}
 
 func validRequestID(requestID string) bool {
 	if len(requestID) != 64 {
@@ -110,7 +137,7 @@ func (c *Client) validCountry(country string) bool {
 
 func (c *Client) accountResult(account *stripe.Account, country, requestID string) (Account, error) {
 	if account == nil || account.Object != "account" || !validAccountID(account.ID) || !c.validCountry(country) || account.Country != country || account.Metadata["merchant_request"] != requestID || account.Controller == nil || account.Controller.Type != "application" || !account.Controller.IsController || account.Controller.Fees == nil || account.Controller.Fees.Payer != "account" || account.Controller.Losses == nil || account.Controller.Losses.Payments != "stripe" || account.Controller.RequirementCollection != "stripe" || account.Controller.StripeDashboard == nil || account.Controller.StripeDashboard.Type != "full" {
-		return Account{}, errors.New("invalid test Connect account response")
+		return Account{}, errors.New("invalid Connect account response")
 	}
 	cardPayments := ""
 	if account.Capabilities != nil {
@@ -160,7 +187,7 @@ func (c *Client) RetrieveAccount(ctx context.Context, id, country, requestID str
 	}
 	result, err := c.accountResult(account, country, requestID)
 	if err != nil || result.ID != id {
-		return Account{}, errors.New("invalid test Connect account response")
+		return Account{}, errors.New("invalid Connect account response")
 	}
 	return result, nil
 }
@@ -180,11 +207,11 @@ func (c *Client) CreateOnboardingLink(ctx context.Context, accountID, requestID 
 	}
 	now := time.Now().Unix()
 	if link == nil {
-		return OnboardingLink{}, errors.New("invalid test Connect onboarding link response")
+		return OnboardingLink{}, errors.New("invalid Connect onboarding link response")
 	}
 	u, parseErr := url.Parse(link.URL)
 	if link.Object != "account_link" || parseErr != nil || u.Scheme != "https" || u.Host != "connect.stripe.com" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || link.ExpiresAt <= now || link.ExpiresAt > now+3600 {
-		return OnboardingLink{}, errors.New("invalid test Connect onboarding link response")
+		return OnboardingLink{}, errors.New("invalid Connect onboarding link response")
 	}
 	return OnboardingLink{URL: link.URL, ExpiresAt: link.ExpiresAt}, nil
 }

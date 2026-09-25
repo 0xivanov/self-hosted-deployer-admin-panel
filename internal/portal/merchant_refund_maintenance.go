@@ -15,7 +15,10 @@ type MerchantRefundMaintenanceResult struct {
 // failures so one unavailable refund cannot starve later rows.
 func (s *Store) MaintainMerchantRefunds(ctx context.Context, p MerchantRefundProvider, cursor string, limit int) (MerchantRefundMaintenanceResult, error) {
 	result := MerchantRefundMaintenanceResult{Cursor: cursor}
-	if p == nil || limit < 1 || limit > 100 {
+	if err := validateMerchantProviderMode(p); err != nil {
+		return result, err
+	}
+	if limit < 1 || limit > 100 {
 		return result, ErrInvalid
 	}
 	tx, err := s.db.BeginTx(ctx, nil)

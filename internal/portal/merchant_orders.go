@@ -225,7 +225,10 @@ func validMerchantCheckoutResult(result merchantbilling.Checkout, now, floor int
 }
 
 func (s *Store) DispatchMerchantOrder(ctx context.Context, id string, provider MerchantCheckoutProvider) (MerchantOrder, error) {
-	if provider == nil || id == "" {
+	if err := validateMerchantProviderMode(provider); err != nil {
+		return MerchantOrder{}, err
+	}
+	if id == "" {
 		return MerchantOrder{}, ErrInvalid
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -336,7 +339,10 @@ func (s *Store) bindMerchantCheckout(ctx context.Context, id string, result merc
 }
 
 func (s *Store) ReconcileMerchantOrder(ctx context.Context, id, sessionID string, provider MerchantCheckoutProvider) (MerchantOrder, error) {
-	if provider == nil || id == "" || !validMerchantProviderID(sessionID, "cs_test_") {
+	if err := validateMerchantProviderMode(provider); err != nil {
+		return MerchantOrder{}, err
+	}
+	if id == "" || !validMerchantProviderID(sessionID, "cs_test_") {
 		return MerchantOrder{}, ErrInvalid
 	}
 	tx, err := s.db.BeginTx(ctx, nil)

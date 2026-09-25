@@ -13,6 +13,9 @@ import (
 
 // AcceptMerchantEvent retains only verified references, never customer payloads.
 func (s *Store) AcceptMerchantEvent(ctx context.Context, event merchantbilling.CheckoutEvent) error {
+	if event.Live {
+		return ErrMerchantProviderMode
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -57,7 +60,10 @@ func (s *Store) AcceptMerchantEvent(ctx context.Context, event merchantbilling.C
 // ProcessMerchantEvents retrieves canonical checkout or refund state before updates.
 // Failed items stay durable and become eligible again after one minute.
 func (s *Store) ProcessMerchantEvents(ctx context.Context, p MerchantCheckoutProvider, limit int) (int, int, error) {
-	if p == nil || limit < 1 || limit > 100 {
+	if err := validateMerchantProviderMode(p); err != nil {
+		return 0, 0, err
+	}
+	if limit < 1 || limit > 100 {
 		return 0, 0, ErrInvalid
 	}
 	rows, err := s.db.QueryContext(ctx, "SELECT id,order_id,session_id,refund_request_id,provider_refund_id FROM merchant_events WHERE state='pending' AND next_attempt<=? ORDER BY next_attempt,id LIMIT ?", s.now().Unix(), limit)

@@ -120,7 +120,10 @@ func (s *Store) refreshMappedMerchantAccount(ctx context.Context, item maintenan
 
 func (s *Store) MaintainMerchants(ctx context.Context, provider MerchantMaintenanceProvider, accountCursor, orderCursor string, limit int) (MerchantMaintenanceResult, error) {
 	result := MerchantMaintenanceResult{}
-	if provider == nil || limit < 1 || limit > 100 {
+	if err := validateMerchantProviderMode(provider); err != nil {
+		return result, err
+	}
+	if limit < 1 || limit > 100 {
 		return result, ErrInvalid
 	}
 	accounts, err := s.readMaintenanceAccounts(ctx, accountCursor, limit)

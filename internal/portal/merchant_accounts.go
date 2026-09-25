@@ -123,8 +123,8 @@ func (s *Store) MerchantAccount(ctx context.Context, token, workspace string) (M
 // provider. A failed or uncertain create remains submitted and must be
 // reconciled by request identity rather than creating a replacement.
 func (s *Store) DispatchMerchantAccount(ctx context.Context, request string, provider MerchantAccountProvider) (MerchantAccount, error) {
-	if provider == nil {
-		return MerchantAccount{}, ErrInvalid
+	if err := validateMerchantProviderMode(provider); err != nil {
+		return MerchantAccount{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -175,7 +175,10 @@ func (s *Store) DispatchMerchantAccount(ctx context.Context, request string, pro
 // ReconcileMerchantAccount retrieves a submitted candidate using trusted provider
 // evidence. Bound mappings are immutable; this method does not refresh readiness.
 func (s *Store) ReconcileMerchantAccount(ctx context.Context, request, accountID string, provider MerchantAccountProvider) (MerchantAccount, error) {
-	if provider == nil || !validMerchantAccountID(accountID) {
+	if err := validateMerchantProviderMode(provider); err != nil {
+		return MerchantAccount{}, err
+	}
+	if !validMerchantAccountID(accountID) {
 		return MerchantAccount{}, ErrInvalid
 	}
 	account, err := scanMerchantAccount(s.db.QueryRowContext(ctx, "SELECT "+merchantAccountColumns+" FROM merchant_accounts WHERE request_id=?", request))

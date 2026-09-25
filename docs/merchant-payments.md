@@ -29,8 +29,9 @@ URLs. Neither values nor account IDs may come directly from a browser. Account
 creation requires a persisted 64-character request identity and returns only
 account identity and capability flags, excluding personal/KYC fields. Returned
 account country, metadata and controller configuration must match the request.
-The account API does not provide a universal `livemode` field; the test-secret-only
-client and separate test data are the mode boundary, not an invented response flag.
+The account API does not provide a universal `livemode` field; the selected
+secret key and separate mode-scoped data must establish that boundary. The
+current portal still accepts only the test provider.
 
 Onboarding links are single-use credentials. Provide them only to the currently
 authorized owner through the authenticated panel; never email or log them. A link
@@ -38,7 +39,7 @@ request must use a separate durable request identity, fixed redirects and a
 previously bound account. A return redirect is not a payment-readiness signal.
 Recheck account capabilities and current permissions before customer checkout.
 
-## Integration still required
+## Original integration sequence (implementation details below)
 
 1. Persist owner-authorized merchant intents and immutable workspace/account
    bindings separately from hosting billing. Enforce a unique provider account
@@ -484,3 +485,43 @@ sent in POST bodies, never URLs, and are not saved in browser storage. Generated
 codes are displayed only until navigation, a different order or sign-out. A lost
 issuance response requires creating a replacement while access is still available.
 Anyone holding a valid code can view that order, so treat it as a credential.
+
+
+## Live merchant provider foundation, September 25, 2026
+
+The provider exposes an explicit `NewLiveClient` alongside the existing test
+constructor, and signed Connect events have separate live/test verification.
+Keys, Checkout session identifiers and event modes must agree. Expanded payment
+intents in refund events are checked for matching mode. Account, order, refund,
+currency, amount and immutable request identity checks remain required.
+
+This is provider support only. Merchant database tables, order/buyer access,
+worker configuration and customer UI still use the test workflow. Hosting billing
+mode must not silently select a merchant mode. Existing production merchant sales
+remain test-only; no real checkout, refund or connected account was created.
+
+Stripe's [Connect Account object](https://docs.stripe.com/api/accounts/object)
+and [Refund object](https://docs.stripe.com/api/refunds/object) do not expose a
+universal `livemode` field. Account operations rely on the selected authenticated
+key and request/account bindings. Refund calls request an expanded payment intent
+so its mode can be checked alongside the retained order identity. A signed refund
+event is a reconciliation signal, not proof of a completed refund.
+
+Before live activation, preserve sandbox history while separating merchant
+accounts, catalog, orders, event processing, refunds and buyer recovery by mode;
+then wire an explicit merchant mode through startup, worker and UI. Qualify live
+Connect configuration and the account/checkout/refund lifecycle independently of
+hosting subscriptions. Real financial transactions still require authorization.
+
+
+The test-only portal now rejects explicit live/unknown merchant providers before
+account/order/refund submission, reconciliation and background processing, even
+when hosting billing uses live mode. It also rejects live merchant event objects
+before writing the inbox. Existing test provider doubles remain compatible.
+These guards must be replaced by matching merchant store/provider mode checks
+when persistence separation is implemented, rather than simply removed.
+
+Focused provider and portal merchant integration checks pass, including signed
+mode isolation, expanded payment-intent mode mismatches, existing checkout and
+refund behavior, and rejecting live providers before database/network access.
+No production files or merchant settings changed for this provider-only work.

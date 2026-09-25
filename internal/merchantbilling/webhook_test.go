@@ -156,7 +156,7 @@ func TestMerchantCheckoutWebhookRefundWrapperRejectsRefund(t *testing.T) {
 
 func TestMerchantRefundWebhookValidAndExpandedPaymentIntent(t *testing.T) {
 	order := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	for name, paymentIntent := range map[string]any{"string": "pi_test_payment", "expanded": map[string]string{"id": "pi_test_payment"}} {
+	for name, paymentIntent := range map[string]any{"string": "pi_test_payment", "expanded": map[string]any{"id": "pi_test_payment", "object": "payment_intent", "livemode": false}} {
 		t.Run(name, func(t *testing.T) {
 			body := merchantRefundWebhookBody(t, "refund.updated", false, paymentIntent, "re_test_refund", order, order, map[string]string{"merchant_order": order, "merchant_refund": order, "unrelated": "allowed"})
 			event, err := VerifyTestMerchantEvent(body, merchantWebhookSignature(body, merchantWebhookSecret, time.Now().Unix()), merchantWebhookSecret)

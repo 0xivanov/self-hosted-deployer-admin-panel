@@ -19,6 +19,7 @@ var ErrWebhook = errors.New("invalid merchant webhook")
 var ErrUnsupportedEvent = errors.New("unsupported merchant webhook event")
 
 type CheckoutEvent struct {
+	Live            bool
 	ID              string
 	AccountID       string
 	OrderID         string
@@ -56,7 +57,7 @@ func validMerchantEventID(id string) bool {
 	return true
 }
 
-func verifyMerchantWebhookEnvelope(body []byte, signature, secret string) (merchantWebhookEnvelope, string, error) {
+func verifyMerchantWebhookEnvelope(body []byte, signature, secret string, live bool) (merchantWebhookEnvelope, string, error) {
 	if len(body) == 0 || len(body) > MaxWebhookBytes || len(signature) > 8192 || !strings.HasPrefix(secret, "whsec_") || len(secret) < 16 {
 		return merchantWebhookEnvelope{}, "", ErrWebhook
 	}
@@ -81,7 +82,7 @@ func verifyMerchantWebhookEnvelope(body []byte, signature, secret string) (merch
 		return merchantWebhookEnvelope{}, "", ErrWebhook
 	}
 	var envelope merchantWebhookEnvelope
-	if json.Unmarshal(body, &envelope) != nil || envelope.Object != "event" || envelope.Livemode == nil || *envelope.Livemode || !validAccountID(envelope.Account) || envelope.Context != "" || !validMerchantEventID(envelope.ID) || envelope.Type == "" || envelope.Created <= 0 || len(envelope.Data.Object) == 0 {
+	if json.Unmarshal(body, &envelope) != nil || envelope.Object != "event" || envelope.Livemode == nil || *envelope.Livemode != live || !validAccountID(envelope.Account) || envelope.Context != "" || !validMerchantEventID(envelope.ID) || envelope.Type == "" || envelope.Created <= 0 || len(envelope.Data.Object) == 0 {
 		return merchantWebhookEnvelope{}, "", ErrWebhook
 	}
 	sum := sha256.Sum256(body)
@@ -89,7 +90,17 @@ func verifyMerchantWebhookEnvelope(body []byte, signature, secret string) (merch
 }
 
 func VerifyTestMerchantEvent(body []byte, signature, secret string) (CheckoutEvent, error) {
-	envelope, digest, err := verifyMerchantWebhookEnvelope(body, signature, secret)
+	return verifyMerchantEvent(body, signature, secret, false)
+}
+
+// VerifyLiveMerchantEvent verifies a connected-account event in live mode.
+// Consumers must bind the returned account, order and mode before any mutation.
+func VerifyLiveMerchantEvent(body []byte, signature, secret string) (CheckoutEvent, error) {
+	return verifyMerchantEvent(body, signature, secret, true)
+}
+
+func verifyMerchantEvent(body []byte, signature, secret string, live bool) (CheckoutEvent, error) {
+	envelope, digest, err := verifyMerchantWebhookEnvelope(body, signature, secret, live)
 	if err != nil {
 		return CheckoutEvent{}, err
 	}
@@ -116,9 +127,11 @@ func VerifyTestMerchantEvent(body []byte, signature, secret string) (CheckoutEve
 				}
 			} else {
 				var expanded struct {
-					ID string `json:"id"`
+					ID     string `json:"id"`
+					Object string `json:"object"`
+					Live   *bool  `json:"livemode"`
 				}
-				if json.Unmarshal(refund.PaymentIntent, &expanded) != nil {
+				if json.Unmarshal(refund.PaymentIntent, &expanded) != nil || expanded.Object != "payment_intent" || expanded.Live == nil || *expanded.Live != live {
 					return CheckoutEvent{}, ErrWebhook
 				}
 				paymentIntentID = expanded.ID
@@ -127,7 +140,7 @@ func VerifyTestMerchantEvent(body []byte, signature, secret string) (CheckoutEve
 		if !validPaymentIntentID(paymentIntentID) {
 			return CheckoutEvent{}, ErrWebhook
 		}
-		return CheckoutEvent{ID: envelope.ID, AccountID: envelope.Account, OrderID: refund.Metadata["merchant_order"], RefundRequestID: refund.Metadata["merchant_refund"], RefundID: refund.ID, PaymentIntentID: paymentIntentID, Type: envelope.Type, SHA256: digest, Created: envelope.Created}, nil
+		return CheckoutEvent{Live: live, ID: envelope.ID, AccountID: envelope.Account, OrderID: refund.Metadata["merchant_order"], RefundRequestID: refund.Metadata["merchant_refund"], RefundID: refund.ID, PaymentIntentID: paymentIntentID, Type: envelope.Type, SHA256: digest, Created: envelope.Created}, nil
 	}
 	var session struct {
 		ID                string            `json:"id"`
@@ -137,10 +150,10 @@ func VerifyTestMerchantEvent(body []byte, signature, secret string) (CheckoutEve
 		ClientReferenceID string            `json:"client_reference_id"`
 		Metadata          map[string]string `json:"metadata"`
 	}
-	if json.Unmarshal(envelope.Data.Object, &session) != nil || session.Livemode == nil || *session.Livemode || session.Object != "checkout.session" || !validSessionID(session.ID) || session.Mode != "payment" || !validRequestID(session.Metadata["merchant_order"]) || session.ClientReferenceID != session.Metadata["merchant_order"] {
+	if json.Unmarshal(envelope.Data.Object, &session) != nil || session.Livemode == nil || *session.Livemode != live || session.Object != "checkout.session" || !validSessionIDForMode(session.ID, live) || session.Mode != "payment" || !validRequestID(session.Metadata["merchant_order"]) || session.ClientReferenceID != session.Metadata["merchant_order"] {
 		return CheckoutEvent{}, ErrWebhook
 	}
-	return CheckoutEvent{ID: envelope.ID, AccountID: envelope.Account, OrderID: session.Metadata["merchant_order"], SessionID: session.ID, Type: envelope.Type, SHA256: digest, Created: envelope.Created}, nil
+	return CheckoutEvent{Live: live, ID: envelope.ID, AccountID: envelope.Account, OrderID: session.Metadata["merchant_order"], SessionID: session.ID, Type: envelope.Type, SHA256: digest, Created: envelope.Created}, nil
 }
 
 func VerifyTestCheckoutEvent(body []byte, signature, secret string) (CheckoutEvent, error) {

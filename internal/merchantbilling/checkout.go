@@ -29,7 +29,15 @@ type Checkout struct {
 }
 
 func validSessionID(id string) bool {
-	if !strings.HasPrefix(id, "cs_test_") || len(id) <= len("cs_test_") || len(id) > 255 {
+	return validSessionIDForMode(id, false)
+}
+
+func validSessionIDForMode(id string, live bool) bool {
+	prefix := "cs_test_"
+	if live {
+		prefix = "cs_live_"
+	}
+	if !strings.HasPrefix(id, prefix) || len(id) <= len(prefix) || len(id) > 255 {
 		return false
 	}
 	for _, r := range id {
@@ -83,52 +91,55 @@ func (c *Client) normalizeCheckout(session *stripe.CheckoutSession, order Checko
 		return Checkout{}, err
 	}
 	if session != nil && (session.SuccessURL != success || session.CancelURL != cancel) {
-		return Checkout{}, errors.New("invalid test checkout return URLs")
+		return Checkout{}, errors.New("invalid checkout return URLs")
 	}
 
-	if session == nil || session.Object != "checkout.session" || !validSessionID(session.ID) || session.Livemode || (expectedID != "" && session.ID != expectedID) || session.Mode != stripe.CheckoutSessionModePayment || session.ClientReferenceID != order.RequestID || session.Metadata["merchant_order"] != order.RequestID || session.Currency != stripe.Currency(order.Currency) || session.AmountSubtotal != order.AmountMinor || session.AmountTotal != order.AmountMinor || session.AllowPromotionCodes || session.Customer != nil || session.CustomerAccount != "" || session.Subscription != nil || session.PaymentLink != nil || session.Invoice != nil {
-		return Checkout{}, errors.New("invalid test checkout response")
+	if session == nil || session.Object != "checkout.session" || !validSessionIDForMode(session.ID, c.live) || session.Livemode != c.live || (expectedID != "" && session.ID != expectedID) || session.Mode != stripe.CheckoutSessionModePayment || session.ClientReferenceID != order.RequestID || session.Metadata["merchant_order"] != order.RequestID || session.Currency != stripe.Currency(order.Currency) || session.AmountSubtotal != order.AmountMinor || session.AmountTotal != order.AmountMinor || session.AllowPromotionCodes || session.Customer != nil || session.CustomerAccount != "" || session.Subscription != nil || session.PaymentLink != nil || session.Invoice != nil {
+		return Checkout{}, errors.New("invalid checkout response")
 	}
 	if session.AdaptivePricing != nil && session.AdaptivePricing.Enabled {
-		return Checkout{}, errors.New("invalid test checkout response")
+		return Checkout{}, errors.New("invalid checkout response")
 	}
 	if session.AutomaticTax != nil && session.AutomaticTax.Enabled {
-		return Checkout{}, errors.New("invalid test checkout response")
+		return Checkout{}, errors.New("invalid checkout response")
 	}
 	if len(session.PaymentMethodTypes) != 1 || session.PaymentMethodTypes[0] != "card" {
-		return Checkout{}, errors.New("invalid test checkout response")
+		return Checkout{}, errors.New("invalid checkout response")
 	}
 	if session.TotalDetails != nil && (session.TotalDetails.AmountDiscount != 0 || session.TotalDetails.AmountShipping != 0 || session.TotalDetails.AmountTax != 0) {
-		return Checkout{}, errors.New("invalid test checkout response")
+		return Checkout{}, errors.New("invalid checkout response")
 	}
 	state := string(session.Status)
 	if state != "open" && state != "complete" && state != "expired" {
-		return Checkout{}, errors.New("invalid test checkout response")
+		return Checkout{}, errors.New("invalid checkout response")
 	}
 	paymentStatus := string(session.PaymentStatus)
 	if paymentStatus != "unpaid" && paymentStatus != "paid" {
-		return Checkout{}, errors.New("invalid test checkout response")
+		return Checkout{}, errors.New("invalid checkout response")
 	}
 	paymentIntentID := ""
 	if session.PaymentIntent != nil {
+		if session.PaymentIntent.Object != "" && (session.PaymentIntent.Object != "payment_intent" || session.PaymentIntent.Livemode != c.live) {
+			return Checkout{}, errors.New("checkout payment intent mode mismatch")
+		}
 		paymentIntentID = session.PaymentIntent.ID
 	}
 	if paymentStatus == "paid" {
 		if state != "complete" || !validPaymentIntentID(paymentIntentID) {
-			return Checkout{}, errors.New("invalid test checkout response")
+			return Checkout{}, errors.New("invalid checkout response")
 		}
 	} else if paymentIntentID != "" && !validPaymentIntentID(paymentIntentID) {
-		return Checkout{}, errors.New("invalid test checkout response")
+		return Checkout{}, errors.New("invalid checkout response")
 	}
 	if state == "open" {
 		u, err := url.Parse(session.URL)
 		if err != nil || u.Scheme != "https" || u.Host != "checkout.stripe.com" || u.User != nil || session.URL == "" {
-			return Checkout{}, errors.New("invalid test checkout response")
+			return Checkout{}, errors.New("invalid checkout response")
 		}
 	} else if session.URL != "" {
 		u, err := url.Parse(session.URL)
 		if err != nil || u.Scheme != "https" || u.Host != "checkout.stripe.com" || u.User != nil {
-			return Checkout{}, errors.New("invalid test checkout response")
+			return Checkout{}, errors.New("invalid checkout response")
 		}
 	}
 	return Checkout{ID: session.ID, URL: session.URL, State: state, PaymentStatus: paymentStatus, PaymentIntentID: paymentIntentID, ObservedAt: time.Now().Unix()}, nil
@@ -172,7 +183,7 @@ func (c *Client) CreateCheckout(ctx context.Context, accountID string, order Che
 // RetrieveCheckout always reads in the bound connected-account scope. Its result
 // is provider evidence; return URLs never establish payment or fulfillment.
 func (c *Client) RetrieveCheckout(ctx context.Context, accountID, sessionID string, order CheckoutOrder) (Checkout, error) {
-	if !validAccountID(accountID) || !validSessionID(sessionID) || !validCheckoutOrder(order) {
+	if !validAccountID(accountID) || !validSessionIDForMode(sessionID, c.live) || !validCheckoutOrder(order) {
 		return Checkout{}, errors.New("invalid merchant checkout request")
 	}
 	params := &stripe.CheckoutSessionRetrieveParams{}

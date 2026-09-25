@@ -41,14 +41,14 @@ func validRefundRequest(request RefundRequest) bool {
 }
 
 func (c *Client) normalizeRefund(refund *stripe.Refund, request RefundRequest, expectedID string) (Refund, error) {
-	if refund == nil || refund.Object != "refund" || !validRefundID(refund.ID) || (expectedID != "" && refund.ID != expectedID) || refund.Amount != request.AmountMinor || string(refund.Currency) != request.Currency || refund.PaymentIntent == nil || refund.PaymentIntent.ID != request.PaymentIntentID || refund.Metadata["merchant_refund"] != request.RequestID || refund.Metadata["merchant_order"] != request.OrderID || refund.SourceTransferReversal != nil || refund.TransferReversal != nil {
-		return Refund{}, errors.New("invalid test refund response")
+	if refund == nil || refund.Object != "refund" || !validRefundID(refund.ID) || (expectedID != "" && refund.ID != expectedID) || refund.Amount != request.AmountMinor || string(refund.Currency) != request.Currency || refund.PaymentIntent == nil || refund.PaymentIntent.ID != request.PaymentIntentID || (c.live && refund.PaymentIntent.Object != "payment_intent") || (refund.PaymentIntent.Object != "" && (refund.PaymentIntent.Object != "payment_intent" || refund.PaymentIntent.Livemode != c.live)) || refund.Metadata["merchant_refund"] != request.RequestID || refund.Metadata["merchant_order"] != request.OrderID || refund.SourceTransferReversal != nil || refund.TransferReversal != nil {
+		return Refund{}, errors.New("invalid refund response")
 	}
 	state := string(refund.Status)
 	switch state {
 	case "pending", "requires_action", "succeeded", "failed", "canceled":
 	default:
-		return Refund{}, errors.New("invalid test refund response")
+		return Refund{}, errors.New("invalid refund response")
 	}
 	return Refund{ID: refund.ID, State: state, ObservedAt: time.Now().Unix()}, nil
 }
@@ -66,6 +66,7 @@ func (c *Client) CreateRefund(ctx context.Context, accountID string, request Ref
 		},
 	}
 	params.SetStripeAccount(accountID)
+	params.AddExpand("payment_intent")
 	params.SetIdempotencyKey("merchant-refund-" + request.RequestID)
 	refund, err := c.stripe.V1Refunds.Create(ctx, params)
 	if err != nil {
@@ -80,6 +81,7 @@ func (c *Client) RetrieveRefund(ctx context.Context, accountID, refundID string,
 	}
 	params := &stripe.RefundRetrieveParams{}
 	params.SetStripeAccount(accountID)
+	params.AddExpand("payment_intent")
 	refund, err := c.stripe.V1Refunds.Retrieve(ctx, refundID, params)
 	if err != nil {
 		return Refund{}, errors.New("merchant refund retrieval unavailable; retain refund for reconciliation")

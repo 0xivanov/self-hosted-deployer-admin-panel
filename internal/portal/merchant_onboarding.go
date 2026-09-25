@@ -81,8 +81,8 @@ func (s *Store) merchantActionIntent(ctx context.Context, tx *sql.Tx, actor, wor
 }
 
 func (s *Store) MerchantOnboardingLink(ctx context.Context, token, workspace string, p MerchantProvider) (merchantbilling.OnboardingLink, error) {
-	if p == nil {
-		return merchantbilling.OnboardingLink{}, ErrInvalid
+	if err := validateMerchantProviderMode(p); err != nil {
+		return merchantbilling.OnboardingLink{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -139,8 +139,8 @@ func (s *Store) MerchantOnboardingLink(ctx context.Context, token, workspace str
 // RefreshMerchantAccount fences older provider reads before the request starts.
 // It records provider evidence, never activates website checkout or fulfillment.
 func (s *Store) RefreshMerchantAccount(ctx context.Context, token, workspace string, p MerchantAccountProvider) error {
-	if p == nil {
-		return ErrInvalid
+	if err := validateMerchantProviderMode(p); err != nil {
+		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
