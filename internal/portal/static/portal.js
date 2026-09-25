@@ -183,9 +183,9 @@ function refreshProject(project,role,version){
     freshContainerForm.replaceWith(containerForm);
    }
    const containerCredentials=card.querySelector('.container-credentials');const freshContainerCredentials=staging.querySelector('.container-credentials');
-   if(containerCredentials&&freshContainerCredentials)freshContainerCredentials.replaceWith(containerCredentials);
+   if(containerCredentials&&freshContainerCredentials){const oldList=containerCredentials.querySelector('.saved-container-list'),freshList=freshContainerCredentials.querySelector('.saved-container-list');if(oldList&&freshList)oldList.replaceWith(freshList);freshContainerCredentials.replaceWith(containerCredentials);}
    const containerEnvironments=card.querySelector('.container-environments');const freshContainerEnvironments=staging.querySelector('.container-environments');
-   if(containerEnvironments&&freshContainerEnvironments)freshContainerEnvironments.replaceWith(containerEnvironments);
+   if(containerEnvironments&&freshContainerEnvironments){const oldList=containerEnvironments.querySelector('.saved-container-list'),freshList=freshContainerEnvironments.querySelector('.saved-container-list');if(oldList&&freshList)oldList.replaceWith(freshList);freshContainerEnvironments.replaceWith(containerEnvironments);}
    const focusText=focused?.textContent;const focusTag=focused?.tagName;
    const heading=card.querySelector('.project-heading');const rename=card.querySelector('.project-rename');const domains=card.querySelector('.project-domains');const github=card.querySelector('.project-github');const danger=card.querySelector('.project-danger');
    const children=[heading,card.querySelector('.website-summary'),card.querySelector('.website-detail-links'),...staging.childNodes,card.querySelector('.project-runtime-logs'),card.querySelector('.project-clients'),domains,github,rename,danger].filter(Boolean);
@@ -1262,6 +1262,26 @@ function showWebsite(id){
  const target=id?projectCard({id}):$('website-search');
  if(target){if(id)target.setAttribute('tabindex','-1');target.focus({preventScroll:true});target.scrollIntoView({block:'start',behavior:'auto'});}
 }
+function websiteHandoffText(name,status,href,now=new Date()){
+ let address='No published address yet';
+ try{const url=new URL(href);if(url.protocol==='https:'&&!url.username&&!url.password)address=url.origin;}catch{}
+ return [name||'Website','Publishing status: '+(status||'Status unavailable'),'Website: '+address,'Snapshot: '+now.toISOString(),'','This summary does not grant portal access. Ask the website owner for an invitation if you need to review publication status.'].join('\n');
+}
+function showWebsiteHandoff(card){
+ document.querySelector('.website-handoff')?.remove();
+ const dialog=document.createElement('dialog');dialog.className='website-handoff';dialog.setAttribute('aria-labelledby','website-handoff-title');
+ const title=document.createElement('h2');title.id='website-handoff-title';title.textContent='Share a website summary';
+ const hint=document.createElement('p');hint.textContent='Review and copy this snapshot to share with your client. It includes no internal client label, files, logs or account details.';
+ const text=document.createElement('textarea');text.readOnly=true;text.rows=9;text.setAttribute('aria-label','Website summary');
+ const workflow=card.querySelector('.project-workflow');
+ const address=card.querySelector('.project-domains .site-link')||card.querySelector('.site-link');
+ text.value=websiteHandoffText(card.querySelector('.project-name')?.textContent,workflow?.querySelector('h3')?.textContent||card.querySelector('.project-status')?.textContent,address?.href);
+ const feedback=document.createElement('p');feedback.setAttribute('role','status');
+ const copy=document.createElement('button');copy.type='button';copy.textContent='Copy summary';
+ copy.addEventListener('click',async()=>{copy.disabled=true;try{await navigator.clipboard.writeText(text.value);feedback.textContent='Summary copied. Paste it into your message when ready.';}catch{feedback.textContent='Copy is unavailable in this browser. Select the text and copy it manually.';text.focus();text.select();}finally{copy.disabled=false;}});
+ const close=document.createElement('button');close.type='button';close.textContent='Close';close.addEventListener('click',()=>dialog.close());
+ dialog.addEventListener('close',()=>dialog.remove());dialog.append(title,hint,text,feedback,copy,close);document.body.append(dialog);dialog.showModal();
+}
 function updateWebsiteSummary(card){
  let summary=card.querySelector(':scope > .website-summary');
  if(!summary){
@@ -1287,9 +1307,10 @@ function updateWebsiteSummary(card){
    const button=document.createElement('button');button.type='button';button.textContent=label;button.dataset.target=selector;
    button.addEventListener('click',()=>{const section=card.querySelector(selector);if(!section)return;if(section.tagName==='DETAILS')section.open=true;section.setAttribute('tabindex','-1');section.focus({preventScroll:true});section.scrollIntoView({block:'start',behavior:'auto'});});links.append(button);
   }
+  const share=document.createElement('button');share.type='button';share.textContent='Share summary';share.addEventListener('click',()=>showWebsiteHandoff(card));links.append(share);
   summary.after(links);
  }
- for(const button of links.children)button.hidden=!card.querySelector(button.dataset.target);
+ for(const button of links.children)if(button.dataset.target)button.hidden=!card.querySelector(button.dataset.target);
 }
 function filterWebsiteCards(){
  const query=$('website-search').value.trim().toLocaleLowerCase();

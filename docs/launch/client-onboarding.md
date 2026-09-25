@@ -34,3 +34,13 @@ Labels are internal to your workspace. They do not invite someone, grant access,
 transfer ownership, change billing or rename the website or its domain. Invited
 clients cannot see these labels in **Shared with me**. Use **Clients** when you
 want to grant or remove review access.
+
+## Sharing a status snapshot
+
+Open the website and choose **Share summary**. Review the website name, current
+publishing status, public address and snapshot time, then choose **Copy summary**
+and paste it into your message. If copying is unavailable, select and copy the
+text manually. Nothing is sent automatically. The summary excludes internal
+client labels, files, logs and account details and does not grant portal access.
+Use a client invitation for ongoing review access. A snapshot can become outdated
+after it is copied.
