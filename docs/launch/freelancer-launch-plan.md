@@ -33,8 +33,9 @@ Acceptance: over-capacity requests fail clearly before a project is accepted; a 
 - Shipped first slice: owner-managed, project-scoped read-only client review for existing verified accounts. A separate Shared with me view exposes only the granted website name/type, publication summary and active custom-domain address. It grants no workspace membership, source/upload access, DNS proof, logs, billing, publishing or editing. Add/remove actions are audited; revocation takes effect on the next request. Maximum 20 clients per website.
 - Shipped: scoped email invitations with seven-day expiry, matching verified-account acceptance, owner authorization recheck, revocation, replacement, rate limits and encrypted queued delivery. New recipients must be approved under the existing signup policy before an invitation is sent; existing verified accounts can be invited while signup is closed. Invitation creation does not grant access.
 - Shipped: owner-only recent client-access history with actor, recipient and date for direct grants/removals and invitation request/revocation/acceptance. It displays the latest 50 recorded changes and excludes unrelated audit data. Installed in production with admin `5e19bcf`.
-- Remaining: client labels/organization and handover. Existing Team roles are still workspace-wide. Registration remains restricted to the operator-approved allowlist. See [client onboarding](client-onboarding.md).
-- Client labels and portfolio organization, then ownership handover after membership/billing implications are designed.
+- Implemented: workspace-only client labels, visible on portfolio cards and searchable alongside website names. Owners/developers can save or clear a label in Website settings without a reload; labels grant no client access. Production rollout pending.
+- Remaining: ownership handover and richer portfolio organization. Existing Team roles are still workspace-wide. Registration remains restricted to the operator-approved allowlist. See [client onboarding](client-onboarding.md).
+- Ownership handover requires explicit membership and billing decisions; a client label does not transfer ownership.
 - Shareable deployment summaries with no secrets and no implied access grant.
 
 Acceptance: a client sees only the intended website; cross-project APIs deny access, including logs, uploads, domains and releases.

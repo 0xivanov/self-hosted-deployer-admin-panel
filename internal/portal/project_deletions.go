@@ -22,7 +22,7 @@ func (s *Store) DeleteProject(ctx context.Context, token, project, name string) 
 	defer tx.Rollback()
 	var p Project
 	var requestedAt int64
-	err = tx.QueryRowContext(ctx, "SELECT id,workspace_id,name,kind,deletion_requested_at,deletion_error FROM projects WHERE id=?", project).Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind, &requestedAt, &p.DeletionError)
+	err = tx.QueryRowContext(ctx, "SELECT id,workspace_id,name,kind,deletion_requested_at,deletion_error,COALESCE((SELECT label FROM project_client_labels WHERE project_id=projects.id),'') FROM projects WHERE id=?", project).Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind, &requestedAt, &p.DeletionError, &p.ClientLabel)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Project{}, ErrDenied
 	}

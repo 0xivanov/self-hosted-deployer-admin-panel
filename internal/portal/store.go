@@ -51,6 +51,7 @@ type Project struct {
 	ID            string `json:"id"`
 	WorkspaceID   string `json:"workspace_id"`
 	Name          string `json:"name"`
+	ClientLabel   string `json:"client_label"`
 	Kind          string `json:"kind"`
 	Deleting      bool   `json:"deleting"`
 	DeletionError string `json:"deletion_error"`
@@ -133,6 +134,9 @@ func Open(path string) (*Store, error) {
 	if err == nil {
 		err = s.migrateGitHubPushReplay()
 	}
+	if err == nil {
+		err = s.migrateClientLabels()
+	}
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -150,7 +154,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 53 {
+	if version > 54 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {
@@ -748,7 +752,7 @@ func (s *Store) GetProject(ctx context.Context, token, id string) (Project, erro
 	defer tx.Rollback()
 	var p Project
 	var requestedAt int64
-	err = tx.QueryRowContext(ctx, "SELECT id,workspace_id,name,kind,deletion_requested_at,deletion_error FROM projects WHERE id=?", id).Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind, &requestedAt, &p.DeletionError)
+	err = tx.QueryRowContext(ctx, "SELECT id,workspace_id,name,kind,deletion_requested_at,deletion_error,COALESCE((SELECT label FROM project_client_labels WHERE project_id=projects.id),'') FROM projects WHERE id=?", id).Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind, &requestedAt, &p.DeletionError, &p.ClientLabel)
 	p.Deleting = requestedAt != 0
 	if errors.Is(err, sql.ErrNoRows) {
 		return Project{}, ErrDenied
@@ -812,7 +816,7 @@ func (s *Store) Projects(ctx context.Context, token, workspace string) ([]Projec
 	if _, err = s.authorize(ctx, tx, token, workspace, false); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT id,workspace_id,name,kind,deletion_requested_at,deletion_error FROM projects WHERE workspace_id=? ORDER BY name,id", workspace)
+	rows, err := tx.QueryContext(ctx, "SELECT id,workspace_id,name,kind,deletion_requested_at,deletion_error,COALESCE((SELECT label FROM project_client_labels WHERE project_id=projects.id),'') FROM projects WHERE workspace_id=? ORDER BY name,id", workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -820,7 +824,7 @@ func (s *Store) Projects(ctx context.Context, token, workspace string) ([]Projec
 	for rows.Next() {
 		var p Project
 		var requestedAt int64
-		if err = rows.Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind, &requestedAt, &p.DeletionError); err != nil {
+		if err = rows.Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind, &requestedAt, &p.DeletionError, &p.ClientLabel); err != nil {
 			rows.Close()
 			return nil, err
 		}

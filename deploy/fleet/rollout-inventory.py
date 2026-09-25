@@ -116,7 +116,7 @@ def main():
     checks = {
         'portal': lambda: database(args.portal_db,
             ('users', 'sessions', 'projects', 'uploads', 'publications', 'node_releases', 'project_domains', 'container_releases',
-             'github_connections', 'github_imports', 'github_push_events', 'github_pipelines'),
+             'github_connections', 'github_imports', 'github_push_events', 'github_pipelines', 'project_client_labels'),
             [(t, 'state', ('queued', 'running')) for t in ('publication_jobs', 'node_builds', 'node_deployments', 'container_deployments', 'github_imports')]
             + [('github_pipelines', 'state', ('waiting', 'building', 'publishing'))]),
         'core': lambda: database(args.core_db, ('apps', 'deployments', 'routes', 'deployment_requests'),

@@ -29,7 +29,7 @@ type Upload struct {
 func (s *Store) uploadProject(ctx context.Context, tx *sql.Tx, token, project string, write bool) (Project, string, error) {
 	var p Project
 	var requestedAt int64
-	err := tx.QueryRowContext(ctx, "SELECT id,workspace_id,name,kind,deletion_requested_at,deletion_error FROM projects WHERE id=?", project).Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind, &requestedAt, &p.DeletionError)
+	err := tx.QueryRowContext(ctx, "SELECT id,workspace_id,name,kind,deletion_requested_at,deletion_error,COALESCE((SELECT label FROM project_client_labels WHERE project_id=projects.id),'') FROM projects WHERE id=?", project).Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Kind, &requestedAt, &p.DeletionError, &p.ClientLabel)
 	p.Deleting = requestedAt != 0
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, "", ErrDenied

@@ -21,3 +21,16 @@ Use the same email address that received the invitation. If you do not have an a
 If the link has expired, been revoked, or the sender no longer owns the workspace, ask the owner for a new invitation. Forwarding the link to another account does not grant that account access.
 
 If you want a website update, contact your developer. Read-only client access does not include publishing or editing controls.
+
+## Organizing your portfolio
+
+Open a website, choose **Settings**, and enter a **Client label**, such as a
+company name. Choose **Save client label**. The label appears on the website
+card and can be found using the portfolio search. Leave it blank and save to
+remove it. Website owners and developers can edit labels; workspace viewers
+can read them.
+
+Labels are internal to your workspace. They do not invite someone, grant access,
+transfer ownership, change billing or rename the website or its domain. Invited
+clients cannot see these labels in **Shared with me**. Use **Clients** when you
+want to grant or remove review access.

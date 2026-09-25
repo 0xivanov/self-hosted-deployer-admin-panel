@@ -846,6 +846,20 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpJSON(w, project)
+	case r.URL.Path == "/api/projects/client-label" && r.Method == "POST":
+		var input struct {
+			Project string `json:"project"`
+			Label   string `json:"label"`
+		}
+		if !httpDecode(w, r, &input) {
+			return
+		}
+		project, err := h.store.SetProjectClientLabel(r.Context(), cookie.Value, input.Project, input.Label)
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, project)
 	case r.URL.Path == "/api/projects/rename" && r.Method == "POST":
 		var input struct {
 			Project string `json:"project"`
