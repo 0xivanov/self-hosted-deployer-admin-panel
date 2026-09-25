@@ -112,3 +112,32 @@ September 25 cluster evidence: core `eeb4a58` fixes Kubernetes-added empty pod s
 September 25 HTTPS prerequisite repair (core operations commit `b5840e8`): the live ACME issuer was unready because cert-manager on pi-home could not resolve DNS. The controller and cainjector were moved to the VPS without a version change; the issuer returned Ready at 07:12 UTC. Fresh diagnostic Pods identified DNS failure only on pi-home. Its Flannel interface and remote Pod routes had disappeared following the WireGuard restart despite node Ready status. Restarting k3s-agent restored the interface/routes and fresh Pod lookups of Kubernetes and the ACME hostname succeeded. A systemd drop-in now couples k3s-agent to wg-quick@wg0 restart/stop and orders startup after it on both Pis; only pi-home was restarted. The diagnostic namespace was removed. Inventory at 07:15 UTC shows all three nodes Ready, eight existing deployments at expected replicas, both databases intact and no inventory errors. Production application binaries/schemas and Docker flags remain unchanged. Public HTTPS Docker validation, private registry rotation and coordinated rollout remain next. A private GHCR qualification package is not yet present; the local GitHub CLI has package-write scope, so a dedicated private fixture can be provisioned without requesting another token. Keep credentials out of command arguments/logs and verify private visibility before uploading.
 
 September 25 Docker HTTPS evidence: core `c549ae0` creates the proxy middleware/transport referenced by candidate routes and ensures the configured issuer before TLS routing. An isolated cluster run passed initial publication, trusted public HTTPS (200 plus expected nginx content), recovery with HTTPS preserved, and project deletion in 60.09 seconds. An independent Mac request confirmed the same certificate and content. Its temporary DNS-only record and namespace were removed; the existing issuer remains Ready. Post-check inventory at 07:20 UTC reports all nodes and existing deployments ready, no errors, and unchanged production core schema 6/portal schema 42. Remaining Docker rollout work: private image/credential rotation, delayed independent writer and successful-update/restart checks, followed by the coordinated application upgrade and portal publication verification. This is runtime/HTTPS evidence, not a claim that the portal feature is already enabled in production.
+
+
+September 25 follow-up: the isolated real-cluster lifecycle check passed a healthy
+update after database reopen/controller reconstruction, retirement of its prior
+running generation, and direct delayed-writer activation/create rejection after
+recovery (50.59 seconds). This recreates server state, not an actual process
+crash. Cleanup completed and all eight existing deployments remain healthy.
+A dedicated private ARM64 GHCR fixture now exists and anonymous access is denied.
+The owner was asked to provide a separate read-only package token for the worker
+pull check; the broad publishing credential remains off the nodes. Private pulls
+and actual credential rotation remain unverified. Fresh production artifacts and
+the coordinated migration/rollback procedure are being prepared in parallel.
+Docker remains disabled in production pending the application upgrade and portal
+publication verification.
+
+
+September 25 production upgrade: core `1a00d2e` and admin `81407a8` are now
+installed on the VPS: ten binaries (including the configuration-sensitive log
+service) and three fleet controllers. All database writers and controller timers
+were stopped for consistent backups, then core migrated from 6 to 12 and portal
+from 42 to 46. Existing record counts and foreign-key/integrity checks passed.
+All previously active services and timers restarted. At 08:42 UTC all three nodes
+and eight application deployments were healthy; portal and the existing custom
+website returned HTTPS 200, the operator panel returned its expected anonymous
+401, and authenticated CLI app listing succeeded. Existing feature settings were
+preserved, so Docker/candidate activation remains next, after the private pull
+check and portal publication verification. See the [upgrade and rollback
+record](production-upgrade-20260925.md). GitHub deployment, live payments and paid
+pilot acquisition remain separate unfinished goal items.

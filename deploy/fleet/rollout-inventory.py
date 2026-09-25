@@ -54,7 +54,7 @@ def binaries():
     paths = [Path('/opt/launchstead-portal') / name for name in (
         'customer-portal', 'billing-worker', 'node-build-worker',
         'node-deployment-worker', 'publication-worker', 'billing-plan')]
-    paths += [Path('/opt/launchstead-fleet/fleet-worker'), Path('/opt/deployer-admin-panel/deployer')]
+    paths += [Path('/opt/launchstead-fleet/fleet-worker'), Path('/opt/launchstead-fleet/fleet-logs'), Path('/opt/deployer-admin-panel/deployer')]
     # Hash the running core binary rather than guessing its installation path.
     pid = command(['systemctl', 'show', 'deployer-server.service', '--property=MainPID', '--value']).strip()
     if not pid.isdecimal() or int(pid) < 1:
@@ -74,6 +74,27 @@ def binaries():
     return results
 
 
+def database_consumer_units():
+    # Older/static provisioners use different unit names. Discover their command
+    # paths without exposing any command lines or configuration values.
+    names = set()
+    raw = command(['systemctl', 'show', '*.service', '--property=Id,ExecStart', '--no-pager'])
+    for block in raw.split('\n\n'):
+        props = dict(line.split('=', 1) for line in block.splitlines() if '=' in line)
+        start = props.get('ExecStart', '')
+        if '/opt/launchstead-portal/' in start or '/var/lib/launchstead-portal/portal.sqlite' in start:
+            names.add(props['Id'])
+    return sorted(names)
+
+
+def units():
+    patterns = ['customer-portal.service', 'deployer-server.service', 'deployer-admin-panel.service',
+                'launchstead-*.service', 'fleet-*.service', 'fleet-*.timer', 'node-demo-*.service',
+                'project-deletion.*', 'domain-reconciler.*']
+    return json.loads(command(['systemctl', 'list-units', '--all', '--no-pager', '--output=json',
+                               *patterns, *database_consumer_units()]))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--portal-db', default='/var/lib/launchstead-portal/portal.sqlite')
@@ -88,9 +109,7 @@ def main():
             [('deployment_requests', 'state', ('pending',))], core=True),
         'fleet': fleet,
         'binaries': binaries,
-        'units': lambda: json.loads(command(['systemctl', 'list-units', '--all', '--no-pager', '--output=json',
-            'customer-portal.service', 'deployer-server.service', 'launchstead-*.service',
-            'fleet-*.service', 'fleet-*.timer', 'node-demo-build.service'])),
+        'units': units,
     }
     for name, check in checks.items():
         try:

@@ -1,6 +1,6 @@
 # Registry image deployment
 
-Status: implementation in progress. Container projects and public/private image workflows are implemented locally behind disabled feature flags; they are not deployed. Existing ZIP-based static and Node deployments are unchanged.
+Status: the supporting server, CLI, portal, workers and controllers were installed in production on September 25. Core schema is 12 and portal schema is 46. Docker/candidate feature flags remain disabled pending the private-registry check and portal publication verification. Existing ZIP-based static and Node deployments remain healthy. Historical sections below describe implementation milestones; see [the coordinated upgrade record](production-upgrade-20260925.md) for current deployment evidence.
 
 ## Implemented image check
 
