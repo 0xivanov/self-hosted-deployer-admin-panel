@@ -25,7 +25,12 @@ func (h *HTTP) projectClientsHTTP(w http.ResponseWriter, r *http.Request, token 
 			h.storeError(w, err)
 			return
 		}
-		httpJSON(w, map[string]any{"clients": clients})
+		history, err := h.store.ClientAccessHistory(r.Context(), token, r.URL.Query().Get("project"))
+		if err != nil {
+			h.storeError(w, err)
+			return
+		}
+		httpJSON(w, map[string]any{"clients": clients, "history": history})
 		return
 	}
 	if r.Method != "POST" {

@@ -1349,6 +1349,7 @@ function renderRuntimeLogs(card,project,role,version){
 function renderProjectClients(card,project,role,version){
  if(role!=='owner'||project.deleting||version!==generation)return;
  const details=disclosure('Client access','project-clients');
+ const history=document.createElement('div');history.className='client-access-history';
  const copy=document.createElement('p');copy.textContent='Share this website’s name, publication status, and connected address. Clients cannot edit it or see files, logs, billing, or other websites. Team membership gives broader access and is managed separately.';
  const note=document.createElement('p');note.className='muted';note.textContent=clientInvitations?'New recipients must be approved by the operator before you send an invitation. They then register, verify their email, and accept the email invitation for site-only read-only access. Existing verified accounts can receive access without registering. Maximum 20 clients per website.':'The client must already have a verified Launchstead account. Registration is currently limited to approved people. Maximum 20 clients per website.';
  const list=document.createElement('div');const status=document.createElement('p');status.setAttribute('role','status');
@@ -1364,6 +1365,12 @@ function renderProjectClients(card,project,role,version){
   status.textContent='Loading client access…';
   const data=await api('/api/project-clients?project='+encodeURIComponent(project.id));if(!current()||request!==listRequest)return;
    list.replaceChildren();status.textContent=data.clients.length?'':'No clients have access to this website.';
+   history.replaceChildren();const historyHeading=document.createElement('h4');historyHeading.textContent='Recent access activity';history.append(historyHeading);
+   const actions={granted:'Read-only access granted',revoked:'Read-only access removed',invited:'Invitation requested',invitation_revoked:'Invitation revoked',invitation_accepted:'Invitation accepted'};
+   const events=Array.isArray(data.history)?data.history:[];
+   if(!events.length){const empty=document.createElement('p');empty.className='muted';empty.textContent='No recorded access changes yet.';history.append(empty);}
+   for(const entry of events){const row=document.createElement('p');row.className='muted';const date=new Date(Number(entry.created_at)*1000);row.textContent=(actions[entry.action]||'Access changed')+' · '+(entry.client||'Former account')+' · by '+(entry.actor||'Former account')+' · '+(Number.isNaN(date.getTime())?'Date unavailable':date.toLocaleString());history.append(row);}
+
   for(const client of data.clients){
    const row=document.createElement('div');row.className='client-access-row';const email=document.createElement('span');email.textContent=client.email;
    const remove=document.createElement('button');remove.type='button';remove.className='button-quiet';remove.textContent='Remove access';remove.setAttribute('aria-label','Remove access for '+client.email);
@@ -1380,7 +1387,7 @@ function renderProjectClients(card,project,role,version){
  inviteForm.addEventListener('submit',event=>{event.preventDefault();submit(inviteForm,async()=>{await api('/api/client-invitations',{project:project.id,email:inviteInput.value.trim()});if(current()){inviteInput.value='';await load();}});});
  refresh.addEventListener('click',()=>load().catch(e=>{if(current())status.textContent=e.message;}));
  details.addEventListener('toggle',()=>{if(details.open)load().catch(e=>{if(current())status.textContent=e.message;});});
- details.append(copy,note);if(clientInvitations)details.append(inviteForm,inviteList);details.append(form,status,list,refresh);card.append(details);
+ details.append(copy,note);if(clientInvitations)details.append(inviteForm,inviteList);details.append(form,status,list,refresh,history);card.append(details);
 }
 let sharedRequest=0;
 async function loadSharedWebsites(){

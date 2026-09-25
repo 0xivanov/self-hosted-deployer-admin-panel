@@ -32,7 +32,8 @@ Acceptance: over-capacity requests fail clearly before a project is accepted; a 
 ### 3. Freelancer collaboration
 - Shipped first slice: owner-managed, project-scoped read-only client review for existing verified accounts. A separate Shared with me view exposes only the granted website name/type, publication summary and active custom-domain address. It grants no workspace membership, source/upload access, DNS proof, logs, billing, publishing or editing. Add/remove actions are audited; revocation takes effect on the next request. Maximum 20 clients per website.
 - Shipped: scoped email invitations with seven-day expiry, matching verified-account acceptance, owner authorization recheck, revocation, replacement, rate limits and encrypted queued delivery. New recipients must be approved under the existing signup policy before an invitation is sent; existing verified accounts can be invited while signup is closed. Invitation creation does not grant access.
-- Remaining: visible access audit history, client labels/organization and handover. Existing Team roles are still workspace-wide. Registration remains restricted to the operator-approved allowlist. See [client onboarding](client-onboarding.md).
+- Implemented locally: owner-only recent client-access history with actor, recipient and date for direct grants/removals and invitation request/revocation/acceptance. It displays the latest 50 recorded changes and excludes unrelated audit data. Production rollout remains pending.
+- Remaining: client labels/organization and handover. Existing Team roles are still workspace-wide. Registration remains restricted to the operator-approved allowlist. See [client onboarding](client-onboarding.md).
 - Client labels and portfolio organization, then ownership handover after membership/billing implications are designed.
 - Shareable deployment summaries with no secrets and no implied access grant.
 
