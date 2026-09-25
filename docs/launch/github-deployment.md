@@ -81,7 +81,7 @@ only through a verified installation and an exact commit resolved through GitHub
 
 ## Next implementation slices
 
-1. Register/configure the real GitHub App and complete the installation-access journey. Local private configuration, OAuth/link routes, repository selection, saved connections and disconnect controls are implemented; real provider use remains unverified.
+1. Register/configure the real GitHub App and verify the installation-access journey. Local private configuration, OAuth/link routes, repository selection, saved connections and disconnect controls are implemented; real provider use remains unverified.
 2. Durable connection and import records. Authenticated webhook intake stores
    the signed payload hash, installation/repository identity, exact ref/commit
    and connection revision transactionally. Changed or replayed delivery headers
@@ -180,8 +180,10 @@ accessible repository/branch/folder, view the saved connection, and disconnect.
 Repository discovery is scoped to the configured App and current user. Connect
 rechecks provider access before saving. Automatic deployment remains false;
 the UI explicitly says GitHub publishing is not enabled and ZIP uploads still work.
-The App must already have been installed for the selected repository; the guided
-installation/access-management journey remains to be completed.
+The repository access guide opens the verified App installation page in a separate
+tab. Customers select repositories on GitHub, return to the portal, and refresh
+the chooser or continue authorization. GitHub installation IDs supplied in URLs
+never establish portal ownership or grant repository access.
 
 The callback landing page removes OAuth parameters from browser history, then
 uses the authenticated same-origin CSRF-protected POST flow. This preserves the
@@ -241,3 +243,18 @@ repository identity, and requests a full commit SHA. A single redirect is allowe
 only to the matching repository/commit path on HTTPS `codeload.github.com`; the
 API authorization header is not forwarded. Signed redirect queries are bounded
 and excluded from diagnostics. Downloads are limited to 10 MiB and timed out.
+
+
+## Guided repository access
+
+The portal resolves the installation URL from authenticated `/app` metadata,
+verifies it belongs to the configured App, and constructs the canonical GitHub
+installation link from its validated slug. It ignores provider-supplied arbitrary
+HTML URLs. Only a current project owner can request this setup link.
+
+The guide is available before connection, when repositories are missing, and for
+an existing connection. It opens GitHub in a separate tab with no opener/referrer,
+explains selected-repository access and lets the owner refresh the chooser after
+saving. It follows [GitHub's documented installation URL](https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party).
+Focused provider, HTTP and DOM checks passed; actual App registration and a real
+installation/import remain unverified. No production configuration changed.

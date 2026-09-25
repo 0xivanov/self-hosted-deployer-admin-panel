@@ -18,6 +18,10 @@ type GitHubAccessProvider interface {
 	VerifyRepositoryAccess(context.Context, string, int64, int64) (githubdeploy.RepositoryAccess, error)
 	ListAccessibleRepositories(context.Context, string) ([]githubdeploy.RepositoryAccess, error)
 }
+type GitHubInstallationProvider interface {
+	InstallationURL(context.Context) (string, error)
+}
+
 type GitHubOAuthProvider interface {
 	AuthorizationURL(string, string) (string, error)
 	Exchange(context.Context, string, string) (githubdeploy.OAuthToken, error)
@@ -124,6 +128,18 @@ func (h *HTTP) githubHTTP(w http.ResponseWriter, r *http.Request, session string
 		flow, pending := h.githubFlows.selections[githubSelectionKey(session, project)]
 		h.githubFlows.Unlock()
 		switch r.URL.Path {
+		case "/api/github/installation":
+			provider, ok := h.githubApp.(GitHubInstallationProvider)
+			if !ok {
+				httpError(w, 404, "GitHub App setup is not available")
+				return
+			}
+			target, err := provider.InstallationURL(ctx)
+			if err != nil {
+				h.githubError(w, err)
+				return
+			}
+			httpJSON(w, map[string]string{"url": target})
 		case "/api/github/connection":
 			httpJSON(w, map[string]any{"connection": connection, "pending": pending})
 		case "/api/github/repositories":
