@@ -140,3 +140,21 @@ transferred or paid for, and no account funds were added. Sandbox credentials
 and registration/renewal outcome contracts remain unverified. A usable
 availability quote still requires explicit premium classification and fresh
 availability, not just a TLD price list.
+
+
+### Sandbox credentials received
+
+The owner has now supplied a separately labeled sandbox key in the private,
+Git-excluded local credential file. The supplied support instructions specify:
+
+- Registry operations use OTE. Availability is not evidence of real-world
+  availability; a sandbox registration consumes availability for sandbox users.
+- Restrict initial qualification to .com and .net.
+- Nameserver-change tests must use NS1.NAMESILO.COM through NS8.NAMESILO.COM.
+
+The support reply excerpt began at item 2. The exact sandbox API base URL was
+not included in the message or credential file; item 1 has been requested.
+Do not send the sandbox key to the production endpoint or assume that an
+environment label alone selects OTE. No sandbox request or registration has
+been made at this checkpoint. Keep sandbox domain evidence separate from real
+customer quotes and registrations.
