@@ -1,6 +1,6 @@
 # Launchstead: freelancer-first launch plan
 
-Updated September 23, 2026. This plan narrows the launch audience; it does not declare the original four-part hosting goal complete.
+Updated September 25, 2026. This plan narrows the launch audience; it does not declare the original four-part hosting goal complete.
 
 ## Customer and promise
 
@@ -32,7 +32,7 @@ Acceptance: over-capacity requests fail clearly before a project is accepted; a 
 ### 3. Freelancer collaboration
 - Shipped first slice: owner-managed, project-scoped read-only client review for existing verified accounts. A separate Shared with me view exposes only the granted website name/type, publication summary and active custom-domain address. It grants no workspace membership, source/upload access, DNS proof, logs, billing, publishing or editing. Add/remove actions are audited; revocation takes effect on the next request. Maximum 20 clients per website.
 - Shipped: scoped email invitations with seven-day expiry, matching verified-account acceptance, owner authorization recheck, revocation, replacement, rate limits and encrypted queued delivery. New recipients must be approved under the existing signup policy before an invitation is sent; existing verified accounts can be invited while signup is closed. Invitation creation does not grant access.
-- Implemented locally: owner-only recent client-access history with actor, recipient and date for direct grants/removals and invitation request/revocation/acceptance. It displays the latest 50 recorded changes and excludes unrelated audit data. Production rollout remains pending.
+- Shipped: owner-only recent client-access history with actor, recipient and date for direct grants/removals and invitation request/revocation/acceptance. It displays the latest 50 recorded changes and excludes unrelated audit data. Installed in production with admin `5e19bcf`.
 - Remaining: client labels/organization and handover. Existing Team roles are still workspace-wide. Registration remains restricted to the operator-approved allowlist. See [client onboarding](client-onboarding.md).
 - Client labels and portfolio organization, then ownership handover after membership/billing implications are designed.
 - Shareable deployment summaries with no secrets and no implied access grant.
@@ -40,7 +40,7 @@ Acceptance: over-capacity requests fail clearly before a project is accepted; a 
 Acceptance: a client sees only the intended website; cross-project APIs deny access, including logs, uploads, domains and releases.
 
 ### 4. Developer deployment paths
-- Registry images: Docker Hub/GHCR metadata resolution, ARM64 digest pins, project-scoped encrypted credentials/environment versions, immutable releases, customer controls and deployment queues are implemented. Core candidate generations, traffic activation/recovery, lost-response handling, retry, retirement and deletion are integrated with the fleet. The supporting core/CLI/portal/workers/controllers are installed in production (core schema 12, portal schema 46), with Docker/candidate flags still disabled. Real isolated cluster checks passed public-image publication across both Pi workers, trusted HTTPS, failed-update recovery, delayed-writer rejection, successful update after reopening state, retirement and deletion. Remaining activation work: private-image pull/credential rotation, shared credential configuration and actual portal publication. Credential/version garbage collection remains unfinished. See [registry deployment](registry-image-deployment.md) and [production upgrade](production-upgrade-20260925.md).
+- Registry images: Docker Hub/GHCR metadata resolution, ARM64 digest pins, project-scoped encrypted credentials/environment versions, immutable releases, customer controls and deployment queues are implemented. Core candidate generations, traffic activation/recovery, lost-response handling, retry, retirement and deletion are integrated with the fleet. The supporting core/CLI/portal/workers/controllers are installed in production (core schema 12, portal schema 53), with Docker/candidate flags still disabled. Real isolated cluster checks passed public-image publication across both Pi workers, trusted HTTPS, failed-update recovery, delayed-writer rejection, successful update after reopening state, retirement and deletion. Remaining activation work: private-image pull/credential rotation, shared credential configuration and actual portal publication. Credential/version garbage collection remains unfinished. See [registry deployment](registry-image-deployment.md) and [production upgrade](production-upgrade-20260925.md).
 - GitHub connection and deploy-on-push: implementation started with bounded signed push validation, repository archive preparation using the existing static/Node upload rules, and GitHub App signing/repository-scoped read-only token access. Provider user/installation/repository access checks and hashed, session-bound single-use link requests, OAuth exchange and revisioned project connection persistence (local schema 53) are now implemented. Customer connection handlers, repository selection and disconnect controls are now implemented behind private GitHub App configuration. Manual imports now use a durable leased queue, pinned-commit downloads and the existing validated upload path. Guided repository access is implemented locally. Durable authenticated webhook intake, replay handling and a leased processor that imports only the current branch head are implemented locally. Automatic static publication and Node build/deployment orchestration, project controls and deployment activity are implemented locally. Branch-return replay handling is implemented locally. Bounded history cleanup is implemented locally. Real App installation and production activation remain unfinished; no webhook or GitHub deployment is enabled in production. See [GitHub deployment](github-deployment.md).
 - Dockerfile builds later, with resource limits and isolation. Define storage/database support explicitly; do not market all MVP workloads as supported.
 
@@ -142,3 +142,15 @@ preserved, so Docker/candidate activation remains next, after the private pull
 check and portal publication verification. See the [upgrade and rollback
 record](production-upgrade-20260925.md). GitHub deployment, live payments and paid
 pilot acquisition remain separate unfinished goal items.
+
+
+September 25 portal follow-up: admin `5e19bcf` is installed across all eight
+portal database consumer binaries. Portal schema migrated from 46 to 53, with
+core unchanged at `1a00d2e` / schema 12. Owner-visible client access history is
+live. GitHub implementation is installed but its connection and automatic
+deployment flags remain off pending App registration and real provider checks.
+Docker remains off pending private pull and portal publication verification.
+At 11:56 UTC all three nodes and eight application deployments were healthy;
+existing record counts were preserved and both databases passed integrity and
+foreign-key checks. Public portal and the existing custom domain returned HTTPS
+200. See the updated [production upgrade record](production-upgrade-20260925.md).

@@ -27,6 +27,18 @@ def database(path, tables, jobs, core=False):
                   for t in tables if t in present}
         pending = {t: db.execute('SELECT COUNT(*) FROM "' + t + '" WHERE "' + column + '" IN (' + ','.join('?' for _ in states) + ')', states).fetchone()[0]
                    for t, column, states in jobs if t in present}
+        # Events remain labelled pending after processing. Use the processing
+        # record, including events not yet claimed, instead of that label.
+        if {'github_push_events', 'github_push_processing'} <= present:
+            pending['github_push_processing'] = db.execute('''SELECT COUNT(*)
+                FROM github_push_events e LEFT JOIN github_push_processing q ON q.event_id=e.id
+                WHERE q.event_id IS NULL OR q.state='running' ''').fetchone()[0]
+        if {'github_push_events', 'github_imports', 'github_pipelines'} <= present:
+            pending['github_pipelines_uncreated'] = db.execute('''SELECT COUNT(*)
+                FROM github_push_events e JOIN github_imports i
+                ON i.request_key='github-push:'||e.id AND i.project_id=e.project_id
+                WHERE i.state='succeeded' AND i.upload_id IS NOT NULL
+                AND NOT EXISTS(SELECT 1 FROM github_pipelines p WHERE p.event_id=e.id)''').fetchone()[0]
         return {'schema': version, 'counts': counts, 'unfinished': pending,
                 'integrity_ok': db.execute('PRAGMA quick_check').fetchall() == [('ok',)],
                 'foreign_keys_ok': db.execute('PRAGMA foreign_key_check').fetchone() is None}
@@ -103,8 +115,10 @@ def main():
     report = {'observed_at': datetime.now(timezone.utc).isoformat(), 'errors': []}
     checks = {
         'portal': lambda: database(args.portal_db,
-            ('users', 'sessions', 'projects', 'uploads', 'publications', 'node_releases', 'project_domains', 'container_releases'),
-            [(t, 'state', ('queued', 'running')) for t in ('publication_jobs', 'node_builds', 'node_deployments', 'container_deployments')]),
+            ('users', 'sessions', 'projects', 'uploads', 'publications', 'node_releases', 'project_domains', 'container_releases',
+             'github_connections', 'github_imports', 'github_push_events', 'github_pipelines'),
+            [(t, 'state', ('queued', 'running')) for t in ('publication_jobs', 'node_builds', 'node_deployments', 'container_deployments', 'github_imports')]
+            + [('github_pipelines', 'state', ('waiting', 'building', 'publishing'))]),
         'core': lambda: database(args.core_db, ('apps', 'deployments', 'routes', 'deployment_requests'),
             [('deployment_requests', 'state', ('pending',))], core=True),
         'fleet': fleet,

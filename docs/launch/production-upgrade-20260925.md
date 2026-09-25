@@ -1,6 +1,6 @@
 # Coordinated production upgrade, September 25, 2026
 
-The VPS now runs core `1a00d2e` and admin-panel `81407a8`. Core migrated from
+The first rollout installed core `1a00d2e` and admin-panel `81407a8`. Core migrated from
 schema 6 to 12; the portal migrated from schema 42 to 46. The worker-agent
 binaries on the two Pis were not replaced in this rollout. The changes to the
 candidate deployment protocol run in the VPS control plane against Kubernetes.
@@ -98,3 +98,46 @@ yet verified. A separate read-only package token was requested from the owner.
 After that check, configure the shared portal/fleet credential encryption key,
 container mapping and candidate feature settings, then verify publication through
 the portal. Keep existing accounts, projects and application workloads intact.
+
+
+## Portal follow-up: admin 5e19bcf, schema 53
+
+The current VPS runtime is core `1a00d2e` / schema 12 and admin `5e19bcf` /
+portal schema 53. All eight portal database consumer binaries listed above were
+replaced together; the core binary, CLI, Pi agents and application workloads
+were not replaced. The core service was briefly stopped and restarted as part
+of the coordinated backup procedure.
+
+Root-private rollback material is `/var/backups/launchstead-portal-5e19bcf`.
+It contains prior binaries, private configuration, consistent backups of both
+databases, fleet state, prior active-unit and installation manifests, and a
+completion marker. This snapshot has not been separately exported offsite.
+The same coordinated rollback boundary above applies; never run old portal
+binaries against schema 53 or restore the snapshot without accounting for
+subsequent writes and provider activity.
+
+The 11:56:52 UTC inventory and public checks confirmed:
+
+- All eight installed portal binary hashes match the release artifacts.
+- Core schema 12 and portal schema 53 pass integrity and foreign-key checks.
+- All three nodes Ready and all eight application Deployments at expected replicas.
+- Six projects, eight uploads, three publication pointers, four Node releases,
+  two domain records, one user, two sessions and zero container releases preserved.
+- Core has 11 apps, 60 deployments and seven routes.
+- No queued/running publication, Node build/deployment or container deployment jobs.
+- Portal and `testdomain.0xivanov.dev` return HTTPS 200; served portal JavaScript
+  matches the release.
+
+Client access history is now available to website owners. GitHub connection and
+automatic deployment flags remain false, as does container hosting. No signup,
+billing, capacity or feature settings changed. GitHub App registration still
+requires owner account verification before credentials can be configured. These
+checks do not establish a completed live GitHub or Docker publication.
+
+The inventory now includes GitHub imports, active pipelines, unclaimed/running
+push processing and successful imports awaiting pipeline creation. It does not
+misinterpret the immutable event's `pending` label as ongoing work. A focused
+fixture covered those boundaries. The read-only production run at 12:02 UTC
+reported no inventory errors and zero unfinished jobs in all these categories.
+Future maintenance must stop GitHub intake and its worker along with the other
+writers before relying on the drain observation or taking consistent backups.
