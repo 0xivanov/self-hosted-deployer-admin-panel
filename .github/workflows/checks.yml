@@ -5,13 +5,17 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test -race -tags=integration ./...
+      # The growing database integration suite exceeds Go's default 10m on hosted runners.
+      # Retain race detection and every integration test with a bounded 30m budget.
+      - run: go test -race -tags=integration -timeout=30m ./...
       - run: go vet ./...
       - run: go build ./cmd/...
       - run: node --check internal/adminui/static/app.js
       - run: node --check internal/portal/static/portal.js
+      - run: node --test tests/*.test.cjs

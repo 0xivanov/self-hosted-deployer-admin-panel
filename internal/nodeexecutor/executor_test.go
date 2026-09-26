@@ -32,7 +32,11 @@ func testConfig(t *testing.T) (Config, string, string) {
 	ps := filepath.Join(d, "pipeline.sh")
 	_ = os.WriteFile(pc, []byte(`{"TemplateDirectory":"/tmp/template","DependenciesDirectory":"`+deps+`","Launcher":"/tmp/launcher","Importer":"/tmp/importer"}`), 0600)
 	_ = os.WriteFile(ps, []byte("#!/bin/sh\nsleep 0.15\n"), 0700)
-	return Config{Project: strings.Repeat("a", 64), Toolchain: strings.Repeat("b", 64), Architecture: "arm64", Executions: ex, Dependencies: deps, PipelineConfig: pc, PipelineScript: ps, Python: "/bin/sh"}, d, ex
+	shell, err := filepath.EvalSymlinks("/bin/sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Config{Project: strings.Repeat("a", 64), Toolchain: strings.Repeat("b", 64), Architecture: "arm64", Executions: ex, Dependencies: deps, PipelineConfig: pc, PipelineScript: ps, Python: shell}, d, ex
 }
 func TestNewTakesExclusiveLockAndCreatesIt(t *testing.T) {
 	c, _, _ := testConfig(t)
@@ -53,7 +57,10 @@ func requestFor(id string) portal.NodeExecutionRequest {
 }
 func TestReplayRejectsChangedIdentity(t *testing.T) {
 	c, _, _ := testConfig(t)
-	e, _ := New(c)
+	e, err := New(c)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer e.Close()
 	id := strings.Repeat("1", 64)
 	q := requestFor(id)
@@ -81,7 +88,10 @@ func TestReplayRejectsChangedIdentity(t *testing.T) {
 }
 func TestUnsafeExecutionIDsRejected(t *testing.T) {
 	c, _, _ := testConfig(t)
-	e, _ := New(c)
+	e, err := New(c)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer e.Close()
 	if _, err := e.InspectNodeExecution(context.Background(), "../x"); !errors.Is(err, ErrUnavailable) {
 		t.Fatal(err)
@@ -92,7 +102,10 @@ func TestUnsafeExecutionIDsRejected(t *testing.T) {
 }
 func TestCloseDrainsActivePipeline(t *testing.T) {
 	c, _, _ := testConfig(t)
-	e, _ := New(c)
+	e, err := New(c)
+	if err != nil {
+		t.Fatal(err)
+	}
 	id := strings.Repeat("2", 64)
 	cmd := exec.Command("/bin/sh", "-c", "sleep 0.15")
 	if err := cmd.Start(); err != nil {
