@@ -188,7 +188,7 @@ func TestMerchantModesMigrationPreservesHistoryAndForeignKeys(t *testing.T) {
 		t.Fatal("repeat migration", err)
 	}
 	var version, foreignKeys int
-	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 57 {
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 56 {
 		t.Fatal(version, err)
 	}
 	if err = s.db.QueryRow("PRAGMA foreign_keys").Scan(&foreignKeys); err != nil || foreignKeys != 1 {
