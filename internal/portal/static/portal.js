@@ -1261,13 +1261,12 @@ async function loadDomainOrders(workspace,version){
   if(domainCheckout){const purchaseData=await api('/api/domains/purchases?workspace='+encodeURIComponent(workspace));if(!current())return;for(const purchase of Array.isArray(purchaseData.purchases)?purchaseData.purchases:[]){if(purchase.order_id)purchasesByOrder.set(purchase.order_id,purchase);}}
   let projects=[];if(domainCheckout){const projectData=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(!current())return;projects=Array.isArray(projectData.projects)?projectData.projects:[];}
   const content=$('domain-orders');content.replaceChildren();
-  if(!data.orders.length){content.textContent='No domain orders yet.';if(domainCheckout)loadDomainPurchases(workspace,version);return;}
-  for(const order of data.orders){
+  const unpaidOrders=data.orders.filter(order=>!purchasesByOrder.has(order.id));
+  if(!unpaidOrders.length){content.textContent='No unpaid domain orders.';if(domainCheckout)loadDomainPurchases(workspace,version);return;}
+  for(const order of unpaidOrders){
    const row=document.createElement('div');row.className='project';
    const title=document.createElement('strong');title.textContent=order.offer.domain+(order.offer.environment==='sandbox'?' · Sandbox test':'');row.append(title);
    const detail=document.createElement('p');detail.textContent=billingAmount(order.offer.registration_minor,order.offer.currency)+' for one year · '+(order.state==='canceled'?'Canceled':'Awaiting payment setup. Not registered.');row.append(detail);
-   const purchase=purchasesByOrder.get(order.id);
-   if(purchase){const progress=document.createElement('p');progress.className='domain-purchase-progress';progress.textContent='Purchase '+purchaseStateLabel(purchase.state)+(purchase.message?' · '+purchase.message:'');row.append(progress);content.append(row);continue;}
    if(order.state==='awaiting_payment'){
     if(domainCheckout){const projectLabel=document.createElement('label');projectLabel.textContent='Website project';const projectSelect=document.createElement('select');projectSelect.setAttribute('aria-label','Website project for domain purchase');for(const project of projects){const option=document.createElement('option');option.value=project.id;option.textContent=project.name;if(project.id===selectedProjectForDomain)option.selected=true;projectSelect.append(option);}projectLabel.append(projectSelect);row.append(projectLabel);const pay=document.createElement('button');pay.type='button';pay.className='button button-dark';pay.textContent='Pay with Stripe test checkout';pay.disabled=!projects.length;let paying=false;pay.addEventListener('click',async()=>{if(paying||!current()||!projectSelect.value)return;paying=true;pay.disabled=true;try{const result=await api('/api/domains/checkout',{workspace,id:order.id,project:projectSelect.value});const href=safeCheckoutURL(result.checkout_url);if(!href)throw new Error('Invalid domain checkout link');location.assign(href);}catch(e){if(current()){error(e);pay.disabled=false;}}finally{paying=false;}});row.append(pay);}
     const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel order';let busy=false;

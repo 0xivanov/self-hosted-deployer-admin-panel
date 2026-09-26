@@ -26,8 +26,8 @@ test('sandbox purchase status uses the explicit non-public connected label',()=>
 
 test('checkout links are restricted to Stripe checkout host',()=>{
  assert.match(js,/url\.protocol==='https:'&&url\.host==='checkout\.stripe\.com'/);
- assert.match(js,/const purchase=purchasesByOrder\.get\(order\.id\)/);
- assert.match(js,/if\(purchase\).*continue;/s);
+ assert.match(js,/data\.orders\.filter\(order=>!purchasesByOrder\.has\(order\.id\)\)/);
+ assert.match(js,/for\(const order of unpaidOrders\)/);
 });
 
 test('website domain handoff uses the created project id after refresh',()=>{
