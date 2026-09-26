@@ -142,13 +142,29 @@ def delete_one(db, project, kind):
     remove_private_files(project)
     purge_records(db,project)
 
+def wait_for_lock(lock, deadline):
+    """Wait briefly for reconciliation without extending the service timeout."""
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.25, remaining))
+
+
 def main():
     if os.geteuid()!=0: raise RuntimeError('must start as root')
     os.umask(0o077)
     with contextlib.ExitStack() as stack:
+        deadline = time.monotonic() + 20
         for path in (STATE/'provision.lock',STATE/'domains.lock'):
             lock=stack.enter_context(path.open('a+'))
-            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            if not wait_for_lock(lock, deadline):
+                print("Project cleanup deferred: reconciliation is busy", flush=True)
+                return
         account=pwd.getpwnam('launchstead-portal')
         os.setgroups([]);os.setegid(account.pw_gid);os.seteuid(account.pw_uid)
         with sqlite3.connect('file:'+str(DATABASE)+'?mode=rw',uri=True,timeout=5) as db:

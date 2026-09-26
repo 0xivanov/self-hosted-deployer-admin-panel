@@ -19,6 +19,16 @@ mod = load_module()
 
 
 class DeleteProjectsTest(unittest.TestCase):
+    def test_lock_contention_retries_until_available(self):
+        with mock.patch.object(mod.fcntl, 'flock', side_effect=[BlockingIOError(), None]) as lock, mock.patch.object(mod.time, 'monotonic', return_value=1), mock.patch.object(mod.time, 'sleep'):
+            self.assertTrue(mod.wait_for_lock(object(), 2))
+            self.assertEqual(lock.call_count, 2)
+
+    def test_lock_contention_has_bounded_wait(self):
+        with mock.patch.object(mod.fcntl, 'flock', side_effect=BlockingIOError()), mock.patch.object(mod.time, 'monotonic', return_value=2), mock.patch.object(mod.time, 'sleep') as sleep:
+            self.assertFalse(mod.wait_for_lock(object(), 2))
+            sleep.assert_not_called()
+
     def setUp(self):
         self.db = sqlite3.connect(":memory:", isolation_level=None)
         self.db.execute("PRAGMA foreign_keys=ON")

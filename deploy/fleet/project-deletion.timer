@@ -2,7 +2,8 @@
 Description=Reconcile requested Launchstead project deletions
 [Timer]
 OnBootSec=90
-OnUnitInactiveSec=15
+OnUnitInactiveSec=5
+AccuracySec=1
 Unit=project-deletion.service
 [Install]
 WantedBy=timers.target
