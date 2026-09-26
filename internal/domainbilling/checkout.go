@@ -185,7 +185,7 @@ func validSessionID(id string) bool {
 
 func parseReturnURL(raw string) *url.URL {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || (u.RawQuery != "" && u.RawQuery != "domain_checkout=return") || u.ForceQuery || u.Fragment != "" {
 		return nil
 	}
 	return u

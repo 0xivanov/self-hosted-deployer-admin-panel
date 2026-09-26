@@ -29,3 +29,10 @@ test('checkout links are restricted to Stripe checkout host',()=>{
  assert.match(js,/const purchase=purchasesByOrder\.get\(order\.id\)/);
  assert.match(js,/if\(purchase\).*continue;/s);
 });
+
+test('website domain handoff uses the created project id after refresh',()=>{
+ assert.match(js,/const created=await api\('\/api\/projects'/);
+ assert.match(js,/await loadProjects\(\);if\(findDomain&&workspace===\$\('workspace'\)\.value&&created\?\.id\)/);
+ assert.doesNotMatch(js,/setTimeout\(async\(\)=>\{try\{const data=await api\('\/api\/projects\?workspace=/);
+ assert.match(js,/domainPurchaseGeneration/);
+});

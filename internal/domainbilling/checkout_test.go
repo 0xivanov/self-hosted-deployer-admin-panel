@@ -171,3 +171,11 @@ func TestProviderErrorsAreSanitized(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPortalDomainReturnURL(t *testing.T) {
+	c, err := NewTestClient("sk_test_fixture_key", "https://portal.example/?domain_checkout=return", "https://portal.example/?domain_checkout=return")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+}
