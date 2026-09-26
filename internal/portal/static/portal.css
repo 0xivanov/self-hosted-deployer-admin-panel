@@ -324,6 +324,49 @@ input::file-selector-button{background:var(--surface);color:var(--ink);border-co
 .github-deployment-row span{overflow-wrap:anywhere;color:var(--muted)}
 .github-deployment-row small{color:var(--muted);white-space:nowrap}
 .github-deployment-row p{grid-column:1/-1;margin:0;font-size:11px}
+
+/* Project workspaces use one section control and reserve green for success. */
+.notice{background:#eaf0ff;color:#244b9b;border-color:#cbd8f3}
+.project-status{background:var(--surface-soft);color:var(--muted);border-color:var(--line)}
+#billing-return-message{background:var(--surface-soft);color:var(--ink)}
+.operation-progress progress{accent-color:#245cd6;background:#d8dfeb}
+.operation-progress progress::-webkit-progress-bar{background:#d8dfeb}
+.operation-progress progress::-webkit-progress-value{background:#245cd6}
+.operation-progress progress::-moz-progress-bar{background:#245cd6}
+.operation-progress progress:indeterminate{background:linear-gradient(90deg,#d8dfeb 0%,#245cd6 45%,#d8dfeb 70%);background-size:200% 100%}
+.workflow-steps .current{background:#245cd6;color:#fff}
+.workflow-steps li.current::after{color:#245cd6}
+.workflow-steps .complete{background:var(--accent-soft);color:var(--accent)}
+.project-section-label{display:grid;gap:6px;margin:0;min-width:min(100%,320px);font-size:14px;color:var(--ink)}
+.project-section-select{min-height:44px;margin:0;font-size:14px}
+.website-detail-links{align-items:end;justify-content:space-between;border-top:0;border-bottom:1px solid var(--line);padding:0 0 18px;margin:0 0 20px}
+.website-detail-actions{display:flex;align-items:center;min-height:44px}
+.website-detail-actions button{min-height:44px;padding:10px 14px;font-size:14px}
+.website-summary-address{font-size:14px}
+.showing-website .project{max-width:1120px;background:transparent;border:0;padding:0;box-shadow:none}
+.showing-website .project-heading{margin-bottom:16px;padding:20px 0;border-bottom:1px solid var(--line)}
+.showing-website .project-heading strong{font-size:30px}
+.showing-website .project-heading-info>span{font-size:14px}
+.showing-website .project-workflow{padding:24px;background:var(--surface);border-color:var(--line)}
+.showing-website .project-workflow h3{font-size:22px}
+.showing-website .project-workflow p,.project details p{font-size:14px;line-height:1.6}
+.showing-website .project details>summary{font-size:14px;padding:16px 0 8px}
+.showing-website .project details button,.showing-website .project details form button{font-size:14px;min-height:40px}
+.showing-website .project-runtime-logs pre{font-size:13px}
+.projects.is-empty{display:block;grid-column:1/-1}
+.workspace-empty-card{max-width:800px;margin:0 auto;padding:32px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.workspace-empty-card h3{margin:0 0 8px;font-size:22px;color:var(--ink)}
+.workspace-empty-card>p{max-width:58ch;font-size:16px;line-height:1.5;color:var(--muted)}
+.workspace-empty-card .new-project-details{max-width:100%;width:100%;margin-top:20px}
+.workspace-empty-card .new-project-details>summary{min-height:48px;font-size:14px}
+@media(max-width:600px){.website-detail-links{align-items:stretch;flex-direction:column}.project-section-label{min-width:0}.website-detail-actions{justify-content:stretch}.website-detail-actions button{width:100%}.showing-website .project-heading strong{font-size:26px}.workspace-empty-card{padding:20px}}
+:root[data-theme=dark] .notice{background:#1d2d49;color:#d6e2ff;border-color:#394e74}
+:root[data-theme=dark] .operation-progress progress{background:#35435c}
+:root[data-theme=dark] .operation-progress progress::-webkit-progress-bar{background:#35435c}
+:root[data-theme=dark] .operation-progress progress::-moz-progress-bar{background:#5f8ef0}
+:root[data-theme=dark] .operation-progress progress::-webkit-progress-value{background:#5f8ef0}
+:root[data-theme=dark] .workflow-steps .current{background:#245cd6;color:#fff}
+:root[data-theme=dark] .workflow-steps li.current::after{color:#8eb1ff}
 @media(max-width:600px){.client-access-row{align-items:flex-start;flex-direction:column}}
 
 .github-access-guide{display:grid;gap:10px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft)}

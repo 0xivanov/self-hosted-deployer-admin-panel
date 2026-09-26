@@ -3,3 +3,18 @@
 @media (max-width:700px){.sidebar{position:fixed;z-index:4;inset:0 auto 0 0;transform:translateX(-100%);transition:transform .2s ease;width:244px}.sidebar.is-open{transform:translateX(0)}.mobile-menu{display:block;font-size:18px;margin-right:12px}.topbar{height:58px;padding:0 16px}.page-wrap{padding:27px 16px 45px}.page-heading h1{font-size:23px}.section-heading{margin-top:35px;align-items:flex-start}.section-heading .button{white-space:nowrap}.stats-grid{gap:9px}.stat-card{padding:14px}.stat-value{font-size:19px}.stat-label{font-size:10px}.content-grid{gap:14px}.card-header{padding:16px}.table-wrap{margin:0 -1px}th,td{padding-left:14px;padding-right:14px}.connection-chip{font-size:10px}.detail-heading{margin-top:30px}.detail-heading h2{font-size:22px}.modal{padding:24px 20px}.breadcrumbs{font-size:12px}}
 
 [hidden]{display:none!important}.mode-banner{background:#edf3ff;border:1px solid #d7e4ff;color:#315da0}.button:disabled{opacity:.45;cursor:not-allowed}button:focus-visible,.clickable-row:focus-visible{outline:3px solid #82aafa;outline-offset:3px}.modal{max-height:90vh;overflow:auto}.detail-heading .muted{overflow-wrap:anywhere;max-width:70vw}@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* Connection state and readable supporting text follow the state, not a permanent brand color. */
+.connection-chip{color:#566274}
+.connection-chip[data-state="connected"]{color:#146c4c;background:#eaf8f2}
+.connection-chip[data-state="demo"]{color:#315da0;background:#edf3ff}
+.connection-chip[data-state="error"]{color:#b42335;background:#fdecef}
+.status-dot.is-connected{background:#16825d;box-shadow:0 0 0 3px rgba(22,130,93,.12)}
+.status-dot.is-demo{background:#3478f6;box-shadow:0 0 0 3px rgba(52,120,246,.12)}
+.status-dot.is-error{background:#b42335;box-shadow:0 0 0 3px rgba(180,35,53,.12)}
+.breadcrumbs,.stat-label,.runtime-label,th,td small,.empty-state,.loading-state{color:#566274}
+.application-summary{margin:20px 0 0}
+.application-summary .stat-card{box-shadow:none;padding:12px 16px}
+.application-summary .stat-label{font-size:12px}
+.application-summary .stat-value{font-size:18px}
+.modal :focus-visible{outline:3px solid #3478f6;outline-offset:3px}

@@ -23,7 +23,8 @@ function harness(){
  elements.projects.children=[...cards];
  const context=vm.createContext({$:id=>elements[id],document:{createElement:()=>new Element()},selectedWebsite:'',updateWebsiteSummary(){},setWebsiteText:(e,t)=>{e.textContent=t;}});
  const start=source.indexOf('function filterWebsiteCards()'),end=source.indexOf("$('back-to-websites').addEventListener",start);
- vm.runInContext(source.slice(start,end),context);
+ const sectionStart=source.indexOf('function setProjectSection('),sectionEnd=source.indexOf('function showWebsite(',sectionStart);
+ vm.runInContext(source.slice(sectionStart,sectionEnd)+source.slice(start,end),context);
  return {elements,cards,context,run:()=>context.filterWebsiteCards()};
 }
 test('client, status, type and search filters combine without replacing cards',()=>{
