@@ -223,3 +223,56 @@ Review verification: focused NameSilo, quote and customer-portal tests; domain
 integration tests including persisted sandbox evidence and environment mismatch;
 portal JavaScript tests; Go vet and customer-portal build. This checkpoint is
 source-only. Production domain search remains disabled.
+
+### September 26: sandbox registration and renewal transport
+
+`internal/namesilo.SandboxWriter` now supports one-year registration and renewal
+against OTE only. It is separate from the quote client and is not wired into
+customer checkout. Registration requires a prevalidated contact profile, sets
+privacy on, explicitly disables registrar automatic renewal, and uses the two
+NameSilo sandbox nameservers. No production endpoint override exists.
+
+The [registration contract](https://www.namesilo.com/api-reference/pages?uid=domains/register-domain)
+defines codes 301/302 as successful registrations with nameserver/contact
+fallback. The adapter reports these as completed mutations requiring review,
+not failures that can be resubmitted. Unexpected, truncated, duplicate or
+mismatched responses and transport errors have an unknown outcome. Errors never
+include credential-bearing request URLs or registrar bodies.
+
+NameSilo requires GET even for mutations. The writer disables connection reuse,
+redirects and proxies to avoid Go's retry of GET on a stale reused connection.
+No application retry loop is used. `ExecuteOnce` synchronizes a private attempt
+record and its containing directory before dispatch. Repeating the same attempt
+replays its completed receipt; a partial or uncertain attempt requires operator
+reconciliation. The journal contains a request digest and normalized outcome,
+not the API key or contact details. This is an operator sandbox tool, not the
+future transactional customer fulfillment database.
+
+The `cmd/namesilo-sandbox` tool requires a private JSON configuration containing
+`secret_key` and a prevalidated sandbox `contact_id`, a private existing attempt
+directory, an explicit operation and domain, and `--apply`. Retain the same
+attempt file after failures. Never choose another file to retry an unknown
+operation. Each genuinely new renewal needs its own attempt identity only after
+confirming the previous renewal's outcome. Run from the registrar-allowed VPS IP.
+Do not install this as an automatic production worker.
+
+Focused checks cover mutation defaults, fallback success, malformed/provider
+responses, no repeat dispatch, redacted errors and persisted recovery across a
+new writer instance. Race checks, vet and the operator command build pass.
+No OTE registration or renewal was executed in this checkpoint; fixtures exercise
+the documented response contracts. No production service or database changed.
+
+Before real fulfillment:
+
+- Exercise registration and renewal in OTE with a sandbox contact profile, then
+  verify ownership, expiry and fallback responses using account domain records.
+- Persist environment-separated customer domain operations, contact consent,
+  payment identity and registrar reconciliation in the portal database.
+- Add the customer contact form and payment-confirmed fulfillment worker, with
+  visible unknown/review outcomes and no automatic duplicate registrations.
+- Implement renewal quotes, reminders and customer consent. The
+  [renewal API](https://www.namesilo.com/api-reference/pages?uid=domains/renew-domain)
+  can perform restoration: disable that behavior in the provider account and
+  check domain status/expiry before a future live renewal.
+- Confirm real price/currency contracts and live payment readiness before
+  exposing domain purchase or renewal checkout.

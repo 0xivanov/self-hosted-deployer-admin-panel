@@ -237,3 +237,11 @@ private startup configuration, sandbox labels and stored environment checks in
 prepared domain orders. No schema migration. Source reviewed with focused domain
 integration checks; not deployed or configured in production. Registration,
 renewal, payment fulfillment and live-provider activation remain outstanding.
+
+September 26 domain follow-up: sandbox-only registration/renewal transport and an
+operator command are implemented, with persistent attempt receipts to prevent
+repeating uncertain operations after restart. Documented successful fallback
+responses require review. Focused transport/recovery tests and race checks pass.
+No provider mutation or production rollout was performed. Customer fulfillment,
+contact collection, payment linkage, provider reconciliation and renewal
+reminders remain pending; this is not live domain-sales readiness.
