@@ -242,6 +242,13 @@ async function renderProjectDomains(card,project,role,version){
  const details=disclosure('Connect a domain','project-domains');details.open=existing?existing.open:state.open===true;
  const summary=details.querySelector('summary');summary.addEventListener('click',()=>{state.open=!details.open;projectDomainStates.set(project.id,state);});
  const content=document.createElement('div');content.className='domain-content';details.append(content);
+ if(role==='owner'&&domainQuotes){
+  const find=document.createElement('button');find.type='button';find.className='button button-light';find.textContent='Find a new domain';
+  find.addEventListener('click',()=>{if(version!==generation||workspace!==$('workspace').value)return;selectWorkspaceView('domains');$('domain-panel').scrollIntoView({behavior:'smooth',block:'start'});$('domain-name').focus({preventScroll:true});});
+  const hint=document.createElement('p');hint.className='muted';hint.textContent='Need a domain? Search sandbox availability and prepare a test order. Checkout and registration are not available yet.';
+  content.append(find,hint);
+ }
+
  try{
   const data=await api('/api/project-domains?project='+encodeURIComponent(project.id));
   if(version!==generation||workspace!==$('workspace').value||card.dataset.deleting==='true')return;
