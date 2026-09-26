@@ -199,6 +199,13 @@ func (s *Store) CancelDomainOrder(ctx context.Context, token, workspace, id stri
 	if order.State == "canceled" {
 		return order, tx.Commit()
 	}
+	var purchases int
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM sandbox_domain_purchases WHERE order_id=?", id).Scan(&purchases); err != nil {
+		return order, err
+	}
+	if purchases != 0 {
+		return order, ErrDomainOrderConflict
+	}
 	if order.State != "awaiting_payment" {
 		return order, ErrDomainOrderConflict
 	}

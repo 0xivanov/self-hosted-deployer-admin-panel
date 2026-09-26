@@ -26,6 +26,7 @@ import (
 var webAssets embed.FS
 
 type HTTPOptions struct {
+	DomainPurchases           *DomainPurchases
 	GitHubAutoDeploy          bool
 	GitHubWebhookSecret       string
 	GitHubApp                 GitHubAccessProvider
@@ -66,6 +67,7 @@ type attemptWindow struct {
 	count int
 }
 type HTTP struct {
+	domainPurchases           *DomainPurchases
 	githubAutoDeploy          bool
 	githubWebhook             http.Handler
 	githubApp                 GitHubAccessProvider
@@ -282,7 +284,7 @@ func NewHTTP(store *Store, opts HTTPOptions) (*HTTP, error) {
 	if opts.Merchant == nil {
 		httpMerchantMode = ""
 	}
-	return &HTTP{githubAutoDeploy: opts.GitHubAutoDeploy, githubWebhook: githubWebhook, githubApp: opts.GitHubApp, githubOAuth: opts.GitHubOAuth, githubFlows: githubBrowserFlows{starts: map[string]githubBrowserFlow{}, selections: map[string]githubBrowserFlow{}}, containerEnvironments: opts.ContainerEnvironments, containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, merchantMode: httpMerchantMode, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, billingEnabled: billingEnabled, billingMode: billingMode, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
+	return &HTTP{domainPurchases: opts.DomainPurchases, githubAutoDeploy: opts.GitHubAutoDeploy, githubWebhook: githubWebhook, githubApp: opts.GitHubApp, githubOAuth: opts.GitHubOAuth, githubFlows: githubBrowserFlows{starts: map[string]githubBrowserFlow{}, selections: map[string]githubBrowserFlow{}}, containerEnvironments: opts.ContainerEnvironments, containerCredentials: opts.ContainerCredentials, containerRegistryResolver: opts.ContainerRegistryResolver, containerHosting: opts.ContainerHosting, containerProjects: containerProjects, containerProjectLookup: opts.ContainerProjectLookup, containerResolver: resolverImage, runtimeLogs: opts.RuntimeLogs, customDomainResolver: resolver, merchantWebhook: merchantWebhook, merchantMode: httpMerchantMode, shopAttempts: map[string]attemptWindow{}, merchant: opts.Merchant, merchantCountries: append([]string(nil), opts.MerchantCountries...), nodeProjects: nodeProjects, nodeProjectLookup: opts.NodeProjectLookup, domainQuotes: opts.DomainQuotes, domainMarkupMinor: opts.DomainMarkupMinor, domainAttempts: map[string]attemptWindow{}, billingManagement: opts.BillingManagement, billingWebhook: webhook, billingEnabled: billingEnabled, billingMode: billingMode, publicationSites: lookup, mail: opts.Mail, signup: opts.Signup, signupAllowed: opts.SignupAllowed, store: store, origin: opts.Origin, host: u.Host, cookie: cookie, development: opts.Development, slots: make(chan struct{}, 8), attempts: map[string]attemptWindow{}}, nil
 }
 
 func (h *HTTP) nodeProjectSnapshot() map[string]NodeProjectConfig {
@@ -472,7 +474,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/api/config" && r.Method == "GET" {
 		_, githubImports := h.githubApp.(GitHubSourceProvider)
 		_, githubInstallation := h.githubApp.(GitHubInstallationProvider)
-		httpJSON(w, map[string]any{"github_auto_deploy": h.githubAutoDeploy, "github_installation": githubInstallation, "github_imports": githubImports, "github_connections": h.githubApp != nil, "container_hosting": h.containerHosting, "client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_mode": h.merchantMode, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "domain_environment": domainEnvironment(h.domainQuotes), "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "billing_enabled": h.billingEnabled, "billing_mode": h.billingMode, "test_billing": h.billingEnabled && h.billingMode == "test", "billing_management": h.billingManagement != nil})
+		httpJSON(w, map[string]any{"github_auto_deploy": h.githubAutoDeploy, "github_installation": githubInstallation, "github_imports": githubImports, "github_connections": h.githubApp != nil, "container_hosting": h.containerHosting, "client_invitations": h.mail != nil, "merchant": h.merchant != nil, "merchant_mode": h.merchantMode, "merchant_countries": h.merchantCountries, "domain_quotes": h.domainQuotes != nil, "domain_checkout": h.domainPurchases != nil, "domain_environment": domainEnvironment(h.domainQuotes), "signup": h.signup, "invite_only": h.signupAllowed != nil, "account_mail": h.mail != nil, "billing_enabled": h.billingEnabled, "billing_mode": h.billingMode, "test_billing": h.billingEnabled && h.billingMode == "test", "billing_management": h.billingManagement != nil})
 		return
 	}
 	if h.mail != nil && r.Method == "POST" && (r.URL.Path == "/api/register" || r.URL.Path == "/api/verify" || r.URL.Path == "/api/verification/resend" || r.URL.Path == "/api/password/forgot" || r.URL.Path == "/api/password/reset") {

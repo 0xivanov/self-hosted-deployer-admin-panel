@@ -11,6 +11,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/domainbilling"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/fleetlogs"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/githubdeploy"
 	"github.com/0xivanov/self-hosted-deployer-admin-panel/internal/hostingbilling"
@@ -301,6 +302,7 @@ func run() error {
 	if management != nil {
 		managementProvider = management
 	}
+	var domainPurchases *portal.DomainPurchases
 	var domainReader portal.DomainQuoteReader
 	var domainMarkup int64
 	if *sandboxDomainFile != "" {
@@ -309,8 +311,13 @@ func run() error {
 			return errors.New("sandbox domain configuration unavailable")
 		}
 		var cfg struct {
-			Secret string `json:"secret_key"`
-			Markup int64  `json:"markup_minor"`
+			Secret    string `json:"secret_key"`
+			Markup    int64  `json:"markup_minor"`
+			Checkout  bool   `json:"checkout_enabled"`
+			StripeKey string `json:"stripe_secret_key"`
+			Contact   string `json:"contact_id"`
+			Target    string `json:"target_ip"`
+			Attempts  string `json:"attempts_directory"`
 		}
 		decoder := json.NewDecoder(bytes.NewReader(raw))
 		decoder.DisallowUnknownFields()
@@ -324,6 +331,30 @@ func run() error {
 		defer client.Close()
 		domainReader = client
 		domainMarkup = cfg.Markup
+		if cfg.Checkout {
+			if cfg.Markup != 0 || cfg.Contact == "" || net.ParseIP(cfg.Target) == nil || !filepath.IsAbs(cfg.Attempts) {
+				return errors.New("invalid sandbox checkout settings")
+			}
+			if err = os.MkdirAll(cfg.Attempts, 0700); err != nil {
+				return err
+			}
+			info, e := os.Lstat(cfg.Attempts)
+			if e != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+				return errors.New("sandbox attempts directory must be private")
+			}
+			payment, e := domainbilling.NewTestClient(cfg.StripeKey, *origin+"/?domain_checkout=return", *origin+"/?domain_checkout=return")
+			if e != nil {
+				return e
+			}
+			defer payment.Close()
+			writer, e := namesilo.NewSandboxWriter(cfg.Secret)
+			if e != nil {
+				return e
+			}
+			defer writer.Close()
+			domainPurchases = portal.NewDomainPurchases(store, client, payment, &sandboxRegistrar{reader: client, writer: writer, contact: cfg.Contact, directory: cfg.Attempts, target: cfg.Target})
+		}
+
 	}
 	var merchantProvider portal.MerchantProvider
 	var merchantCountries []string
@@ -363,7 +394,7 @@ func run() error {
 		}
 		signupAllowed = portal.SignupAllowlist(*signupAllowlist)
 	}
-	opts := portal.HTTPOptions{DomainQuotes: domainReader, DomainMarkupMinor: domainMarkup, MerchantMode: selectedMerchantMode, MerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, BillingWebhookSecret: webhookSecret, BillingMode: selectedBillingMode, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
+	opts := portal.HTTPOptions{DomainPurchases: domainPurchases, DomainQuotes: domainReader, DomainMarkupMinor: domainMarkup, MerchantMode: selectedMerchantMode, MerchantWebhookSecret: merchantWebhookSecret, Merchant: merchantProvider, MerchantCountries: merchantCountries, NodeProjects: nodeProjects, BillingManagement: managementProvider, BillingWebhookSecret: webhookSecret, BillingMode: selectedBillingMode, Origin: *origin, Development: *demo, Mail: accountMail, Signup: *signup, SignupAllowed: signupAllowed}
 	if githubApp != nil {
 		opts.GitHubApp = githubApp
 		opts.GitHubOAuth = githubOAuth
@@ -421,6 +452,11 @@ func run() error {
 	server := &http.Server{Handler: handler, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if domainPurchases != nil {
+		done := make(chan struct{})
+		go func() { defer close(done); domainPurchases.Run(ctx) }()
+		defer func() { stop(); <-done }()
+	}
 	if githubApp != nil {
 		done := make(chan struct{})
 		go func() {

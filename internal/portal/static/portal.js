@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let csrf='',workspaces=[],generation=0,flow='',billingEnabled=false,billingMode='test',billingManagement=false,inviteOnly=false,clientInvitations=false,githubConnections=false,githubImports=false,githubInstallation=false,githubAutoDeploy=false,billingGeneration=0,merchantEnabled=false,merchantMode='test',merchantCountries=[],merchantGeneration=0,productGeneration=0,merchantOrdersGeneration=0,domainQuotes=false,domainOrderGeneration=0,domainExpiryTimer;
+let csrf='',workspaces=[],generation=0,flow='',billingEnabled=false,billingMode='test',billingManagement=false,inviteOnly=false,clientInvitations=false,githubConnections=false,githubImports=false,githubInstallation=false,githubAutoDeploy=false,billingGeneration=0,merchantEnabled=false,merchantMode='test',merchantCountries=[],merchantGeneration=0,productGeneration=0,merchantOrdersGeneration=0,domainQuotes=false,domainCheckout=false,domainOrderGeneration=0,domainExpiryTimer,domainPurchasePollTimer=null,domainPurchasePollCount=0,selectedProjectForDomain='';
 let nodeStatusCards=new Map(),nodeStatusState=null;
 let containerStatusCards=new Map(),containerStatusState=null;
 let staticStatusCards=new Map(),staticStatusState=null;
@@ -28,7 +28,8 @@ function selectWorkspaceView(view){
 }
 function configureWorkspaceNavigation(selected){
  const owner=selected?.role==='owner';
- for(const [view,available] of Object.entries({projects:true,shared:true,billing:owner&&billingEnabled,team:owner,domains:owner&&domainQuotes,store:owner&&merchantEnabled}))$('nav-'+view).hidden=!available;
+ $('domain-panel').hidden=!(owner&&(domainQuotes||domainCheckout));
+ for(const [view,available] of Object.entries({projects:true,shared:true,billing:owner&&billingEnabled,team:owner,domains:owner&&(domainQuotes||domainCheckout),store:owner&&merchantEnabled}))$('nav-'+view).hidden=!available;
  $('new-project-details').hidden=!selected||selected.role==='viewer';
  selectWorkspaceView(currentView);
 }
@@ -46,6 +47,7 @@ document.addEventListener('visibilitychange',refreshOpenGithubImports);
 
 const fragment=new URLSearchParams(location.hash.slice(1));
 const githubCallbackParams=new URLSearchParams(location.search);
+const domainCheckoutReturn=githubCallbackParams.get('domain_checkout')==='return';
 let githubCallbackCode=githubCallbackParams.get('code')||'';
 let githubCallbackState=githubCallbackParams.get('state')||'';
 const githubCallbackError=githubCallbackParams.get('error')||'';
@@ -68,6 +70,7 @@ async function submit(form,fn){$('error').hidden=true;const button=form.querySel
 $('login-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{try{await api('/api/login',{email:$('email').value,password:$('password').value});}finally{$('password').value='';}await loadSession();if(githubConnections&&(githubCallbackCode||githubCallbackState||githubCallbackError))await completeGithubCallback();});});
 $('project-form').addEventListener('submit',event=>{event.preventDefault();submit(event.currentTarget,async()=>{const version=generation;const workspace=$('workspace').value;await api('/api/projects',{workspace,name:$('project-name').value,kind:$('project-kind').value});if(version!==generation)return;$('project-name').value='';$('new-project-details').open=false;const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;renderProjectAvailability(data.availability);const role=workspaces.find(w=>w.id===workspace)?.role;for(const project of data.projects){if(!projectCard(project)){if(!$('projects').querySelector('.project'))$('projects').replaceChildren();await appendProject(project,role,version);}}startNodeStatusRefresh(version,workspace);});});
 $('workspace').addEventListener('change',()=>{selectedWebsite='';loadProjects().catch(error);});
+$('project-form').addEventListener('submit',event=>{if(!domainCheckout||!$('project-domain-checkout').checked)return;const workspace=$('workspace').value;const name=$('project-name').value.trim();const version=generation;setTimeout(async()=>{try{const data=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(version!==generation)return;const project=data.projects.find(item=>item.name===name);if(!project)return;selectedProjectForDomain=project.id;const selected=$('domain-selected-project');selected.textContent='Finding a domain for '+project.name+'.';selected.hidden=false;selectWorkspaceView('domains');loadDomainOrders(workspace,version);loadDomainPurchases(workspace,version);$('domain-name').focus({preventScroll:true});}catch(e){if(version===generation)error(e);}},250);});
 $('logout').addEventListener('click',async()=>{try{await api('/api/logout',{});signedOut();}catch(e){error(e);}});
 function showFlow(kind){
  flow=kind;$('error').hidden=true;$('login').hidden=true;$('workspace-view').hidden=true;$('account-flow').hidden=false;$('account-form').hidden=false;
@@ -93,10 +96,11 @@ $('account-form').addEventListener('submit',event=>{event.preventDefault();submi
  });});
 async function initialize(){
  containerHosting=(await api('/api/config')).container_hosting===true;$('container-kind').hidden=!containerHosting;$('container-filter').hidden=!containerHosting;
+ const checkoutConfig=await api('/api/config');domainCheckout=checkoutConfig.domain_checkout===true;$('project-domain-checkout-label').hidden=!domainCheckout;$('domain-purchases-heading').hidden=!domainCheckout;$('domain-purchases').hidden=!domainCheckout;$('domain-purchases-note').hidden=!domainCheckout;
  const config=await api('/api/config');domainQuotes=config.domain_quotes===true;const domainNotice=$('domain-mode-notice');if(domainNotice)domainNotice.textContent=config.domain_environment==='sandbox'?'Sandbox domain search: .com and .net only. Availability and prices are test data, not real domain offers.':'Search for a .com, .net or .org domain for your website.';billingEnabled=config.billing_enabled===true||config.test_billing===true;billingMode=config.billing_mode==='live'||config.billing_mode==='test'?config.billing_mode:'test';billingManagement=config.billing_management===true;inviteOnly=config.invite_only===true;clientInvitations=config.client_invitations===true;githubConnections=config.github_connections===true;githubImports=config.github_imports===true;githubInstallation=config.github_installation===true;githubAutoDeploy=config.github_auto_deploy===true;merchantEnabled=config.merchant===true;merchantMode=config.merchant_mode==='live'?'live':config.merchant_mode==='test'?'test':'';const merchantModeNotice=$('merchant-mode-notice');if(merchantModeNotice)merchantModeNotice.textContent=merchantMode==='live'?'Live merchant payments are enabled. Payment status is confirmed by Stripe before fulfillment.':merchantMode==='test'?'Test merchant accounts only. No real payments are processed.':'Merchant payment mode is unavailable. Contact the operator.';const merchantProductNote=$('merchant-product-note');if(merchantProductNote)merchantProductNote.textContent=merchantMode==='live'?'Share a product purchase link to offer a live payment through checkout.':merchantMode==='test'?'Share a product purchase link to try website checkout with test payments.':'Product checkout is unavailable until a payment mode is configured.';merchantCountries=Array.isArray(config.merchant_countries)?config.merchant_countries.filter(country=>typeof country==='string'):[];$('preview-billing-status').textContent=!billingEnabled?'Hosting billing is disabled.':billingMode==='live'?'Hosting billing is live.':'Hosting billing is in test mode.';$('billing-notice').textContent=!billingEnabled?'Hosting billing is disabled.':billingMode==='live'?'Live billing is enabled for hosting.':'Test payments only. No real payment is collected.';$('open-signup').hidden=!config.signup;$('open-forgot').hidden=!config.account_mail;$('open-resend').hidden=!config.account_mail;$('registration-note').textContent=config.signup?(inviteOnly?'Registration is by invitation.':'Verify your email before signing in.'):'Registration is closed.';
  if(initialFlow==='invite'||initialFlow==='client-invite'){try{await loadSession();}catch(e){signedOut();if(e.status===401){$('login-copy').textContent=initialFlow==='client-invite'?'Sign in with the invited email to accept read-only client access. New users must register and verify their email first.':'Sign in with the invited email to accept. New users must register and verify their email first.';if(initialFlow==='client-invite'&&config.signup)$('open-signup').hidden=false;}else throw e;}return;}
  if(initialFlow){if(!config.account_mail)throw new Error('Account recovery is unavailable. Contact the operator.');showFlow(initialFlow);return;}
- try{await loadSession();}catch(e){signedOut();if(e.status!==401)throw e;return;}
+ try{await loadSession();if(domainCheckoutReturn&&domainCheckout){selectWorkspaceView('domains');loadDomainOrders($('workspace').value,generation);}}catch(e){signedOut();if(e.status!==401)throw e;return;}
  if(githubConnections&&(githubCallbackCode||githubCallbackState||githubCallbackError)){try{await completeGithubCallback();}catch(e){error(e);}}
 }
 initialize().catch(error);
@@ -1199,7 +1203,7 @@ $('billing-refresh').addEventListener('click',()=>{const workspace=$('workspace'
 
 
 function resetDomainPanel(){
- domainOrderGeneration++;$('domain-orders').replaceChildren();
+ domainOrderGeneration++;clearTimeout(domainPurchasePollTimer);domainPurchasePollTimer=null;domainPurchasePollCount=0;selectedProjectForDomain='';$('domain-orders').replaceChildren();$('domain-purchases').replaceChildren();$('domain-selected-project').hidden=true;
  clearTimeout(domainExpiryTimer);
  $('domain-result').replaceChildren();
  $('domain-name').value='';
@@ -1254,21 +1258,41 @@ async function loadDomainOrders(workspace,version){
  const current=()=>version===generation&&request===domainOrderGeneration&&workspace===$('workspace').value;
  try{
   const data=await api('/api/domains/orders?workspace='+encodeURIComponent(workspace));if(!current())return;
+  let purchasesByOrder=new Map();
+  if(domainCheckout){const purchaseData=await api('/api/domains/purchases?workspace='+encodeURIComponent(workspace));if(!current())return;for(const purchase of Array.isArray(purchaseData.purchases)?purchaseData.purchases:[]){if(purchase.order_id)purchasesByOrder.set(purchase.order_id,purchase);}}
+  let projects=[];if(domainCheckout){const projectData=await api('/api/projects?workspace='+encodeURIComponent(workspace));if(!current())return;projects=Array.isArray(projectData.projects)?projectData.projects:[];}
   const content=$('domain-orders');content.replaceChildren();
-  if(!data.orders.length){content.textContent='No domain orders yet.';return;}
+  if(!data.orders.length){content.textContent='No domain orders yet.';if(domainCheckout)loadDomainPurchases(workspace,version);return;}
   for(const order of data.orders){
    const row=document.createElement('div');row.className='project';
    const title=document.createElement('strong');title.textContent=order.offer.domain+(order.offer.environment==='sandbox'?' · Sandbox test':'');row.append(title);
    const detail=document.createElement('p');detail.textContent=billingAmount(order.offer.registration_minor,order.offer.currency)+' for one year · '+(order.state==='canceled'?'Canceled':'Awaiting payment setup. Not registered.');row.append(detail);
+   const purchase=purchasesByOrder.get(order.id);
+   if(purchase){const progress=document.createElement('p');progress.className='domain-purchase-progress';progress.textContent='Purchase '+purchaseStateLabel(purchase.state)+(purchase.message?' · '+purchase.message:'');row.append(progress);content.append(row);continue;}
    if(order.state==='awaiting_payment'){
+    if(domainCheckout){const projectLabel=document.createElement('label');projectLabel.textContent='Website project';const projectSelect=document.createElement('select');projectSelect.setAttribute('aria-label','Website project for domain purchase');for(const project of projects){const option=document.createElement('option');option.value=project.id;option.textContent=project.name;if(project.id===selectedProjectForDomain)option.selected=true;projectSelect.append(option);}projectLabel.append(projectSelect);row.append(projectLabel);const pay=document.createElement('button');pay.type='button';pay.className='button button-dark';pay.textContent='Pay with Stripe test checkout';pay.disabled=!projects.length;let paying=false;pay.addEventListener('click',async()=>{if(paying||!current()||!projectSelect.value)return;paying=true;pay.disabled=true;try{const result=await api('/api/domains/checkout',{workspace,id:order.id,project:projectSelect.value});const href=safeCheckoutURL(result.checkout_url);if(!href)throw new Error('Invalid domain checkout link');location.assign(href);}catch(e){if(current()){error(e);pay.disabled=false;}}finally{paying=false;}});row.append(pay);}
     const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel order';let busy=false;
     cancel.addEventListener('click',async()=>{if(busy||!current())return;busy=true;cancel.disabled=true;try{await api('/api/domains/orders/cancel',{workspace,id:order.id});if(current())await loadDomainOrders(workspace,version);}catch(e){if(current()){error(e);cancel.disabled=false;}}finally{busy=false;}});row.append(cancel);
    }
    content.append(row);
   }
+  if(domainCheckout)loadDomainPurchases(workspace,version);
  }catch(e){if(current()){$('domain-orders').textContent='Domain order history is unavailable.';error(e);}}
 }
 $('domain-orders-refresh').addEventListener('click',()=>{const workspace=$('workspace').value;if(domainQuotes&&workspaces.find(w=>w.id===workspace)?.role==='owner')loadDomainOrders(workspace,generation);});
+$('domain-orders-refresh').addEventListener('click',()=>{const workspace=$('workspace').value;if(domainCheckout&&workspaces.find(w=>w.id===workspace)?.role==='owner')loadDomainPurchases(workspace,generation);});
+$('nav-domains').addEventListener('click',()=>{const workspace=$('workspace').value;if(domainCheckout&&workspaces.find(w=>w.id===workspace)?.role==='owner')loadDomainPurchases(workspace,generation);});
+
+function purchaseStateLabel(state){return ({payment_pending:'Awaiting payment',registering:'Registering',connecting:'Connecting',connected:'Sandbox domain connected',needs_review:'Needs review'})[state]||'Status unavailable';}
+function safeCheckoutURL(value){try{const url=new URL(value);return url.protocol==='https:'&&url.host==='checkout.stripe.com'&&!url.username&&!url.password?url.href:'';}catch{return '';}}
+async function loadDomainPurchases(workspace,version){
+ if(!domainCheckout||version!==generation||workspace!==$('workspace').value)return;
+ const request=++domainOrderGeneration;const current=()=>version===generation&&request===domainOrderGeneration&&workspace===$('workspace').value;
+ try{const data=await api('/api/domains/purchases?workspace='+encodeURIComponent(workspace));if(!current())return;const content=$('domain-purchases');content.replaceChildren();const purchases=Array.isArray(data.purchases)?data.purchases:[];if(!purchases.length){content.textContent='No domain purchases yet.';return;}let pending=false;
+  for(const purchase of purchases){const row=document.createElement('div');row.className='project';const title=document.createElement('strong');title.textContent=domainText(purchase.domain)||'Sandbox domain';row.append(title);const detail=document.createElement('p');detail.textContent=purchase.message||purchaseStateLabel(purchase.state);row.append(detail);const state=document.createElement('span');state.className='domain-purchase-state domain-purchase-state-'+domainText(purchase.state);state.textContent=purchaseStateLabel(purchase.state);row.append(state);if(['payment_pending','registering','connecting'].includes(purchase.state))pending=true;if(purchase.state==='payment_pending'&&safeCheckoutURL(purchase.checkout_url)){const pay=document.createElement('a');pay.href=safeCheckoutURL(purchase.checkout_url);pay.target='_blank';pay.rel='noopener noreferrer';pay.className='primary-link';pay.textContent='Pay with Stripe test checkout';row.append(pay);}if(purchase.state==='payment_pending'||purchase.state==='needs_review'){const sync=document.createElement('button');sync.type='button';sync.textContent='Sync purchase';sync.addEventListener('click',async()=>{sync.disabled=true;try{await api('/api/domains/sync',{workspace,id:purchase.order_id});await loadDomainPurchases(workspace,version);}catch(e){error(e);sync.disabled=false;}});row.append(sync);}content.append(row);}
+  if(pending&&domainPurchasePollCount<12){clearTimeout(domainPurchasePollTimer);domainPurchasePollTimer=setTimeout(()=>{domainPurchasePollCount++;loadDomainPurchases(workspace,version);},5000);}
+ }catch(e){if(current()){$('domain-purchases').textContent='Domain purchase status is unavailable.';error(e);}}
+}
 
 // Portfolio controls only change visibility; deployment state remains server-owned.
 function setWebsiteText(element,text){if(element.textContent!==text)element.textContent=text;}

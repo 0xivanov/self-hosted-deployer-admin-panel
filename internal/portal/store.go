@@ -166,6 +166,9 @@ func OpenWithPaymentModes(path, mode, merchantMode string) (*Store, error) {
 	if err == nil {
 		err = s.migrateMerchantModes()
 	}
+	if err == nil {
+		err = s.migrateDomainPurchases()
+	}
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -183,7 +186,7 @@ func (s *Store) migrate() error {
 	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 56 {
+	if version > 57 {
 		return errors.New("portal database schema is newer than this binary")
 	}
 	if version == 0 {

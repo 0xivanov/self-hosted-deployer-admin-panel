@@ -36,6 +36,11 @@ func (h *HTTP) allowDomainQuote(account string) bool {
 
 // Reached after host/TLS, session, origin and CSRF checks. Orders do not register domains.
 func (h *HTTP) domainHTTP(w http.ResponseWriter, r *http.Request, token, account string) {
+	if r.URL.Path == "/api/domains/checkout" || r.URL.Path == "/api/domains/sync" || r.URL.Path == "/api/domains/purchases" {
+		h.domainPurchaseHTTP(w, r, token, account)
+		return
+	}
+
 	if h.domainQuotes == nil || (r.URL.Path != "/api/domains/quote" && r.URL.Path != "/api/domains/orders" && r.URL.Path != "/api/domains/orders/cancel") || r.URL.EscapedPath() != r.URL.Path {
 		httpError(w, 404, "Not found")
 		return

@@ -276,3 +276,40 @@ Before real fulfillment:
   check domain status/expiry before a future live renewal.
 - Confirm real price/currency contracts and live payment readiness before
   exposing domain purchase or renewal checkout.
+
+### Sandbox website purchase flow (schema 57)
+
+The sandbox checkout option now links a saved quote/order to an existing website
+owned by the same workspace. The website creation form can open domain search
+after creating the project. Stripe test checkout uses a one-time, exact server
+price. The portal independently retrieves the session and checks test mode,
+amount, currency, order metadata and paid completion before submitting OTE
+registration. The registrar uses a configured sandbox contact profile; customer
+contact collection remains a requirement for live sales.
+
+Schema 57 adds `sandbox_domain_purchases` only. Sandbox records are separate from
+public `project_domains`: an OTE registration does not prove public ownership and
+must never enter ACME issuance or replace a working customer hostname. Completed
+sandbox purchases retain their project association and NameSilo sandbox apex A
+record. Public DNS resolution and HTTPS are not possible for an OTE-only name.
+
+A portal background loop advances payment, registration and connection every
+15 seconds, independently of the browser. Stripe checkout creation reuses a
+stable idempotency key within 23 hours. NameSilo registration and DNS dispatch
+retain private durable attempt records. Unknown or fallback outcomes stop with
+`needs_review`; no repeat payment or blind registrar mutation is attempted.
+Payment status refresh requires an authenticated workspace owner. Order
+cancellation is refused after checkout processing starts. Removing a website
+retains the purchase history, with an empty project reference.
+
+Sandbox startup settings extend the private `--sandbox-domain-config` JSON:
+`checkout_enabled: true`, `stripe_secret_key` (sk_test only), `contact_id`,
+`target_ip`, and an absolute private `attempts_directory`. Markup must be zero
+for this test flow. Preserve the attempts directory with backups. All eight
+portal database consumers need compatible binaries for schema 57.
+
+Provider evidence: an OTE registration on September 26 returned success, and a
+subsequent account lookup confirmed contact 10994, privacy enabled, automatic
+renewal disabled and a one-year expiration. Apex A creation succeeded; the OTE
+DNS list uses host `@` for the apex. No real domain was purchased. Stripe test
+checkout remains separate from live billing credentials.
