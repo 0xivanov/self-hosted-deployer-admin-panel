@@ -18,3 +18,14 @@
 .application-summary .stat-label{font-size:12px}
 .application-summary .stat-value{font-size:18px}
 .modal :focus-visible{outline:3px solid #3478f6;outline-offset:3px}
+
+/* Shared art direction, with a distinct operator navigation rail. */
+:root{--ink:#18282a;--muted:#526369;--line:#dbe2e1;--white:#fff;font-size:15px}
+body{background:#f4f6f5;font-size:15px}.sidebar{width:216px;flex-shrink:0;background:#17262b;color:#e3edef}.sidebar .brand,.sidebar .nav-item{color:#e3edef}.sidebar-label,.sidebar-footer{color:#b6c8cb}.nav-item.is-active{background:#29434c;color:#fff}.brand-badge{color:#b6c8cb}
+.page-heading h1,.detail-heading h2{font-size:34px;line-height:1.16}.section-heading h2{font-size:20px}.card-header h3{font-size:16px}
+.button,button,input,select{min-height:44px;font-size:14px;border-radius:6px}.button-primary{background:#245cd6;border-color:#245cd6}.button-small{font-size:14px}.button:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #447ae3;outline-offset:3px}
+.eyebrow,.stat-label,.card-header .muted,.status-badge,.count-pill,.activity-item span,td small,.connection-chip{font-size:12px}.muted{font-size:15px;color:var(--muted)}th{font-size:12px;letter-spacing:.04em}td,td strong,.runtime-label,.runtime-summary strong,.activity-item strong{font-size:14px}.mono,.config-preview,.logs{font-size:12px}
+.card,.stat-card{box-shadow:none;border-radius:9px}.stat-value{font-variant-numeric:tabular-nums}.detail-grid{grid-template-columns:1fr}.detail-grid:has(>section:not([hidden])){margin-top:20px}.detail-grid:not(:has(>section:not([hidden]))){display:none}
+.application-sections{display:flex;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--line);margin-bottom:16px}.application-sections button{background:transparent;border:0;border-radius:0;border-bottom:2px solid transparent;padding:10px 14px;color:var(--muted);cursor:pointer}.application-sections button[aria-current="page"]{color:#245cd6;border-bottom-color:#245cd6;font-weight:700}
+.monitoring-empty{padding:24px;margin-top:24px}.monitoring-empty p{color:var(--muted);max-width:680px;line-height:1.6}#application-observation{font-size:12px;margin:16px 0 24px}.mode-banner{font-size:14px}.status-deploying,.status-running{background:#ecf1fc;color:#245cd6}.status-pending{background:#fff1d9;color:#805100}.status-unknown{background:#edf0f2;color:#526369}
+@media(max-width:700px){.page-wrap{padding:24px 20px 48px}.page-heading h1,.detail-heading h2{font-size:28px}.page-heading{flex-wrap:wrap}.sidebar{width:216px}.application-sections{gap:0}.application-sections button{font-size:14px;padding:10px}.runtime-summary div{display:block}.runtime-summary strong{display:block;text-align:left;max-width:none;margin-top:8px}.section-heading{flex-wrap:wrap}.stats-grid{grid-template-columns:1fr 1fr}.detail-heading .muted{max-width:100%}}

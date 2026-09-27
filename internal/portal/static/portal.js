@@ -220,7 +220,7 @@ function organizeProject(card){
  const children=[...card.children];const uploads=disclosure('Upload a new version','upload-details');const history=disclosure('Files & version history','project-history');
  let pastStatus=children.some(child=>child.classList.contains('project-workflow')||child.classList.contains('node-live'));
  for(const child of children){
-  if(child.classList.contains('website-summary')||child.classList.contains('website-detail-links')||child.classList.contains('project-heading')||child.classList.contains('node-live')||child.classList.contains('project-rename')||child.classList.contains('project-workflow'))continue;
+  if(child.classList.contains('project-overview')||child.classList.contains('project-statistics')||child.classList.contains('website-summary')||child.classList.contains('website-detail-links')||child.classList.contains('project-heading')||child.classList.contains('node-live')||child.classList.contains('project-rename')||child.classList.contains('project-workflow'))continue;
   if(child.tagName==='P'&&!pastStatus&&!child.textContent.startsWith('ZIP')){child.classList.add('project-status');pastStatus=true;continue;}
   if(child.tagName==='A'&&child.target==='_blank'){child.className='site-link';continue;}
   if(child.tagName==='BUTTON'&&child.textContent==='Refresh release status'){child.className='refresh-status';child.textContent='Refresh status';continue;}
@@ -732,7 +732,7 @@ function renderWorkflow(project,role,uploads,data,perform){
   const button=document.createElement('button');button.type='button';button.className='workflow-primary';button.textContent=flow.label;
   const note=document.createElement('p');note.className='workflow-error';note.hidden=true;note.setAttribute('role','alert');
   button.addEventListener('click',async()=>{
-   if(flow.action==='upload'){const section=panel.closest('.project')?.querySelector('.upload-details');if(section){section.open=true;section.scrollIntoView({behavior:'smooth',block:'center'});section.querySelector('input[type=file]')?.focus();}return;}
+   if(flow.action==='upload'){const section=panel.closest('.project')?.querySelector('.upload-details');if(section){setProjectSection(panel.closest('.project'),'versions');section.open=true;section.scrollIntoView({behavior:'smooth',block:'center'});section.querySelector('input[type=file]')?.focus();}return;}
    button.disabled=true;note.hidden=true;const pending=createProgress(flow.action==='build'?'Requesting build…':'Requesting publication…');panel.append(pending.box);
    try{await perform(flow);}catch(e){note.textContent=e.message||'Could not complete this action. Please try again.';note.hidden=false;}finally{pending.box.remove();button.disabled=false;}
   });panel.append(button,note);
@@ -1302,7 +1302,9 @@ async function loadDomainPurchases(workspace,version){
 function setWebsiteText(element,text){if(element.textContent!==text)element.textContent=text;}
 function setProjectSection(card,key){
  const sections={
-  publishing:['.project-workflow','.node-live','.project-status'],
+  overview:['.project-overview'],
+  statistics:['.project-statistics'],
+  publishing:['.project-workflow','.node-live','.project-status','.refresh-status','.site-link'],
   versions:['.upload-details','.project-history'],
   logs:['.project-runtime-logs'],
   domains:['.project-domains'],
@@ -1311,11 +1313,12 @@ function setProjectSection(card,key){
   settings:['.project-rename'],
   danger:['.project-danger']
  };
- const available=sections[key]?.some(selector=>card.querySelector(selector));const selected=available?key:'publishing';const targets=sections[selected];card.dataset.projectSection=selected;const select=card.querySelector('.project-section-select');if(select)select.value=selected;
+ const available=sections[key]?.some(selector=>card.querySelector(selector));const selected=available?key:'overview';const targets=sections[selected];card.dataset.projectSection=selected;const select=card.querySelector('.project-section-select');if(select)select.value=selected;
+ for(const button of card.querySelectorAll('.project-section-tabs button')){if(button.dataset.section===selected)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}
  for(const child of card.children){if(child.matches('.project-heading,.website-summary,.website-detail-links'))continue;child.hidden=!targets.some(selector=>child.matches(selector));}
 }
 function showWebsite(id){
- selectedWebsite=id;for(const card of $('projects').querySelectorAll(':scope > .project[data-project-id]'))if(id&&card.dataset.projectId===id)card.dataset.projectSection='publishing';filterWebsiteCards();
+ selectedWebsite=id;for(const card of $('projects').querySelectorAll(':scope > .project[data-project-id]'))if(id&&card.dataset.projectId===id)card.dataset.projectSection='overview';filterWebsiteCards();
  const target=id?projectCard({id}):$('website-search');
  if(target){if(id)target.setAttribute('tabindex','-1');target.focus({preventScroll:true});target.scrollIntoView({block:'start',behavior:'auto'});}
 }
@@ -1339,7 +1342,26 @@ function showWebsiteHandoff(card){
  const close=document.createElement('button');close.type='button';close.textContent='Close';close.addEventListener('click',()=>dialog.close());
  dialog.addEventListener('close',()=>dialog.remove());dialog.append(title,hint,text,feedback,copy,close);document.body.append(dialog);dialog.showModal();
 }
+function updateProjectOverview(card){
+ let overview=card.querySelector('.project-overview');
+ if(!overview){
+  overview=document.createElement('section');overview.className='project-overview';
+  const title=document.createElement('h3');title.textContent='Website overview';
+  const condition=document.createElement('p');condition.className='overview-condition';
+  const address=document.createElement('p');address.className='overview-address';
+  const action=document.createElement('button');action.type='button';action.className='button button-dark';action.textContent='Open publishing';action.addEventListener('click',()=>setProjectSection(card,'publishing'));
+  overview.append(title,condition,address,action);card.append(overview);
+  const statistics=document.createElement('section');statistics.className='project-statistics';
+  const heading=document.createElement('h3');heading.textContent='Traffic & reliability';const copy=document.createElement('p');copy.textContent='Monitoring is not connected for this website. Request counts, server errors, response time and external availability are not available yet.';const note=document.createElement('p');note.className='muted';note.textContent='No data does not mean zero traffic. Publishing status does not measure historical uptime.';statistics.append(heading,copy,note);card.append(statistics);
+ }
+ const workflow=card.querySelector('.project-workflow');
+ setWebsiteText(overview.querySelector('.overview-condition'),workflow?.querySelector('h3')?.textContent||card.querySelector('.project-status')?.textContent||'Website status unavailable');
+ const link=card.querySelector('.site-link');let address='No published address yet';if(link){try{address=new URL(link.href).hostname;}catch{}}
+ setWebsiteText(overview.querySelector('.overview-address'),address);
+ overview.dataset.tone=workflow?.dataset.tone||'idle';
+}
 function updateWebsiteSummary(card){
+ updateProjectOverview(card);
  let summary=card.querySelector(':scope > .website-summary');
  if(!summary){
   summary=document.createElement('div');summary.className='website-summary';
@@ -1363,14 +1385,16 @@ function updateWebsiteSummary(card){
   const label=document.createElement('label');label.className='project-section-label';label.textContent='Website section';
   const select=document.createElement('select');select.className='project-section-select';select.setAttribute('aria-label','Website section');
   const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose a section';select.append(placeholder);
-  const sections=[['Publishing','publishing',['.project-workflow','.node-live','.project-status']],['Files & version history','versions',['.upload-details','.project-history']],['Logs','logs',['.project-runtime-logs']],['Domains','domains',['.project-domains']],['GitHub','github',['.project-github']],['Client access','clients',['.project-clients']],['Settings','settings',['.project-rename']],['Danger zone','danger',['.project-danger']]];
+  const sections=[['Overview','overview',['.project-overview']],['Statistics','statistics',['.project-statistics']],['Publishing','publishing',['.project-workflow','.node-live','.project-status','.refresh-status','.site-link']],['Files & version history','versions',['.upload-details','.project-history']],['Logs','logs',['.project-runtime-logs']],['Domains','domains',['.project-domains']],['GitHub','github',['.project-github']],['Client access','clients',['.project-clients']],['Settings','settings',['.project-rename']],['Danger zone','danger',['.project-danger']]];
   for(const [name,key,selectors] of sections){const option=document.createElement('option');option.value=key;option.textContent=name;option.hidden=!selectors.some(selector=>card.querySelector(selector));select.append(option);}
-  select.addEventListener('change',()=>{const key=select.value;if(!key)return;setProjectSection(card,key);const selectors={publishing:'.project-workflow, .node-live, .project-status',versions:'.upload-details, .project-history',logs:'.project-runtime-logs',domains:'.project-domains',github:'.project-github',clients:'.project-clients',settings:'.project-rename',danger:'.project-danger'};const section=card.querySelector(selectors[key]);if(!section)return;if(section.tagName==='DETAILS')section.open=true;section.setAttribute('tabindex','-1');section.focus({preventScroll:true});section.scrollIntoView({block:'start',behavior:'auto'});});
-  label.append(select);const actions=document.createElement('div');actions.className='website-detail-actions';const share=document.createElement('button');share.type='button';share.textContent='Share summary';share.addEventListener('click',()=>showWebsiteHandoff(card));actions.append(share);links.append(label,actions);summary.after(links);
+  select.addEventListener('change',()=>{const key=select.value;if(!key)return;setProjectSection(card,key);const selectors={overview:'.project-overview',statistics:'.project-statistics',publishing:'.project-workflow, .node-live, .project-status',versions:'.upload-details, .project-history',logs:'.project-runtime-logs',domains:'.project-domains',github:'.project-github',clients:'.project-clients',settings:'.project-rename',danger:'.project-danger'};const section=card.querySelector(selectors[key]);if(!section)return;if(section.tagName==='DETAILS')section.open=true;section.setAttribute('tabindex','-1');section.focus({preventScroll:true});section.scrollIntoView({block:'start',behavior:'auto'});});
+  const tabs=document.createElement('nav');tabs.className='project-section-tabs';tabs.setAttribute('aria-label','Website sections');
+  for(const [name,key] of sections){const button=document.createElement('button');button.type='button';button.dataset.section=key;button.textContent=name;button.addEventListener('click',()=>{select.value=key;select.dispatchEvent(new Event('change'));});tabs.append(button);}
+  links.append(tabs);label.append(select);const actions=document.createElement('div');actions.className='website-detail-actions';const share=document.createElement('button');share.type='button';share.textContent='Share summary';share.addEventListener('click',()=>showWebsiteHandoff(card));actions.append(share);links.append(label,actions);summary.after(links);
  }
  const select=links.querySelector('.project-section-select');
- const selectors={publishing:['.project-workflow','.node-live','.project-status'],versions:['.upload-details','.project-history'],logs:['.project-runtime-logs'],domains:['.project-domains'],github:['.project-github'],clients:['.project-clients'],settings:['.project-rename'],danger:['.project-danger']};
- for(const option of select.options)if(option.value)option.hidden=!selectors[option.value].some(selector=>card.querySelector(selector));
+ const selectors={overview:['.project-overview'],statistics:['.project-statistics'],publishing:['.project-workflow','.node-live','.project-status','.refresh-status','.site-link'],versions:['.upload-details','.project-history'],logs:['.project-runtime-logs'],domains:['.project-domains'],github:['.project-github'],clients:['.project-clients'],settings:['.project-rename'],danger:['.project-danger']};
+ for(const option of select.options)if(option.value){option.hidden=!selectors[option.value].some(selector=>card.querySelector(selector));const button=links.querySelector('[data-section="'+option.value+'"]');if(button)button.hidden=option.hidden;}
 }
 function filterWebsiteCards(){
  const query=$('website-search').value.trim().toLocaleLowerCase();
@@ -1389,7 +1413,7 @@ function filterWebsiteCards(){
  let shown=0;
  for(const card of cards){
   updateWebsiteSummary(card);
-  setProjectSection(card,card.dataset.projectSection||'publishing');
+  setProjectSection(card,card.dataset.projectSection||'overview');
   const searchText=[card.querySelector('.project-name')?.textContent||'',card.querySelector('.project-client-label')?.textContent||''].join(' ').toLocaleLowerCase();
   const workflow=card.querySelector('.project-workflow');const cardStatus=card.dataset.deleting==='true'?'attention':workflow?.dataset.portfolioStatus||'loading';
   const clientLabel=card.querySelector('.project-client-label')?.textContent.trim()||'';
