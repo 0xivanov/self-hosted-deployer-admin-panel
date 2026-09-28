@@ -276,14 +276,26 @@ async function renderProjectDomains(card,project,role,version){
     const note=document.createElement('p');note.className='muted';note.textContent='Add these records at your DNS provider, then verify. Some providers expect @ for the root domain and only the subdomain part for other record names. HTTPS is set up automatically after verification.';row.append(note);
    }
    const actions=document.createElement('div');actions.className='domain-actions';if(domain.state==='active'){const visit=document.createElement('a');visit.href='https://'+domain.hostname;visit.target='_blank';visit.rel='noopener noreferrer';visit.className='site-link';visit.textContent='Visit website ↗';actions.append(visit);}
-   if(role!=='viewer'&&domain.state!=='active'&&domain.state!=='removing'){const verify=document.createElement('button');verify.type='button';verify.textContent='Verify DNS';verify.addEventListener('click',async()=>{verify.disabled=true;try{await api('/api/project-domains/verify',{project:project.id,id:domain.id});if(version===generation&&workspace===$('workspace').value)await renderProjectDomains(card,project,role,version);}catch(e){if(version===generation&&workspace===$('workspace').value){error(e);verify.disabled=false;}}});actions.append(verify);}
+   const feedback=document.createElement('p');feedback.className='domain-feedback';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');feedback.setAttribute('aria-atomic','true');feedback.hidden=true;
+   if(role!=='viewer'&&domain.state!=='active'&&domain.state!=='removing'){
+    const verify=document.createElement('button');verify.type='button';verify.textContent='Verify DNS';
+    verify.addEventListener('click',async()=>{
+     verify.disabled=true;verify.textContent='Checking DNS…';feedback.hidden=false;feedback.className='domain-feedback';feedback.textContent='Checking your DNS records…';
+     try{
+      await api('/api/project-domains/verify',{project:project.id,id:domain.id});
+      if(version===generation&&workspace===$('workspace').value){feedback.textContent='DNS verified. HTTPS setup will continue automatically.';await renderProjectDomains(card,project,role,version);}
+     }catch(e){
+      if(version===generation&&workspace===$('workspace').value){feedback.className='domain-feedback domain-error';feedback.textContent=e.message+' Check the records above and try again. DNS changes can take time to appear.';}
+     }finally{verify.disabled=false;verify.textContent='Verify DNS';}
+    });actions.append(verify);
+   }
    const refresh=document.createElement('button');refresh.type='button';refresh.className='button-quiet';refresh.textContent='Refresh status';refresh.addEventListener('click',()=>renderProjectDomains(card,project,role,version).catch(e=>{if(version===generation&&workspace===$('workspace').value)error(e);}));actions.append(refresh);
    if(role!=='viewer'&&domain.state!=='removing'){const remove=document.createElement('button');remove.type='button';remove.className='button-quiet';remove.textContent='Remove';remove.addEventListener('click',async()=>{if(!confirm('Remove '+domainText(domain.hostname)+' from this project?'))return;remove.disabled=true;try{await api('/api/project-domains/remove',{project:project.id,id:domain.id});if(version===generation&&workspace===$('workspace').value)await renderProjectDomains(card,project,role,version);}catch(e){if(version===generation&&workspace===$('workspace').value){error(e);remove.disabled=false;}}});actions.append(remove);}
-   row.append(actions);content.append(row);
+   row.append(actions,feedback);content.append(row);
   }
  }catch(e){
   if(version!==generation||workspace!==$('workspace').value||card.dataset.deleting==='true')return;
-  if(existing){error(e);return;}
+  if(existing){let note=existing.querySelector('.domain-load-error');if(!note){note=document.createElement('p');note.className='domain-error domain-load-error';note.setAttribute('role','status');existing.querySelector('.domain-content').append(note);}note.textContent='Could not refresh domain status. Try Refresh status again.';return;}
   content.replaceChildren();const note=document.createElement('p');note.className='domain-error';note.textContent='Custom domain status is unavailable. Use Refresh status to try again.';content.append(note);
  }
  if(version!==generation||workspace!==$('workspace').value||!card.isConnected||card.dataset.deleting==='true'||domainRefreshes.get(card)!==request)return;
