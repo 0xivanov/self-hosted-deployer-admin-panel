@@ -1315,7 +1315,10 @@ function setProjectSection(card,key){
  };
  const available=sections[key]?.some(selector=>card.querySelector(selector));const selected=available?key:'overview';const targets=sections[selected];card.dataset.projectSection=selected;const select=card.querySelector('.project-section-select');if(select)select.value=selected;
  for(const button of card.querySelectorAll('.project-section-tabs button')){if(button.dataset.section===selected)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}
- for(const child of card.children){if(child.matches('.project-heading,.website-summary,.website-detail-links'))continue;child.hidden=!targets.some(selector=>child.matches(selector));}
+ // Async upload rendering briefly attaches forms directly to the card. Only
+ // toggle completed sections; hidden on a form survives moving into a disclosure.
+ const managed=Object.values(sections).flat();
+ for(const child of card.children){if(!managed.some(selector=>child.matches(selector)))continue;child.hidden=!targets.some(selector=>child.matches(selector));}
 }
 function showWebsite(id){
  selectedWebsite=id;for(const card of $('projects').querySelectorAll(':scope > .project[data-project-id]'))if(id&&card.dataset.projectId===id)card.dataset.projectSection='overview';filterWebsiteCards();

@@ -15,3 +15,15 @@ test('overview and statistics survive upload organization while data refreshes',
  const ctx=vm.createContext({disclosure(){return {children:[{}],append(){throw new Error('Overview moved into disclosure');}};}});
  vm.runInContext(js.slice(js.indexOf('function organizeProject('),js.indexOf('function projectDomainStateLabel(')),ctx);ctx.organizeProject(card);
 });
+
+test('section switching does not hide upload forms while async rendering is unfinished',()=>{
+ const form=section('upload-form');form.tagName='FORM';
+ const workflow=section('project-workflow');const overview=section('project-overview');
+ const card={children:[overview,workflow,form],dataset:{},querySelector(selector){return this.children.find(c=>c.matches(selector));},querySelectorAll(){return [];}};
+ const context=vm.createContext({});vm.runInContext(js.slice(js.indexOf('function setProjectSection('),js.indexOf('function showWebsite(')),context);
+ context.setProjectSection(card,'overview');assert.equal(form.hidden,false);
+ const disclosures=[];context.disclosure=(title,name)=>{const d={name,children:[{}],append(child){d.children.push(child);}};disclosures.push(d);return d;};
+ for(const child of card.children)child.classList={contains:n=>n===child.name};card.append=()=>{};
+ vm.runInContext(js.slice(js.indexOf('function organizeProject('),js.indexOf('function projectDomainStateLabel(')),context);context.organizeProject(card);
+ assert.ok(disclosures.find(d=>d.name==='upload-details').children.includes(form));assert.equal(form.hidden,false);
+});
