@@ -606,7 +606,11 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/project-domains" {
 			d, err := h.store.CreateCustomDomain(r.Context(), cookie.Value, input.Project, input.Hostname)
 			if err != nil {
-				if errors.Is(err, ErrExists) {
+				if errors.Is(err, ErrDomainReserved) {
+					httpError(w, 409, "This hostname is reserved for an existing service. Choose another hostname or contact support to move the existing service first.")
+				} else if errors.Is(err, ErrInvalid) {
+					httpError(w, 400, "Enter a valid public hostname, such as www.example.com, without https:// or a path.")
+				} else if errors.Is(err, ErrExists) {
 					httpError(w, 409, "This hostname is already registered")
 				} else {
 					h.storeError(w, err)

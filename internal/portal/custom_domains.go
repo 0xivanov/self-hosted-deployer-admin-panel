@@ -10,6 +10,8 @@ import (
 
 const customDomainTarget = "159.195.146.26"
 
+var ErrDomainReserved = errors.New("hostname reserved for an existing service")
+
 var ErrDomainLimit = errors.New("custom domain limit reached")
 var ErrDomainDNS = errors.New("custom domain DNS records do not match")
 
@@ -56,7 +58,10 @@ func customDomainJSON(d CustomDomain) map[string]any {
 func validCustomHostname(raw string) (string, error) {
 	h := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(raw), "."))
 	reserved := map[string]bool{"0xivanov.dev": true, "admin.0xivanov.dev": true, "portal.0xivanov.dev": true, "deploy.0xivanov.dev": true, "money.0xivanov.dev": true, "sslip.io": true}
-	if len(h) < 1 || len(h) > 253 || reserved[h] || strings.HasSuffix(h, ".sslip.io") || strings.HasSuffix(h, ".local") || strings.HasSuffix(h, ".internal") || strings.HasSuffix(h, ".test") || strings.HasSuffix(h, ".localhost") || net.ParseIP(h) != nil {
+	if reserved[h] {
+		return "", ErrDomainReserved
+	}
+	if len(h) < 1 || len(h) > 253 || strings.HasSuffix(h, ".sslip.io") || strings.HasSuffix(h, ".local") || strings.HasSuffix(h, ".internal") || strings.HasSuffix(h, ".test") || strings.HasSuffix(h, ".localhost") || net.ParseIP(h) != nil {
 		return "", ErrInvalid
 	}
 	for _, c := range h {

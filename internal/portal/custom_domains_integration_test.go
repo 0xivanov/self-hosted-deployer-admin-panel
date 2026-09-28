@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"testing"
 )
 
@@ -130,5 +131,36 @@ func TestCustomDomainOwnershipAndProof(t *testing.T) {
 	rows, err = s.CustomDomains(t.Context(), session.Token, p.ID)
 	if err != nil || rows[0].State != "verified" {
 		t.Fatal("not queued", err)
+	}
+}
+
+func TestCustomDomainHTTPValidationMessages(t *testing.T) {
+	s, _ := newStore(t)
+	a, session := verifiedAccount(t, s, "domain-validation@example.test")
+	p, err := s.CreateProject(t.Context(), session.Token, a.WorkspaceID, "site", "static")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHTTP(s, HTTPOptions{Origin: "https://portal.example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookie, csrf := httpLogin(t, h, a.Email)
+	for _, tc := range []struct {
+		host    string
+		code    int
+		message string
+	}{
+		{"money.0xivanov.dev", 409, "reserved for an existing service"},
+		{"https://example.com/path", 400, "Enter a valid public hostname"},
+	} {
+		w := portalRequest(h, "POST", "/api/project-domains", `{"project":"`+p.ID+`","hostname":"`+tc.host+`"}`, h.origin, csrf, cookie)
+		if w.Code != tc.code || !strings.Contains(w.Body.String(), tc.message) {
+			t.Fatalf("%s: %d %s", tc.host, w.Code, w.Body.String())
+		}
+	}
+	domains, err := s.CustomDomains(t.Context(), session.Token, p.ID)
+	if err != nil || len(domains) != 0 {
+		t.Fatalf("rejected domains persisted: %v %v", domains, err)
 	}
 }
